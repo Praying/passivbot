@@ -78,7 +78,7 @@ def dump_interactive_plot(
     if theme == "":
         theme = config.get("plot_theme", pyecharts_globals.ThemeType.INFOGRAPHIC)
 
-    # Creating graph
+    # 创建图表
     candlesticks = create_graphs(data, candles_interval, config["ohlcv"])
     long_entries, long_profits, long_losses = create_positions(longs, True)
     short_entries, short_profits, short_losses = create_positions(shorts, False)
@@ -106,31 +106,31 @@ def dump_interactive_plot(
 
 
 def create_graphs(data, candles_interval, is_ohlcv=True):
-    # allocating candles data
+    # 分配 K 线数据
     candles_date = np.empty((len(data),), dtype=datetime.datetime)
     candles_data = np.empty((len(data),), dtype=object)
 
-    # Setting first values
+    # 设置初始值
     current_date = CustomDatetime.from_timestamp(data[0][0]).get_minute_rounded()
     candles_date[0] = current_date
-    if is_ohlcv:  # hlc format
+    if is_ohlcv:  # HLC 格式
         if len(data[0]) < 4:
             raise IOError("Backtest ohlcv data format seems to be invalid.")
 
-        first_open = data[0][3]  # We set the first open to the first close
-        # because the actual open is not given by the data
+        first_open = data[0][3]  # 将第一个开盘价设为第一个收盘价
+        # 因为数据中不提供实际的开盘价
         first_high = data[0][1]
         first_low = data[0][2]
         first_close = data[0][3]
-    elif len(data[0]) >= 3:  # ticks format
-        # We only have 1 price per tick
+    elif len(data[0]) >= 3:  # tick 格式
+        # 每个 tick 只有 1 个价格
         first_open = first_high = first_low = first_close = data[0][2]
     else:
         raise IOError("Backtest data format seems to be invalid.")
-    # The graph expects the data to be in open,close,low,high format
+    # 图表期望数据格式为 open,close,low,high
     candles_data[0] = [first_open, first_close, first_low, first_high]
 
-    # Creating candles
+    # 创建 K 线
     next_date = current_date + candles_interval
     candles_index = 0
 
@@ -145,7 +145,7 @@ def create_graphs(data, candles_interval, is_ohlcv=True):
             high = low = close = data_row[2]
 
         if current_date >= next_date:
-            # New candle
+            # 新 K 线
             current_date = current_date.get_minute_rounded()
             next_date = current_date + candles_interval
 
@@ -153,7 +153,7 @@ def create_graphs(data, candles_interval, is_ohlcv=True):
             candles_date[candles_index] = current_date
             candles_data[candles_index] = [candles_data[candles_index - 1][1], close, low, high]
 
-        # Update current candle
+        # 更新当前 K 线
         candles_data[candles_index][1] = close
         candles_data[candles_index][2] = min(candles_data[candles_index][2], low)
         candles_data[candles_index][3] = max(candles_data[candles_index][3], high)

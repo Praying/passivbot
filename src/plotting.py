@@ -3,7 +3,7 @@ import re
 import os
 from typing import Callable, Optional, Dict
 
-try:  # optional in some test environments
+try:  # 某些测试环境中为可选依赖
     import matplotlib.pyplot as plt
     from matplotlib.figure import Figure
 except ImportError:  # pragma: no cover
@@ -446,14 +446,14 @@ def plot_fills(df, fdf_, side: int = 0, plot_whole_df: bool = False, title=""):
 
 
 def scale_array(xs, bottom, top):
-    # Calculate the midpoint
+    # 计算中点
     midpoint = (bottom + top) / 2
 
-    # Scale the array
-    scaled_xs = (xs - np.min(xs)) / (np.max(xs) - np.min(xs))  # Scale between 0 and 1
+    # 缩放数组
+    scaled_xs = (xs - np.min(xs)) / (np.max(xs) - np.min(xs))  # 缩放到 0 到 1 之间
     scaled_xs = (
         scaled_xs * (top - bottom) + midpoint - (top - bottom) / 2
-    )  # Scale to the desired range and shift to the midpoint
+    )  # 缩放到目标范围并偏移到中点
 
     return scaled_xs
 
@@ -849,7 +849,7 @@ def create_forager_twe_figure(
     autoplot: bool | None = None,
     return_figures: bool | None = None,
 ) -> dict:
-    """Plot total wallet exposure for long (positive) and short (negative) on one axis."""
+    """在一个坐标轴上绘制做多（正值）和做空（负值）的总钱包暴露。"""
     figures: dict = {}
     if fdf.empty or "twe_long" not in fdf.columns:
         return figures
@@ -858,9 +858,9 @@ def create_forager_twe_figure(
     if return_figures is None:
         return_figures = not autoplot
 
-    # Resample to reduce point density — take last value per time bucket
+    # 重采样以降低点密度 -- 每个时间桶取最后一个值
     twe = fdf.set_index("timestamp")[["twe_long", "twe_short"]].apply(pd.to_numeric, errors="coerce")
-    # twe_short is stored as signed negative; ensure it plots below zero
+    # twe_short 存储为带符号的负值；确保其绘制在零线以下
     twe["twe_short"] = -twe["twe_short"].abs()
     twe = twe.resample("1h").mean().dropna(how="all").ffill()
 
@@ -914,7 +914,7 @@ def create_forager_pnl_figure(
     if return_figures is None:
         return_figures = not autoplot
 
-    # Compute net PnL per fill (pnl + fee_paid) bucketed by time, then cumsum
+    # 计算每笔成交的净 PnL（pnl + fee_paid），按时间分桶后累加
     sample_divider = max(1, int(balance_sample_divider))
     timestamps_ns = fdf["timestamp"].astype("int64")
     bucket = (timestamps_ns // (sample_divider * 60_000 * 1_000_000)) * (
@@ -927,13 +927,13 @@ def create_forager_pnl_figure(
     pnl_cumsum.index = pd.to_datetime(pnl_cumsum.index, unit="ns")
     pnl_cumsum.name = "pnl_cumsum"
 
-    # Compute unrealized PnL from bal_eq
+    # 从 bal_eq 计算未实现 PnL
     upnl = pd.to_numeric(bal_eq["usd_total_equity"], errors="coerce") - pd.to_numeric(
         bal_eq["usd_total_balance"], errors="coerce"
     )
     upnl.name = "upnl"
 
-    # Align on datetime index
+    # 按 datetime 索引对齐
     combined = pd.concat([pnl_cumsum, upnl], axis=1, join="outer").sort_index()
     combined["pnl_cumsum"] = combined["pnl_cumsum"].ffill().fillna(0.0)
     combined["upnl"] = combined["upnl"].ffill().fillna(0.0)
@@ -1341,31 +1341,31 @@ def save_figures(figures: dict, output_dir: str, suffix: str = ".png", close: bo
 
 def plot_pareto_front(df, metrics, minimize=(True, True)):
     """
-    Plot optimization results with Pareto front highlighted.
+    绘制优化结果并高亮 Pareto 前沿。
 
-    Parameters:
-    df (pandas.DataFrame): DataFrame containing optimization results
-    metrics (tuple): Tuple of two column names to plot (metric1, metric2)
-    minimize (tuple): Tuple of booleans indicating whether each metric should be minimized (default: (True, True))
+    参数：
+    df (pandas.DataFrame): 包含优化结果的 DataFrame
+    metrics (tuple): 要绘制的两个列名元组 (metric1, metric2)
+    minimize (tuple): 布尔值元组，指示每个指标是否应最小化（默认：(True, True)）
 
-    Returns:
-    matplotlib.figure.Figure: The generated plot
+    返回：
+    matplotlib.figure.Figure: 生成的图表
     """
     if len(metrics) != 2:
         raise ValueError("Exactly two metrics must be provided")
 
     metric1, metric2 = metrics
 
-    # Extract the metrics data
+    # 提取指标数据
     x = df[metric1].values
     y = df[metric2].values
 
-    # Function to identify Pareto optimal points
+    # 识别 Pareto 最优点的函数
     def is_pareto_efficient(costs):
         is_efficient = np.ones(costs.shape[0], dtype=bool)
         for i, c in enumerate(costs):
             if is_efficient[i]:
-                # Keep any point with at least one better coordinate than this one
+                # 保留至少有一个坐标优于当前点的点
                 if minimize[0] and minimize[1]:
                     is_efficient[is_efficient] = np.any(costs[is_efficient] < c, axis=1)
                 elif not minimize[0] and minimize[1]:
@@ -1380,40 +1380,40 @@ def plot_pareto_front(df, metrics, minimize=(True, True)):
                     is_efficient[is_efficient] = np.any(
                         costs_comp[is_efficient] < costs_comp[i], axis=1
                     )
-                else:  # not minimize[0] and not minimize[1]
+                else:  # 两个指标都不最小化
                     is_efficient[is_efficient] = np.any(-costs[is_efficient] < -c, axis=1)
                 is_efficient[i] = True
         return is_efficient
 
-    # Find Pareto optimal points
+    # 查找 Pareto 最优点
     costs = np.column_stack((x, y))
     pareto_mask = is_pareto_efficient(costs)
 
-    # Create the plot
+    # 创建图表
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Plot all points
+    # 绘制所有点
     ax.scatter(x[~pareto_mask], y[~pareto_mask], c="gray", alpha=0.5, label="Non-Pareto optimal")
 
-    # Plot Pareto optimal points
+    # 绘制 Pareto 最优点
     ax.scatter(x[pareto_mask], y[pareto_mask], c="red", label="Pareto optimal")
 
-    # Connect Pareto points with a line
+    # 用线连接 Pareto 点
     pareto_points = costs[pareto_mask]
-    # Sort points for proper line connection
+    # 排序点以便正确连接线条
     if minimize[0]:
         pareto_points = pareto_points[pareto_points[:, 0].argsort()]
     else:
         pareto_points = pareto_points[(-pareto_points[:, 0]).argsort()]
     ax.plot(pareto_points[:, 0], pareto_points[:, 1], "r--", alpha=0.5)
 
-    # Labels and title
+    # 标签和标题
     ax.set_xlabel(metric1)
     ax.set_ylabel(metric2)
     ax.set_title("Optimization Results with Pareto Front")
     ax.legend()
 
-    # Add grid
+    # 添加网格
     ax.grid(True, linestyle="--", alpha=0.6)
 
     plt.tight_layout()
@@ -1421,7 +1421,7 @@ def plot_pareto_front(df, metrics, minimize=(True, True)):
 
 
 def add_metrics_to_fdf(fdf):
-    # Signed wallet exposure: long positive, short negative.
+    # 带符号的钱包暴露：做多为正，做空为负。
     fdf.loc[:, "wallet_exposure"] = fdf.psize * fdf.pprice / fdf.balance
     fdf.loc[:, "pprice_dist"] = fdf.apply(
         lambda x: pbr.calc_pprice_diff_int(0 if "long" in x.type else 1, x.pprice, x.price), axis=1

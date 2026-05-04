@@ -1,4 +1,4 @@
-"""Shared helpers for structured metric payloads used by suites and pareto outputs."""
+"""用于 suite 和 Pareto 输出的结构化指标载荷的共享辅助函数。"""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def _build_stats(values: Iterable[float]) -> MetricStats:
 
 
 def build_scenario_metrics(analyses: Mapping[str, Mapping[str, Any]]) -> Dict[str, Any]:
-    """Combine per-exchange analysis dicts into structured scenario metrics."""
+    """将各交易所的分析字典合并为结构化的场景指标。"""
 
     stats: Dict[str, MetricStats] = {}
     metric_names = set()
@@ -55,7 +55,7 @@ def build_scenario_metrics(analyses: Mapping[str, Mapping[str, Any]]) -> Dict[st
 
 
 def flatten_metric_stats(stats: Mapping[str, MetricStats], *, prefix: str = "") -> Dict[str, float]:
-    """Convert structured stats to the legacy flat format used by scoring/limits."""
+    """将结构化统计转换为评分/限制使用的旧版扁平格式。"""
 
     flattened: Dict[str, float] = {}
     for metric, values in stats.items():
@@ -72,10 +72,10 @@ def merge_suite_payload(
     scenario_metrics: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """
-    Build the suite metrics payload embedded in Pareto members.
+    构建嵌入在 Pareto 成员中的 suite 指标载荷。
 
-    Returns a structure where each metric contains aggregate stats/value
-    plus per-scenario means when available.
+    返回一个结构，其中每个指标包含聚合统计/值，
+    以及可用时的各场景均值。
     """
 
     scenario_metrics = scenario_metrics or {}
