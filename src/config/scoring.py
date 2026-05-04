@@ -270,10 +270,10 @@ def from_engine_value(spec: ObjectiveSpec, engine_value: float) -> float:
 
 def engine_space_fitness_weights(config_or_scoring: Any) -> tuple[float, ...]:
     """
-    Shared optimizer fitness weights for engine-space objectives.
+    引擎空间目标的共享优化器适应度权重。
 
-    Engine-space values are already normalized so that lower is better for every
-    objective, regardless of the original raw metric goal.
+    引擎空间值已经归一化，使得对于每个目标而言值越小越好，
+    无论原始指标目标是什么。
     """
     return tuple(-1.0 for _ in extract_objective_specs(config_or_scoring))
 
