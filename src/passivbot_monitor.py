@@ -29,7 +29,7 @@ except Exception:
 
 
 def _get_process_rss_bytes() -> Optional[int]:
-    """Return current process RSS in bytes or None if unavailable."""
+    """返回当前进程的 RSS 内存（字节），不可用时返回 None。"""
     try:
         if psutil is not None:
             return int(psutil.Process(os.getpid()).memory_info().rss)
@@ -49,7 +49,7 @@ def _get_process_rss_bytes() -> Optional[int]:
 
 
 def _calc_monitor_pnl(position_side, entry_price, close_price, qty, c_mult):
-    """Calculate trade PnL using the same Rust helpers as the live bot."""
+    """使用与实盘机器人相同的 Rust 辅助函数计算交易 PnL。"""
     try:
         if isinstance(position_side, str):
             if position_side == "long":

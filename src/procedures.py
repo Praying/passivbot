@@ -104,34 +104,33 @@ def ensure_parent_directory(
     filepath: Union[str, Path], mode: int = 0o755, exist_ok: bool = True
 ) -> Path:
     """
-    Creates directory and subdirectories for a given filepath if they don't exist,
-    then returns the path as a Path object.
+    为给定文件路径创建目录和子目录（如果不存在），然后以 Path 对象返回该路径。
 
     Args:
-        filepath: String or Path object representing the file or directory path
-        mode: Directory permissions (default: 0o755)
-        exist_ok: If False, raise FileExistsError if directory exists (default: True)
+        filepath: 表示文件或目录路径的字符串或 Path 对象
+        mode: 目录权限（默认：0o755）
+        exist_ok: 如果为 False，目录已存在时抛出 FileExistsError（默认：True）
 
     Returns:
-        Path object representing the input filepath
+        表示输入路径的 Path 对象
 
     Raises:
-        TypeError: If filepath is neither str nor Path
-        PermissionError: If user lacks permission to create directory
-        FileExistsError: If directory exists and exist_ok is False
+        TypeError: filepath 既不是 str 也不是 Path
+        PermissionError: 用户没有创建目录的权限
+        FileExistsError: 目录已存在且 exist_ok 为 False
     """
     try:
-        # Convert to Path object
+        # 转换为 Path 对象
         path = Path(filepath)
 
-        # Determine if the path points to a directory
-        # (either ends with separator or is explicitly a directory)
+        # 判断路径是否指向目录
+        # （以路径分隔符结尾或明确是一个目录）
         if str(path).endswith(os.path.sep) or (path.exists() and path.is_dir()):
             dirpath = path
         else:
             dirpath = path.parent
 
-        # Create directory if it doesn't exist
+        # 如果目录不存在则创建
         if not dirpath.exists():
             dirpath.mkdir(parents=True, mode=mode, exist_ok=exist_ok)
         elif not exist_ok:
@@ -148,10 +147,10 @@ def ensure_parent_directory(
 
 
 def load_user_info(user: str, api_keys_path="api-keys.json") -> dict:
-    """Load user credentials from api-keys.json.
+    """从 api-keys.json 加载用户凭据。
 
-    Returns all fields from the user's entry, plus empty string defaults
-    for legacy fields to maintain backwards compatibility with existing bots.
+    返回用户条目的所有字段，加上旧版字段的空字符串默认值，
+    以保持与现有机器人的向后兼容性。
     """
     if api_keys_path is None:
         api_keys_path = "api-keys.json"
@@ -162,7 +161,7 @@ def load_user_info(user: str, api_keys_path="api-keys.json") -> dict:
     if user not in api_keys:
         raise Exception(f"user {user} not found in {api_keys_path}")
 
-    # Start with empty string defaults for legacy fields (backwards compatibility)
+    # 旧版字段使用空字符串默认值（向后兼容）
     legacy_fields = [
         "exchange",
         "key",
@@ -174,7 +173,7 @@ def load_user_info(user: str, api_keys_path="api-keys.json") -> dict:
     ]
     result = {k: "" for k in legacy_fields}
 
-    # Overlay all fields from the user's entry (passthrough for CCXTBot)
+    # 覆盖用户条目的所有字段（CCXTBot 直接透传）
     result.update(api_keys[user])
 
     return result
@@ -211,8 +210,8 @@ def _broker_codes_path() -> Path:
     if repo_path.exists():
         return repo_path
 
-    # Packaged/container deployments may keep broker_codes.hjson beside the
-    # process working directory instead of beside the source checkout.
+    # 打包/容器化部署可能将 broker_codes.hjson 放在
+    # 进程工作目录旁而非源码目录旁。
     return Path.cwd() / "broker_codes.hjson"
 
 
@@ -255,7 +254,7 @@ def load_broker_code(exchange: str) -> Any:
 
 def print_(args, r=False, n=False):
     line = ts_to_date(utc_ms())[:19] + "  "
-    # line = ts_to_date(local_time())[:19] + '  '
+    # line = ts_to_date(local_time())[:19] + '  '  # 使用本地时间替代 UTC
     str_args = "{} " * len(args)
     line += str_args.format(*args)
     if n:
@@ -291,60 +290,58 @@ def print_async_exception(coro):
 
 async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
     """
-    Returns earliest timestamp each coin was found on any exchange by default.
-    If 'exchange' is specified, returns earliest timestamps specifically for that exchange.
+    默认返回每个币种在所有交易所上最早出现的时间戳。
+    如果指定了 'exchange'，则仅返回该交易所的最早时间戳。
 
-    Batches requests in groups of 10 coins at a time, and dumps results to disk
-    immediately after each batch is processed.
+    每次以 10 个币种为一批发送请求，每批处理完后立即将结果写入磁盘。
 
-    :param coins: List of coin symbols to retrieve first-timestamp data for.
-    :param exchange: Optional string specifying a single exchange (e.g., 'binanceusdm').
-                     If set, tries to return first timestamps for only that exchange.
-    :return: Dictionary of coin -> earliest timestamp (ms). If `exchange` is provided,
-             only entries for the specified exchange are returned.
+    :param coins: 需要获取首次时间戳数据的币种符号列表。
+    :param exchange: 可选字符串，指定单个交易所（如 'binanceusdm'）。
+                     设置后仅返回该交易所的最早时间戳。
+    :return: 币种 -> 最早时间戳（毫秒）的字典。如果提供了 `exchange`，
+             则仅返回指定交易所的条目。
     """
 
-    # cheap_exchanges = {"binanceusdm", "bybit", "okx", "gateio", "hyperliquid"}
+    # cheap_exchanges = {"binanceusdm", "bybit", "okx", "gateio", "hyperliquid"}  # 低成本交易所
     cheap_exchanges = {"binanceusdm", "bybit", "okx"}
 
     async def fetch_ohlcv_with_start(exchange_name, symbol, cc):
         """
-        Fetch OHLCV data for `symbol` on `exchange_name`, starting from a
-        specific date range based on the exchange’s known data availability.
-        Returns a list of candle data.
+        获取 `exchange_name` 上 `symbol` 的 OHLCV 数据，根据交易所已知的数据可用性
+        从特定日期范围开始获取。返回 K 线数据列表。
         """
         if exchange_name == "binanceusdm":
-            # Data starts practically 'forever' in this example
+            # 数据实际上从很久以前就开始
             return await cc.fetch_ohlcv(symbol, since=1, timeframe="1d")
 
         elif exchange_name in ["bybit", "gateio"]:
-            # Data since 2018
+            # 数据从 2018 年开始
             return await cc.fetch_ohlcv(symbol, since=int(date_to_ts("2018-01-01")), timeframe="1d")
 
         elif exchange_name == "okx":
-            # Monthly timeframe; data since 2018
+            # 月线时间框架；数据从 2018 年开始
             return await cc.fetch_ohlcv(symbol, since=int(date_to_ts("2018-01-01")), timeframe="1M")
 
         elif exchange_name == "bitget":
             first_candle = await get_first_ohlcv_iteratively(cc, symbol)
             return [first_candle] if first_candle else []
 
-        else:  # e.g., 'hyperliquid'
-            # Weekly timeframe; data since 2021
+        else:  # 如 'hyperliquid'
+            # 周线时间框架；数据从 2021 年开始
             return await cc.fetch_ohlcv(symbol, since=int(date_to_ts("2021-01-01")), timeframe="1w")
 
-    # Remove duplicates and sort the input coins for consistency
+    # 去重并排序输入币种以保持一致性
     coins = sorted(set(symbol_to_coin(coin) for coin in coins))
 
-    # Paths to the cache files
+    # 缓存文件路径
     cache_fpath = make_get_filepath("caches/first_ohlcv_timestamps_unified.json")
     cache_fpath_exchange_specific = "caches/first_ohlcv_timestamps_unified_exchange_specific.json"
 
-    # In-memory dictionaries for storing timestamps
-    ftss = {}  # coin -> earliest timestamp across all exchanges
-    ftss_exchange_specific = {}  # coin -> {exchange -> earliest timestamp}
+    # 用于存储时间戳的内存字典
+    ftss = {}  # 币种 -> 跨所有交易所的最早时间戳
+    ftss_exchange_specific = {}  # 币种 -> {交易所 -> 最早时间戳}
 
-    # Load main cache if it exists
+    # 加载主缓存（如果存在）
     if os.path.exists(cache_fpath):
         try:
             with open(cache_fpath, "r") as f:
@@ -353,7 +350,7 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
         except Exception as e:
             logging.warning("error reading %s: %s", cache_fpath, e)
 
-    # Load exchange-specific cache if it exists
+    # 加载交易所特定缓存（如果存在）
     if os.path.exists(cache_fpath_exchange_specific):
         try:
             with open(cache_fpath_exchange_specific, "r") as f:
@@ -366,7 +363,7 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
         except Exception as e:
             logging.warning("error reading %s: %s", cache_fpath_exchange_specific, e)
 
-    # If an exchange is specified, handle "binance" alias
+    # 如果指定了交易所，处理 "binance" 别名
     if exchange == "binance":
         exchange = "binanceusdm"
 
@@ -376,18 +373,18 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
         except Exception:
             return False
 
-    # 1) If no exchange is specified and all coins have valid cached timestamps, just return ftss
+    # 1) 如果未指定交易所且所有币种都有有效的缓存时间戳，直接返回 ftss
     if exchange is None:
         if all(_valid_first_timestamp(ftss.get(coin)) for coin in coins):
             return ftss
 
-    # 2) If a specific exchange is requested:
+    # 2) 如果请求了特定交易所：
     else:
-        # If all coins exist in the exchange-specific cache for that exchange, return them
+        # 如果所有币种都存在于该交易所的特定缓存中，返回它们
         if all(_valid_first_timestamp(ftss_exchange_specific.get(coin, {}).get(exchange)) for coin in coins):
             return {c: ftss_exchange_specific[c][exchange] for c in coins}
 
-    # Figure out which coins are missing from the relevant cache or have invalid cached timestamps
+    # 查找缓存中缺失或时间戳无效的币种
     if exchange is None:
         missing_coins = {c for c in coins if not _valid_first_timestamp(ftss.get(c))}
     else:
@@ -401,7 +398,7 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
 
     print("Missing coins:", sorted(missing_coins))
 
-    # Map of exchange -> quote currency
+    # 交易所 -> 报价货币映射
     exchange_map = {
         "okx": "USDT",
         "binanceusdm": "USDT",
@@ -411,7 +408,7 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
         "hyperliquid": "USDC",
     }
 
-    # Initialize ccxt clients for each exchange
+    # 为每个交易所初始化 ccxt 客户端
     ccxt_clients = {}
     for ex_name in sorted(exchange_map):
         try:
@@ -442,7 +439,7 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
                 del ccxt_clients[ex_name]
                 if ex_name in exchange_map:
                     del exchange_map[ex_name]
-        # We'll fetch missing coins in batches of 10 to avoid overloading
+        # 以每批 10 个币种的方式获取缺失的币种，避免过载
         BATCH_SIZE = 10
         missing_coins = sorted(missing_coins)
 
@@ -450,13 +447,13 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
             batch = missing_coins[i : i + BATCH_SIZE]
             print(f"\nProcessing batch: {batch}")
 
-            # Create tasks for every coin/exchange pair in this batch
+            # 为此批次中每个币种/交易所对创建任务
             tasks = {}
             bitget_symbols = {}
             for coin in batch:
                 tasks[coin] = {}
                 for ex_name, quote in exchange_map.items():
-                    # Convert coin to a symbol recognized by the exchange, e.g. "BTC/USDT:USDT"
+                    # 将币种转换为交易所识别的符号，如 "BTC/USDT:USDT"
                     symbol = coin_to_symbol(coin, ex_name)
                     if not symbol:
                         continue
@@ -467,7 +464,7 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
                         fetch_ohlcv_with_start(ex_name, symbol, ccxt_clients[ex_name])
                     )
 
-            # Gather all results for this batch
+            # 收集此批次的所有结果
             batch_results = {}
             fast_exchanges = [ex for ex in exchange_map if ex != "bitget"]
             for coin in batch:
@@ -484,7 +481,7 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
                         except Exception as e:
                             print(f"Warning: failed to fetch OHLCV for {coin} on {ex_name}: {e}")
 
-            # Second pass: issue expensive Bitget fetch only for unresolved coins.
+            # 第二轮：仅为未解决的币种发起开销较大的 Bitget 请求。
             for coin in batch:
                 symbol = bitget_symbols.get(coin)
                 if not symbol:
@@ -508,31 +505,31 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
                 except Exception as e:
                     print(f"Warning: failed to fetch OHLCV for {coin} on bitget: {e}")
 
-            # Process results for each coin in this batch
+            # 处理此批次中每个币种的结果
             for coin in batch:
                 exchange_data = batch_results.get(coin, {})
-                fts_for_this_coin = {ex: 0.0 for ex in exchange_map}  # default 0.0 for all
+                fts_for_this_coin = {ex: 0.0 for ex in exchange_map}  # 所有交易所默认 0.0
                 earliest_candidates = []
 
                 for ex_name, arr in exchange_data.items():
                     if arr and len(arr) > 0:
-                        # arr[0][0] is the timestamp in ms
-                        # Only consider "reasonable" timestamps after 2010
+                        # arr[0][0] 是毫秒时间戳
+                        # 仅考虑 2010 年之后的"合理"时间戳
                         if arr[0][0] > 1262304000000.0:
                             earliest_candidates.append(arr[0][0])
                             fts_for_this_coin[ex_name] = arr[0][0]
 
-                # If any valid timestamps found, keep the earliest
+                # 如果找到有效时间戳，保留最早的
                 if earliest_candidates:
                     ftss[coin] = min(earliest_candidates)
                 else:
                     print(f"No valid first timestamp for coin {coin}")
                     ftss[coin] = 0.0
 
-                # Update the exchange-specific dictionary
+                # 更新交易所特定字典
                 ftss_exchange_specific[coin] = fts_for_this_coin
 
-            # Immediately dump updated dictionaries to disk after each batch
+            # 每批处理后立即将更新的字典写入磁盘
             with open(cache_fpath, "w") as f:
                 json.dump(ftss, f, indent=4, sort_keys=True)
 
@@ -541,13 +538,13 @@ async def get_first_timestamps_unified(coins: List[str], exchange: str = None):
 
             print(f"Finished batch {batch}. Caches updated.")
 
-        # Close all ccxt client sessions
+        # 关闭所有 ccxt 客户端会话
 
-        # If a single exchange was requested, return only those exchange-specific timestamps.
+        # 如果请求了单个交易所，仅返回该交易所特定的时间戳。
         if exchange is not None:
             return {coin: ftss_exchange_specific.get(coin, {}).get(exchange, 0.0) for coin in coins}
 
-        # Otherwise, return earliest cross-exchange timestamps
+        # 否则，返回跨交易所的最早时间戳
         return ftss
     finally:
         await asyncio.gather(
@@ -570,16 +567,16 @@ def assert_correct_ccxt_version(version=None, ccxt=None):
 
 def load_ccxt_version():
     try:
-        # Get the directory of the current script
+        # 获取当前脚本的目录
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        # Construct the path to the requirements.txt file
+        # 构建 requirements.txt 文件的路径
         requirements_path = os.path.join(script_dir, "..", "requirements-live.txt")
 
-        # Open and read the requirements.txt file
+        # 打开并读取 requirements.txt 文件
         with open(requirements_path, "r") as f:
             lines = f.readlines()
 
-        # Find the line with 'ccxt' and extract the version number
+        # 查找包含 'ccxt' 的行并提取版本号
         ccxt_line = [line for line in lines if "ccxt" in line][0].strip()
         return ccxt_line[ccxt_line.find("==") + 2 :]
     except Exception as e:
@@ -589,35 +586,35 @@ def load_ccxt_version():
 
 def get_size(obj: Any, seen: Set = None) -> int:
     """
-    Recursively calculate size of object and its contents in bytes.
+    递归计算对象及其内容的字节大小。
 
     Args:
-        obj: The object to calculate size for
-        seen: Set of object ids already seen (for handling circular references)
+        obj: 要计算大小的对象
+        seen: 已见过的对象 id 集合（用于处理循环引用）
 
     Returns:
-        Total size in bytes
+        总字节大小
     """
-    # Initialize the set of seen objects if this is the top-level call
+    # 如果是顶层调用，初始化已见对象集合
     if seen is None:
         seen = set()
 
-    # Get object id to handle circular references
+    # 获取对象 id 以处理循环引用
     obj_id = id(obj)
 
-    # If object has been seen, don't count it again
+    # 如果对象已见过，不再重复计算
     if obj_id in seen:
         return 0
 
-    # Add this object to seen
+    # 将此对象标记为已见
     seen.add(obj_id)
 
-    # Get basic size of object
+    # 获取对象的基本大小
     size = sys.getsizeof(obj)
 
-    # Handle different types of containers
+    # 处理不同类型的容器
     if isinstance(obj, (str, bytes, bytearray)):
-        pass  # Basic size already includes contents
+        pass  # 基本大小已包含内容
 
     elif isinstance(obj, (tuple, list, set, frozenset)):
         size += sum(get_size(item, seen) for item in obj)
@@ -626,11 +623,11 @@ def get_size(obj: Any, seen: Set = None) -> int:
         size += sum(get_size(k, seen) + get_size(v, seen) for k, v in obj.items())
 
     elif hasattr(obj, "__dict__"):
-        # Add size of all attributes for custom objects
+        # 添加自定义对象的所有属性大小
         size += get_size(obj.__dict__, seen)
 
     elif hasattr(obj, "__slots__"):
-        # Handle objects using __slots__
+        # 处理使用 __slots__ 的对象
         size += sum(
             get_size(getattr(obj, attr), seen) for attr in obj.__slots__ if hasattr(obj, attr)
         )
@@ -640,13 +637,13 @@ def get_size(obj: Any, seen: Set = None) -> int:
 
 def format_size(size_bytes: int) -> str:
     """
-    Format byte size into human readable string.
+    将字节大小格式化为人类可读的字符串。
 
     Args:
-        size_bytes: Size in bytes
+        size_bytes: 字节大小
 
     Returns:
-        Formatted string like '1.23 MB'
+        格式化后的字符串，如 '1.23 MB'
     """
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if size_bytes < 1024:
@@ -657,23 +654,23 @@ def format_size(size_bytes: int) -> str:
 
 def compare_dicts_table(dict1, dict2, dict1_name="Dict 1", dict2_name="Dict 2"):
     """
-    Compare two dictionaries with identical keys in a neat table format.
+    以整齐的表格格式比较两个具有相同键的字典。
 
     Args:
-        dict1: First dictionary
-        dict2: Second dictionary
-        dict1_name: Name for first dictionary column
-        dict2_name: Name for second dictionary column
+        dict1: 第一个字典
+        dict2: 第二个字典
+        dict1_name: 第一个字典列的名称
+        dict2_name: 第二个字典列的名称
     """
-    # Get all keys (assuming identical keys)
+    # 获取所有键（假设键相同）
     keys = list(dict1.keys())
 
-    # Calculate column widths
+    # 计算列宽
     key_width = max(len("Key"), max(len(str(k)) for k in keys))
     val1_width = max(len(dict1_name), max(len(str(dict1[k])) for k in keys))
     val2_width = max(len(dict2_name), max(len(str(dict2[k])) for k in keys))
 
-    # Create separator line
+    # 创建分隔线
     separator = (
         "+"
         + "-" * (key_width + 2)
@@ -684,7 +681,7 @@ def compare_dicts_table(dict1, dict2, dict1_name="Dict 1", dict2_name="Dict 2"):
         + "+"
     )
 
-    # Print table
+    # 打印表格
     print(separator)
     print(f"| {'Key':<{key_width}} | {dict1_name:<{val1_width}} | {dict2_name:<{val2_width}} |")
     print(separator)

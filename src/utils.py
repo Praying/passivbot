@@ -26,16 +26,16 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
 
-# In-memory caches for symbol/coin maps with on-disk change detection
+# 带磁盘变更检测的符号/币种映射的内存缓存
 _COIN_TO_SYMBOL_CACHE = {}  # {exchange: {"map": dict, "mtime_ns": int, "size": int}}
 _SYMBOL_TO_COIN_CACHE = {"map": None, "mtime_ns": None, "size": None}
 _SYMBOL_TO_COIN_WARNINGS: set[str] = set()
 _COIN_TO_SYMBOL_FALLBACKS: set[tuple[str, str]] = set()
 
-# File locking constants for symbol/coin map files
-_SYMBOL_MAP_LOCK_STALE_SECONDS = 180  # Remove locks older than 3 minutes
-_SYMBOL_MAP_LOCK_TIMEOUT = 5  # Seconds to wait for lock acquisition
-_SYMBOL_MAP_STALE_CLEANUP_DONE = False  # Track if cleanup has run this session
+# 符号/币种映射文件的锁常量
+_SYMBOL_MAP_LOCK_STALE_SECONDS = 180  # 移除超过 3 分钟的锁
+_SYMBOL_MAP_LOCK_TIMEOUT = 5  # 等待获取锁的超时秒数
+_SYMBOL_MAP_STALE_CLEANUP_DONE = False  # 跟踪本次会话是否已执行过清理
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LEGACY_COINS_FILE_ALIASES = {
     "approved_coins_topmcap.json": Path("configs/approved_coins.json"),
@@ -44,7 +44,7 @@ LEGACY_COINS_FILE_ALIASES = {
 
 
 def _atomic_write_json(path: str, data: dict, indent=None, sort_keys=False) -> None:
-    """Write JSON atomically: write to .tmp then os.replace() for crash safety."""
+    """原子写入 JSON：先写入 .tmp 文件再用 os.replace() 保证崩溃安全。"""
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     tmp_path = f"{path}.tmp"
     with open(tmp_path, "w") as f:
@@ -56,8 +56,8 @@ def _atomic_write_json(path: str, data: dict, indent=None, sort_keys=False) -> N
 
 def _cleanup_stale_symbol_map_locks() -> None:
     """
-    Remove leftover .lock files for symbol/coin maps that are clearly stale.
-    Runs once per session on first access to prevent accumulation.
+    移除明显过期的符号/币种映射遗留 .lock 文件。
+    每个会话在首次访问时运行一次，防止累积。
     """
     global _SYMBOL_MAP_STALE_CLEANUP_DONE
     if _SYMBOL_MAP_STALE_CLEANUP_DONE:
@@ -71,15 +71,15 @@ def _cleanup_stale_symbol_map_locks() -> None:
     now = time.time()
     threshold = _SYMBOL_MAP_LOCK_STALE_SECONDS
 
-    # Clean up lock files in caches/ and caches/{exchange}/
+    # 清理 caches/ 和 caches/{exchange}/ 中的锁文件
     lock_patterns = [
-        "*.lock",  # Top-level locks (symbol_to_coin_map.json.lock)
-        "*/*.lock",  # Per-exchange locks (caches/{exchange}/coin_to_symbol_map.json.lock)
+        "*.lock",  # 顶层锁 (symbol_to_coin_map.json.lock)
+        "*/*.lock",  # 每个交易所的锁 (caches/{exchange}/coin_to_symbol_map.json.lock)
     ]
 
     for pattern in lock_patterns:
         for lock_path in cache_dir.glob(pattern):
-            # Only clean up symbol/coin map related locks
+            # 仅清理符号/币种映射相关的锁
             if "symbol" not in lock_path.name and "coin" not in lock_path.name:
                 continue
             try:
@@ -149,54 +149,54 @@ def _require_live_value(config: Dict[str, Any], key: str):
 
 def ts_to_date(timestamp: Union[float, str, int]) -> str:
     """
-    Convert a timestamp to UTC date string in ISO format.
+    将时间戳转换为 ISO 格式的 UTC 日期字符串。
 
     Args:
-        timestamp: Timestamp as float, str, or int - may be seconds, milliseconds, or nanoseconds
+        timestamp: 时间戳，可以是 float、str 或 int - 可能是秒、毫秒或纳秒
 
     Returns:
-        UTC date string in ISO format (e.g., "2025-03-12T12:43:22.123")
+        ISO 格式的 UTC 日期字符串（如 "2025-03-12T12:43:22.123"）
     """
-    # Convert to float if string or int
+    # 如果是字符串或整数，转换为浮点数
     if isinstance(timestamp, (str, int)):
         timestamp = float(timestamp)
 
-    # Detect timestamp precision and convert to seconds
-    if timestamp > 1e15:  # Likely nanoseconds (> ~2033 in milliseconds)
-        # Nanoseconds
+    # 检测时间戳精度并转换为秒
+    if timestamp > 1e15:  # 可能是纳秒（> ~2033 年的毫秒值）
+        # 纳秒
         timestamp_seconds = timestamp / 1_000_000_000
-    elif timestamp > 1e10:  # Likely milliseconds (> ~2001 in seconds)
-        # Milliseconds
+    elif timestamp > 1e10:  # 可能是毫秒（> ~2001 年的秒值）
+        # 毫秒
         timestamp_seconds = timestamp / 1000
     else:
-        # Seconds
+        # 秒
         timestamp_seconds = timestamp
 
-    # Convert to UTC datetime
+    # 转换为 UTC datetime
     dt = datetime.datetime.fromtimestamp(timestamp_seconds, tz=datetime.timezone.utc)
 
-    # Return ISO format without timezone suffix
+    # 返回不带时区后缀的 ISO 格式
     return dt.isoformat().replace("+00:00", "")
 
 
 def date_to_ts(date_str: str) -> float:
     """
-    Convert a flexible date string to UTC timestamp in milliseconds.
+    将灵活的日期字符串转换为毫秒级 UTC 时间戳。
 
     Args:
-        date_str: Date string in various formats:
+        date_str: 各种格式的日期字符串：
                  - "2020" -> "2020-01-01T00:00:00"
                  - "2024-04" -> "2024-04-01T00:00:00"
                  - "2022-04-23" -> "2022-04-23T00:00:00"
-                 - "2021-11-13T03:23:12" (full ISO format)
-                 - And other common variants
+                 - "2021-11-13T03:23:12"（完整 ISO 格式）
+                 - 以及其他常见变体
 
     Returns:
-        UTC timestamp in milliseconds as float
+        毫秒级 UTC 时间戳（float）
     """
     date_str = date_str.strip()
 
-    # Use dateutil.parser with default date of Jan 1, 2000 for missing components
+    # 使用 dateutil.parser，缺失部分的默认日期为 2000 年 1 月 1 日
     default_date = datetime.datetime(2000, 1, 1)
 
     try:
@@ -204,25 +204,25 @@ def date_to_ts(date_str: str) -> float:
     except (ValueError, TypeError) as e:
         raise ValueError(f"Unable to parse date string '{date_str}': {e}")
 
-    # If the datetime is naive (no timezone info), treat it as UTC
+    # 如果 datetime 是朴素的（无时区信息），视为 UTC
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=datetime.timezone.utc)
 
-    # Convert to UTC timestamp in milliseconds
+    # 转换为毫秒级 UTC 时间戳
     return dt.timestamp() * 1000
 
 
 def get_file_mod_ms(filepath):
     """
-    Get the UTC timestamp of the last modification of a file.
+    获取文件最后修改的 UTC 时间戳。
     Args:
-        filepath (str): The path to the file.
+        filepath (str): 文件路径。
     Returns:
-        float: The UTC timestamp in milliseconds of the last modification of the file.
+        float: 文件最后修改的毫秒级 UTC 时间戳。
     """
-    # Get the last modification time in seconds since epoch (already UTC-based)
+    # 获取自纪元以来的最后修改时间（秒，已是 UTC 基准）
     mod_time_epoch = os.path.getmtime(filepath)
-    # Convert to milliseconds
+    # 转换为毫秒
     return mod_time_epoch * 1000
 
 
@@ -237,7 +237,7 @@ def format_end_date(end_date) -> str:
 
 def make_get_filepath(filepath: str) -> str:
     """
-    Ensure directory for filepath exists and return the filepath.
+    确保文件路径的目录存在并返回该路径。
     """
     dirpath = os.path.dirname(filepath) if not filepath.endswith("/") else filepath
     if dirpath and not os.path.isdir(dirpath):
@@ -250,7 +250,7 @@ def utc_ms() -> float:
 
 
 def _inline_simple_containers(text: str, max_inline: int) -> str:
-    """Collapse flat list/dict blocks that fit within ``max_inline`` characters."""
+    """将长度不超过 ``max_inline`` 字符的扁平列表/字典块折叠为单行。"""
 
     result: list[str] = []
     i = 0
@@ -298,17 +298,15 @@ def dump_json_streamlined(
     sort_keys: bool = False,
 ) -> None:
     """
-    Write JSON where short lists/dicts stay on one line while larger blocks keep
-    normal indentation.
+    写入 JSON，短列表/字典保持在一行，较大块保持正常缩进。
 
     Args:
-        data: Object to serialize.
-        fp: File-like object with ``write``.
-        indent: Base indentation level (like ``json.dump``).
-        max_inline: Maximum character count (including brackets/braces) allowed
-            for an inline container.
-        separators: Passed through to ``json.dumps`` for spacing control.
-        sort_keys: Whether to sort dictionary keys.
+        data: 要序列化的对象。
+        fp: 带有 ``write`` 方法的文件对象。
+        indent: 基础缩进级别（类似 ``json.dump``）。
+        max_inline: 允许内联容器的最大字符数（包括括号/花括号）。
+        separators: 传递给 ``json.dumps`` 用于间距控制。
+        sort_keys: 是否对字典键排序。
     """
 
     fp.write(
@@ -330,7 +328,7 @@ def json_dumps_streamlined(
     separators: tuple[str, str] = (",", ":"),
     sort_keys: bool = False,
 ) -> str:
-    """Return the streamlined JSON string (like ``dump_json_streamlined`` but in-memory)."""
+    """返回精简的 JSON 字符串（类似 ``dump_json_streamlined`` 但在内存中操作）。"""
 
     compact_separators = separators
 
@@ -377,32 +375,30 @@ def json_dumps_streamlined(
 
 
 def trim_analysis_aliases(analysis: dict) -> dict:
-    """Return a copy of ``analysis`` with redundant alias metrics removed.
+    """返回 ``analysis`` 的副本，移除冗余的别名指标。
 
-    Two clean-up rules are applied:
+    应用两条清理规则：
 
-    1. If a key ends with ``"_usd"`` and its value matches the base metric
-       (the same key with the suffix removed), the base entry is dropped while
-       the explicit ``*_usd`` key is retained.
-    2. Within the remaining items, if multiple keys are permutations of the same
-       underscore-separated tokens and share the exact value (e.g.
-       ``"drawdown_btc_worst"`` vs ``"drawdown_worst_btc"``), only a single key
-       is kept. Preference is given to keys whose trailing token is a currency
-       tag (``usd``/``btc``); ties fall back to key length and lexical order.
+    1. 如果某个键以 ``"_usd"`` 结尾且其值与基础指标（去掉后缀的同名键）相同，
+       则删除基础条目，保留显式的 ``*_usd`` 键。
+    2. 在剩余条目中，如果多个键是相同下划线分隔 token 的排列且值完全相同
+       （如 ``"drawdown_btc_worst"`` vs ``"drawdown_worst_btc"``），
+       仅保留一个键。优先保留尾部 token 为货币标签（``usd``/``btc``）的键；
+       平局时按键长度和字典序回退。
 
-    The original ``analysis`` mapping is left untouched.
+    原始 ``analysis`` 映射不会被修改。
     """
 
     trimmed = dict(analysis)
 
-    # Step 1: remove base keys when *_usd carries the same value.
+    # 步骤 1：当 *_usd 携带相同值时移除基础键。
     for key, value in list(trimmed.items()):
         if key.endswith("_usd"):
             base_key = key[:-4]
             if base_key in trimmed and trimmed[base_key] == value:
                 trimmed.pop(base_key)
 
-    # Step 2: remove duplicate permutations sharing identical values.
+    # 步骤 2：移除共享相同值的重复排列。
     groups = {}
     for key in trimmed:
         canon = tuple(sorted(key.split("_")))
@@ -432,7 +428,7 @@ def trim_analysis_aliases(analysis: dict) -> dict:
 
 def filter_markets(markets: dict, exchange: str, quote=None, verbose=False) -> (dict, dict, dict):
     """
-    returns (eligible, ineligible, reasons)
+    返回 (eligible, ineligible, reasons)
     """
     eligible = {}
     ineligible = {}
@@ -452,8 +448,8 @@ def filter_markets(markets: dict, exchange: str, quote=None, verbose=False) -> (
             ineligible[k] = v
             reasons[k] = "wrong quote"
         elif exchange == "hyperliquid" and float(v.get("info", {}).get("openInterest", 0)) == 0.0:
-            # Zero open interest means market is inactive
-            # Note: onlyIsolated=True is allowed for HIP-3 stock perps
+            # 零持仓量意味着市场不活跃
+            # 注意：HIP-3 股票永续合约允许 onlyIsolated=True
             ineligible[k] = v
             reasons[k] = f"ineligible on {exchange}"
         else:
@@ -483,22 +479,22 @@ async def load_markets(
     quote=None,
 ) -> dict:
     """
-    Standalone helper to load and cache CCXT markets for a given exchange.
+    加载并缓存给定交易所 CCXT markets 的独立辅助函数。
 
-    - Reads from caches/{exchange}/markets.json if fresh
-    - Otherwise fetches via ccxt, writes cache, and returns the markets dict
+    - 如果缓存新鲜则从 caches/{exchange}/markets.json 读取
+    - 否则通过 ccxt 获取、写入缓存并返回 markets 字典
 
-    Returns a markets dictionary as provided by ccxt.
+    返回 ccxt 提供的 markets 字典。
 
-    Note: Uses the exchange name as-is (e.g., "binance" not "binanceusdm") for
-    consistency with other cache paths (pnls, ohlcv, fill_events).
+    注意：使用交易所的原始名称（如 "binance" 而非 "binanceusdm"）以保持
+    与其他缓存路径（pnls, ohlcv, fill_events）的一致性。
     """
-    # Prefer cc.id when a ccxt instance is supplied, otherwise use the provided exchange string.
-    # Denormalize to use canonical form for cache paths (e.g., "binance" not "binanceusdm")
+    # 优先使用 cc.id（如果提供了 ccxt 实例），否则使用提供的交易所字符串。
+    # 反规范化以使用规范形式作为缓存路径（如 "binance" 而非 "binanceusdm"）
     ex = to_standard_exchange_name(getattr(cc, "id", None) or exchange or "")
     markets_path = os.path.join("caches", ex, "markets.json")
 
-    # Try cache first
+    # 先尝试缓存
     try:
         if os.path.exists(markets_path):
             if utc_ms() - get_file_mod_ms(markets_path) < max_age_ms:
@@ -511,7 +507,7 @@ async def load_markets(
     except Exception as e:
         logging.error("Error loading %s: %s", markets_path, e)
 
-    # Fetch from exchange via ccxt
+    # 通过 ccxt 从交易所获取
     owned_cc = cc is None
     if owned_cc:
         cc = load_ccxt_instance(ex, enable_rate_limit=True)
@@ -521,14 +517,14 @@ async def load_markets(
         logging.error(f"Error loading markets from {ex}: {e}")
         raise
     finally:
-        # Only close the ccxt client if we created it here.
+        # 仅在此处创建的 ccxt 客户端才关闭。
         if owned_cc:
             try:
                 await cc.close()
             except Exception:
                 pass
 
-    # Dump to cache
+    # 写入缓存
     try:
         path = make_get_filepath(markets_path)
         with open(path, "w") as f:
@@ -543,29 +539,29 @@ async def load_markets(
 
 def to_ccxt_exchange_id(exchange: str) -> str:
     """
-    Convert a short exchange name to its ccxt USD-margined perpetual futures id.
+    将简短交易所名称转换为 ccxt 的 USDT 保证金永续期货 id。
 
-    Examples:
+    示例：
     - "binance" -> "binanceusdm"
     - "kucoin"  -> "kucoinfutures"
     - "kraken"  -> "krakenfutures"
 
-    If no specific futures id exists (e.g. "okx", "bybit", "mexc"), the input is returned unchanged.
-    The function uses ccxt.exchanges to detect available ids, so it will automatically catch
-    new exchanges that follow common suffix patterns like 'usdm' or 'futures'.
+    如果没有特定的期货 id（如 "okx"、"bybit"、"mexc"），输入原样返回。
+    此函数使用 ccxt.exchanges 检测可用 id，因此会自动识别遵循
+    常见后缀模式（如 'usdm' 或 'futures'）的新交易所。
     """
     ex = (exchange or "").lower()
     valid = set(getattr(ccxt, "exchanges", []))
 
-    # Explicit mapping for known special case
+    # 已知特殊情况的显式映射
     if ex == "binance":
         return "binanceusdm"
 
-    # If already a futures/perp id, keep as-is
+    # 如果已经是期货/永续 id，保持不变
     if ex.endswith("usdm") or ex.endswith("futures"):
         return ex
 
-    # Heuristic: prefer '{exchange}usdm' then '{exchange}futures' if available in ccxt
+    # 启发式：优先尝试 '{exchange}usdm'，然后尝试 '{exchange}futures'（如果在 ccxt 中可用）
     for suffix in ("usdm", "futures"):
         cand = f"{ex}{suffix}"
         if cand in valid:
@@ -576,18 +572,18 @@ def to_ccxt_exchange_id(exchange: str) -> str:
 
 def to_standard_exchange_name(exchange: str) -> str:
     """
-    Convert a ccxt exchange id to the canonical short form used in configs, caches, and logs.
+    将 ccxt 交易所 id 转换为配置、缓存和日志中使用的规范简短形式。
 
-    Examples:
+    示例：
     - "binanceusdm" -> "binance"
     - "kucoinfutures" -> "kucoin"
     - "krakenfutures" -> "kraken"
 
-    If the exchange doesn't have a known suffix, returns it unchanged.
+    如果交易所没有已知后缀，原样返回。
     """
     ex = (exchange or "").lower()
 
-    # Remove known futures suffixes
+    # 移除已知的期货后缀
     for suffix in ("usdm", "futures"):
         if ex.endswith(suffix):
             return ex[: -len(suffix)]
@@ -595,9 +591,9 @@ def to_standard_exchange_name(exchange: str) -> str:
     return ex
 
 
-# Deprecated aliases for backward compatibility - will be removed in a future release
+# 已弃用的别名，用于向后兼容 - 将在未来版本中移除
 def normalize_exchange_name(exchange: str) -> str:
-    """Deprecated: Use to_ccxt_exchange_id() instead."""
+    """已弃用：请改用 to_ccxt_exchange_id()。"""
     import warnings
 
     warnings.warn(
@@ -609,7 +605,7 @@ def normalize_exchange_name(exchange: str) -> str:
 
 
 def denormalize_exchange_name(exchange: str) -> str:
-    """Deprecated: Use to_standard_exchange_name() instead."""
+    """已弃用：请改用 to_standard_exchange_name()。"""
     import warnings
 
     warnings.warn(
@@ -622,16 +618,16 @@ def denormalize_exchange_name(exchange: str) -> str:
 
 def load_ccxt_instance(exchange_id: str, enable_rate_limit: bool = True, timeout_ms: int = 60_000):
     """
-    Return a ccxt async-support exchange instance for the given exchange id.
+    返回给定交易所 id 的 ccxt async-support 交易所实例。
 
-    The returned instance should be closed by the caller with: await cc.close()
+    调用者应使用 await cc.close() 关闭返回的实例。
     """
     ex = to_ccxt_exchange_id(exchange_id)
     try:
         cc = getattr(ccxt, ex)(
             {
                 "enableRateLimit": bool(enable_rate_limit),
-                # Default ccxt timeout can be too low for long lookbacks; raise to be tolerant.
+                # ccxt 默认超时对于长回看周期可能太低；提高以增强容错性。
                 "timeout": int(timeout_ms),
             }
         )
@@ -640,11 +636,11 @@ def load_ccxt_instance(exchange_id: str, enable_rate_limit: bool = True, timeout
     try:
         cc.options["defaultType"] = "swap"
         if ex == "hyperliquid":
-            # Include HIP-3 stock perps from TradeXYZ
+            # 包含来自 TradeXYZ 的 HIP-3 股票永续合约
             cc.options["fetchMarkets"] = {
                 "types": ["swap", "hip3"],
                 "hip3": {
-                    "dex": ["xyz"],  # TradeXYZ DEX for stock perps
+                    "dex": ["xyz"],  # TradeXYZ DEX，用于股票永续合约
                 },
             }
     except Exception:
@@ -658,40 +654,40 @@ def load_ccxt_instance(exchange_id: str, enable_rate_limit: bool = True, timeout
 
 
 def get_quote(exchange, quote=None):
-    """Return quote currency for an exchange.
+    """返回交易所的报价货币。
 
     Args:
-        exchange: Exchange name
-        quote: Explicit quote override (from api-keys.json).
-               If provided, returns this value directly.
+        exchange: 交易所名称
+        quote: 显式报价覆盖（来自 api-keys.json）。
+               如果提供，直接返回此值。
 
     Returns:
-        Quote currency string (e.g., "USDT", "USDC")
+        报价货币字符串（如 "USDT"、"USDC"）
     """
     if quote is not None:
         return quote
-    # Legacy hardcoded defaults for backward compatibility
+    # 向后兼容的旧版硬编码默认值
     exchange = to_ccxt_exchange_id(exchange)
     return "USDC" if exchange in ["hyperliquid", "defx", "paradex"] else "USDT"
 
 
 def remove_powers_of_ten(text):
     """
-    Remove any variant of "10", "100", "1000", "10000", etc. from a string.
-    Handles cases like "1000SHIB" by using lookahead/lookbehind assertions.
+    从字符串中移除 "10"、"100"、"1000"、"10000" 等各种变体。
+    通过前瞻/后顾断言处理 "1000SHIB" 等情况。
     """
-    # Match 1 followed by one or more zeros, with word boundaries or start/end of string
+    # 匹配 1 后跟一个或多个零，带单词边界或字符串起止
     pattern = r"(?<!\d)1(?:0+)(?!\d)"
     return re.sub(pattern, "", text)
 
 
 def _load_coin_to_symbol_map(exchange: str) -> dict:
     """
-    Lazily load and cache caches/{exchange}/coin_to_symbol_map.json in memory.
-    Reloads if the file changes on disk (mtime or size).
-    Uses shared locking to prevent reading during concurrent writes.
+    惰性加载并缓存 caches/{exchange}/coin_to_symbol_map.json 到内存。
+    当磁盘文件变更（mtime 或 size）时重新加载。
+    使用共享锁防止并发写入时的读取问题。
     """
-    # Run stale lock cleanup on first access
+    # 首次访问时执行过期锁清理
     _cleanup_stale_symbol_map_locks()
 
     path = os.path.join("caches", exchange, "coin_to_symbol_map.json")
@@ -720,11 +716,11 @@ def _load_coin_to_symbol_map(exchange: str) -> dict:
 
 def _load_symbol_to_coin_map() -> dict:
     """
-    Lazily load and cache caches/symbol_to_coin_map.json in memory.
-    Reloads if the file changes on disk (mtime or size).
-    Uses shared locking to prevent reading during concurrent writes.
+    惰性加载并缓存 caches/symbol_to_coin_map.json 到内存。
+    当磁盘文件变更（mtime 或 size）时重新加载。
+    使用共享锁防止并发写入时的读取问题。
     """
-    # Run stale lock cleanup on first access
+    # 首次访问时执行过期锁清理
     _cleanup_stale_symbol_map_locks()
 
     path = os.path.join("caches", "symbol_to_coin_map.json")
@@ -759,8 +755,8 @@ def _load_symbol_to_coin_map() -> dict:
 
 def _build_coin_symbol_maps(markets, quote):
     """
-    Build coin_to_symbol_map (as dict of lists) and symbol_to_coin_map from markets data.
-    This function is pure and performs no disk I/O.
+    从 markets 数据构建 coin_to_symbol_map（字典的列表形式）和 symbol_to_coin_map。
+    此函数是纯函数，不执行磁盘 I/O。
     """
 
     def _namespaced_aliases(base: str, market: dict) -> set[str]:
@@ -788,10 +784,10 @@ def _build_coin_symbol_maps(markets, quote):
     symbol_to_coin_map = {}
     for k, v in markets.items():
         try:
-            # Only include swap markets with the right quote.
+            # 仅包含具有正确报价的永续市场。
             if not v.get("swap"):
                 continue
-            # If "linear" is explicitly False, skip; otherwise treat missing as acceptable.
+            # 如果 "linear" 显式为 False，跳过；否则将缺失视为可接受。
             if v.get("linear") is False:
                 continue
             if not k.endswith(f":{quote}"):
@@ -818,10 +814,10 @@ def _build_coin_symbol_maps(markets, quote):
             if symbol_id := v.get("id"):
                 symbol_to_coin_map[symbol_id] = coin
         except Exception:
-            # Skip malformed market entries but continue processing others
+            # 跳过格式错误的市场条目，继续处理其他
             continue
 
-    # Convert sets to lists for JSON serialisation / on-disk storage
+    # 将集合转换为列表以支持 JSON 序列化/磁盘存储
     coin_to_symbol_map = {k: list(v) for k, v in coin_to_symbol_map.items()}
     return coin_to_symbol_map, symbol_to_coin_map
 
@@ -830,10 +826,10 @@ def _write_coin_symbol_maps(
     exchange: str, coin_to_symbol_map: dict, symbol_to_coin_map: dict, verbose=True
 ):
     """
-    Write coin/symbol maps to disk with file locking and atomic writes.
-    Uses portalocker to prevent race conditions when multiple bots start simultaneously.
+    使用文件锁和原子写入将 coin/symbol 映射写入磁盘。
+    使用 portalocker 防止多个机器人同时启动时的竞态条件。
     """
-    # Run stale lock cleanup on first access
+    # 首次访问时执行过期锁清理
     _cleanup_stale_symbol_map_locks()
 
     coin_to_symbol_map_path = make_get_filepath(
@@ -841,7 +837,7 @@ def _write_coin_symbol_maps(
     )
     symbol_to_coin_map_path = make_get_filepath(os.path.join("caches", "symbol_to_coin_map.json"))
 
-    # Write coin_to_symbol_map (per-exchange) with locking
+    # 写入 coin_to_symbol_map（每交易所），带锁
     c2s_lock_path = coin_to_symbol_map_path + ".lock"
     try:
         with portalocker.Lock(c2s_lock_path, timeout=_SYMBOL_MAP_LOCK_TIMEOUT):
@@ -851,7 +847,7 @@ def _write_coin_symbol_maps(
     except portalocker.LockException:
         logging.warning("Could not acquire lock for %s, skipping write", coin_to_symbol_map_path)
 
-    # Write symbol_to_coin_map (global) with locking
+    # 写入 symbol_to_coin_map（全局），带锁
     s2c_lock_path = symbol_to_coin_map_path + ".lock"
     try:
         with portalocker.Lock(s2c_lock_path, timeout=_SYMBOL_MAP_LOCK_TIMEOUT):
@@ -861,7 +857,7 @@ def _write_coin_symbol_maps(
     except portalocker.LockException:
         logging.warning("Could not acquire lock for %s, skipping write", symbol_to_coin_map_path)
 
-    # update in-memory caches to avoid stale reads
+    # 更新内存缓存以避免过期读取
     try:
         st = os.stat(coin_to_symbol_map_path)
         _COIN_TO_SYMBOL_CACHE[exchange] = {
@@ -883,18 +879,16 @@ def _write_coin_symbol_maps(
 
 def create_coin_symbol_map_cache(exchange: str, markets, quote=None, verbose=True):
     """
-    High-level function that coordinates loading any existing symbol_to_coin_map,
-    building fresh maps from markets, merging them (new data overrides), and
-    writing results to disk. IO is performed here; conversion logic lives in
-    _build_coin_symbol_maps().
+    高级函数，协调加载现有的 symbol_to_coin_map、从 markets 构建新映射、
+    合并（新数据覆盖旧数据）并将结果写入磁盘。I/O 在此处执行；
+    转换逻辑位于 _build_coin_symbol_maps() 中。
 
-    Uses file locking to make the read-modify-write cycle atomic, preventing
-    race conditions when multiple bots start simultaneously.
+    使用文件锁使读-修改-写循环原子化，防止多个机器人同时启动时的竞态条件。
 
-    Note: Uses the exchange name as-is (e.g., "binance" not "binanceusdm") for
-    consistency with other cache paths.
+    注意：使用交易所的原始名称（如 "binance" 而非 "binanceusdm"）以保持
+    与其他缓存路径的一致性。
     """
-    # Run stale lock cleanup on first access
+    # 首次访问时执行过期锁清理
     _cleanup_stale_symbol_map_locks()
 
     try:
@@ -904,10 +898,10 @@ def create_coin_symbol_map_cache(exchange: str, markets, quote=None, verbose=Tru
         symbol_to_coin_map_path = make_get_filepath(os.path.join("caches", "symbol_to_coin_map.json"))
         s2c_lock_path = symbol_to_coin_map_path + ".lock"
 
-        # Lock the symbol_to_coin_map for the entire read-modify-write cycle
+        # 在整个读-修改-写循环中锁定 symbol_to_coin_map
         try:
             with portalocker.Lock(s2c_lock_path, timeout=_SYMBOL_MAP_LOCK_TIMEOUT):
-                # Read existing symbol->coin mappings while holding lock
+                # 持锁期间读取现有的 symbol->coin 映射
                 symbol_to_coin_map = {}
                 try:
                     if os.path.exists(symbol_to_coin_map_path):
@@ -916,18 +910,18 @@ def create_coin_symbol_map_cache(exchange: str, markets, quote=None, verbose=Tru
                 except Exception as e:
                     logging.error("failed to load symbol_to_coin_map %s", e)
 
-                # Build fresh maps from provided markets (pure logic)
+                # 从提供的 markets 构建新映射（纯逻辑）
                 coin_to_symbol_map, new_symbol_to_coin_map = _build_coin_symbol_maps(markets, quote)
 
-                # Merge: prefer new discovered mappings while retaining others
+                # 合并：优先使用新发现的映射，同时保留其他
                 symbol_to_coin_map.update(new_symbol_to_coin_map)
 
-                # Write symbol_to_coin_map atomically while still holding lock
+                # 仍持锁期间原子写入 symbol_to_coin_map
                 if verbose:
                     logging.debug("dumping symbol_to_coin_map %s", symbol_to_coin_map_path)
                 _atomic_write_json(symbol_to_coin_map_path, symbol_to_coin_map)
 
-                # Update in-memory cache
+                # 更新内存缓存
                 try:
                     st2 = os.stat(symbol_to_coin_map_path)
                     _SYMBOL_TO_COIN_CACHE["map"] = symbol_to_coin_map
@@ -936,7 +930,7 @@ def create_coin_symbol_map_cache(exchange: str, markets, quote=None, verbose=Tru
                 except Exception:
                     pass
 
-            # Write coin_to_symbol_map separately (per-exchange, uses its own lock)
+            # 单独写入 coin_to_symbol_map（每交易所，使用自己的锁）
             coin_to_symbol_map_path = make_get_filepath(
                 os.path.join("caches", exchange, "coin_to_symbol_map.json")
             )
@@ -948,7 +942,7 @@ def create_coin_symbol_map_cache(exchange: str, markets, quote=None, verbose=Tru
                     _atomic_write_json(
                         coin_to_symbol_map_path, coin_to_symbol_map, indent=4, sort_keys=True
                     )
-                    # Update in-memory cache
+                    # 更新内存缓存
                     try:
                         st = os.stat(coin_to_symbol_map_path)
                         _COIN_TO_SYMBOL_CACHE[exchange] = {
@@ -974,10 +968,10 @@ def create_coin_symbol_map_cache(exchange: str, markets, quote=None, verbose=Tru
 
 
 def coin_to_symbol(coin, exchange, quote=None, verbose=True):
-    # caches coin_to_symbol_map in memory and reloads if file changes
+    # 将 coin_to_symbol_map 缓存到内存，文件变更时重新加载
     if coin == "":
         return ""
-    # Denormalize to use canonical form for cache paths (e.g., "binance" not "binanceusdm")
+    # 反规范化以使用规范形式作为缓存路径（如 "binance" 而非 "binanceusdm"）
     ex = to_standard_exchange_name(exchange or "")
     quote = get_quote(ex, quote)
     coin_sanitized = symbol_to_coin(coin, verbose=verbose)
@@ -997,7 +991,7 @@ def coin_to_symbol(coin, exchange, quote=None, verbose=True):
                 )
             return candidates[0]
         if loaded:
-            # map present but coin missing
+            # 映射存在但币种缺失
             warn_key = (ex, coin_sanitized)
             if warn_key not in _COIN_TO_SYMBOL_FALLBACKS:
                 if verbose:
@@ -1034,7 +1028,7 @@ def get_caller_name():
 
 
 def symbol_to_coin(symbol, verbose=True):
-    # caches symbol_to_coin_map in memory and reloads if file changes
+    # 将 symbol_to_coin_map 缓存到内存，文件变更时重新加载
     try:
         loaded = _load_symbol_to_coin_map()
         if symbol in loaded:
@@ -1062,7 +1056,7 @@ def symbol_to_coin(symbol, verbose=True):
             iend += 1
         coin = coin[:istart] + coin[iend:]
     if coin.startswith("k") and coin[1:].isupper():
-        # hyperliquid uses e.g. kSHIB instead of 1000SHIB
+        # hyperliquid 使用 kSHIB 代替 1000SHIB
         coin = coin[1:]
     if coin:
         msg += f". Using heuristics to guess coin: {coin}"
@@ -1075,7 +1069,7 @@ def symbol_to_coin(symbol, verbose=True):
 
 
 def coin_symbol_warning_counts() -> dict[str, int]:
-    """Return counts of fallback conversions for summary logging."""
+    """返回回退转换的计数，用于摘要日志。"""
     return {
         "coin_to_symbol_fallbacks": len(_COIN_TO_SYMBOL_FALLBACKS),
         "symbol_to_coin_fallbacks": len(_SYMBOL_TO_COIN_WARNINGS),
@@ -1209,24 +1203,24 @@ def _coins_source_side_is_all(value) -> bool:
 
 def normalize_coins_source(src, *, allow_all: bool = True):
     """
-    Always return: {'long': [symbols…], 'short': [symbols…]}
-    – Handles:
-        • direct coin lists or comma-separated strings
-        • lists/tuples containing paths or strings
-        • dicts with 'long' / 'short' keys whose values may themselves
-          be strings, lists, or paths to external lists
-        • explicit 'all' sentinel for approved coins
+    始终返回：{'long': [symbols…], 'short': [symbols…]}
+    - 处理：
+        • 直接的币种列表或逗号分隔的字符串
+        • 包含路径或字符串的列表/元组
+        • 带 'long' / 'short' 键的字典，其值本身可以是
+          字符串、列表或外部列表的路径
+        • 用于 approved_coins 的显式 'all' 哨兵值
     """
 
     # --------------------------------------------------------------------- #
-    #  Helpers                                                              #
+    #  辅助函数                                                              #
     # --------------------------------------------------------------------- #
     def _expand(seq):
-        """Flatten seq and split any comma-delimited strings it contains."""
+        """展平 seq 并分割其中包含的逗号分隔字符串。"""
         out = []
         for item in seq:
             if isinstance(item, (list, tuple, set)):
-                out.extend(_expand(item))  # recurse
+                out.extend(_expand(item))  # 递归
             elif isinstance(item, str):
                 out.extend(x.strip() for x in item.split(",") if x.strip())
             elif item is not None:
@@ -1267,9 +1261,8 @@ def normalize_coins_source(src, *, allow_all: bool = True):
 
     def _load_if_file(x):
         """
-        If *x* (or *x[0]* when x is a single-item list/tuple) is a
-        readable file path, load it with `read_external_coins_lists`.
-        Otherwise just return *x* unchanged.
+        如果 *x*（或当 x 是单元素列表/元组时 *x[0]*）是可读的文件路径，
+        则使用 `read_external_coins_lists` 加载它。否则原样返回 *x*。
         """
 
         def _maybe_read(path_candidate):
@@ -1290,10 +1283,10 @@ def normalize_coins_source(src, *, allow_all: bool = True):
 
     def _normalize_side(value, side):
         """
-        Resolve one *long*/*short* entry:
-        1. Load from file if necessary.
-        2. If the loader returned a dict, pluck the correct side.
-        3. Flatten & split with _expand so we end up with a clean list.
+        解析一个 *long*/*short* 条目：
+        1. 必要时从文件加载。
+        2. 如果加载器返回了字典，提取正确的方向。
+        3. 使用 _expand 展平并分割，得到干净的列表。
         """
         value = _load_if_file(value)
         value = _maybe_parse_jsonish(value)
@@ -1304,7 +1297,7 @@ def normalize_coins_source(src, *, allow_all: bool = True):
         if value in (None, "", [], (), {}, {"long": [], "short": []}):
             return []
 
-        # guarantee a sensible sequence for _expand
+        # 确保 _expand 有一个合理的序列
         if not isinstance(value, (list, tuple)):
             value = [value]
 
@@ -1316,12 +1309,12 @@ def normalize_coins_source(src, *, allow_all: bool = True):
         return expanded
 
     # --------------------------------------------------------------------- #
-    #  Main logic                                                           #
+    #  主逻辑                                                                #
     # --------------------------------------------------------------------- #
-    src = _load_if_file(src)  # try to load *src* itself
+    src = _load_if_file(src)  # 尝试加载 *src* 本身
     src = _maybe_parse_jsonish(src)
 
-    # Case 1 – already a dict with 'long' & 'short' keys
+    # 情况 1 – 已经是带 'long' 和 'short' 键的字典
     if isinstance(src, dict):
         if not src:
             return {"long": [], "short": []}
@@ -1339,14 +1332,14 @@ def normalize_coins_source(src, *, allow_all: bool = True):
         if _coins_source_side_is_all(global_tokens):
             return {"long": ["all"], "short": ["all"]}
 
-    # Case 1 – already a dict with 'long' / 'short' keys (including partial)
+    # 情况 1 – 已经是带 'long' / 'short' 键的字典（包括部分键）
     if isinstance(src, dict) and set(src).issubset({"long", "short"}):
         return {
             "long": _normalize_side(src.get("long", []), "long"),
             "short": _normalize_side(src.get("short", []), "short"),
         }
 
-    # Case 2 – anything else is treated the same for both sides
+    # 情况 2 – 其他情况对两个方向同等处理
     return {
         "long": global_tokens if allow_all else _normalize_side(src, "long"),
         "short": global_tokens if allow_all else _normalize_side(src, "short"),
@@ -1355,7 +1348,7 @@ def normalize_coins_source(src, *, allow_all: bool = True):
 
 def read_external_coins_lists(filepath) -> dict:
     """
-    reads filepath and returns dict {'long': [str], 'short': [str]}
+    读取文件路径并返回字典 {'long': [str], 'short': [str]}
     """
     try:
         with open(filepath, "r") as f:
@@ -1370,39 +1363,37 @@ def read_external_coins_lists(filepath) -> dict:
         ):
             return content
     except Exception:
-        # fallback to plain-text reading below
+        # 回退到下方的纯文本读取
         pass
     with open(filepath, "r") as file:
         content = file.read().strip()
-    # Check if the content is in list format
+    # 检查内容是否为列表格式
     if content.startswith("[") and content.endswith("]"):
-        # Remove brackets and split by comma
+        # 移除方括号并按逗号分割
         items = content[1:-1].split(",")
-        # Remove quotes and whitespace
+        # 移除引号和空白
         items = [item.strip().strip("\"'") for item in items if item.strip()]
     elif all(
         line.strip().startswith('"') and line.strip().endswith('"')
         for line in content.split("\n")
         if line.strip()
     ):
-        # Split by newline, remove quotes and whitespace
+        # 按换行分割，移除引号和空白
         items = [line.strip().strip("\"'") for line in content.split("\n") if line.strip()]
     else:
-        # Split by newline, comma, and/or space, and filter out empty strings
+        # 按换行、逗号和/或空格分割，过滤掉空字符串
         items = [item.strip() for item in content.replace(",", " ").split() if item.strip()]
     return {"long": items, "short": items}
 
 
 async def get_first_ohlcv_iteratively(cc, symbol):
-    """Return the earliest OHLCV candle for a Bitget market.
+    """返回 Bitget 市场最早的 OHLCV K 线。
 
-    Bitget does not accept a conventional ``since`` parameter for swap OHLCV
-    queries. Instead we page backwards using ``params={"until": ms}``, where an
-    empty response indicates that ``until`` predates the instrument listing.  We
-    leverage that behaviour to binary-search over monthly candles and then
-    refine the result with a daily fetch.  The returned value is the first full
-    candle ``[timestamp, open, high, low, close, volume]`` if available, else
-    ``None``."""
+    Bitget 不接受常规的 ``since`` 参数用于永续 OHLCV 查询。
+    改为使用 ``params={"until": ms}`` 向后分页，空响应表示 ``until`` 早于
+    该工具的上市时间。我们利用此行为对月线进行二分搜索，然后用日线获取
+    来细化结果。返回值是第一个完整的 K 线 ``[timestamp, open, high, low, close, volume]``
+    （如果可用），否则返回 ``None``。"""
 
     DAY_MS = 86_400_000
     MONTH_MS = 30 * DAY_MS
@@ -1425,7 +1416,7 @@ async def get_first_ohlcv_iteratively(cc, symbol):
     best_candle = month_chunk[0]
     first_month_ts = int(best_candle[0])
 
-    # Initial bounds for binary search: start near zero, clamp upper bound to now.
+    # 二分搜索的初始边界：从接近零开始，将上界限制为当前时间。
     now_ms = int(getattr(cc, "milliseconds")())
     lo = 0
     hi = max(now_ms, int(month_chunk[-1][0]) + MONTH_MS)
@@ -1443,7 +1434,7 @@ async def get_first_ohlcv_iteratively(cc, symbol):
         else:
             lo = mid
 
-    # Sequentially step back in case the monthly page was capped by the limit.
+    # 顺序回退，以防月线分页被限制截断。
     while True:
         prev_until = max(0, first_month_ts - 1)
         if prev_until <= 0:
@@ -1457,7 +1448,7 @@ async def get_first_ohlcv_iteratively(cc, symbol):
         first_month_ts = prev_first
         best_candle = prev_chunk[0]
 
-    # Refine with daily candles near the discovered month boundary.
+    # 在发现的月边界附近用日线细化。
     daily_chunk = await fetch_day(first_month_ts + 32 * DAY_MS)
     if daily_chunk:
         return daily_chunk[0]
@@ -1467,10 +1458,10 @@ async def get_first_ohlcv_iteratively(cc, symbol):
 
 def deep_get(d, key_path, *args):
     """
-    Retrieves a value from a nested dict using dot notation.
-    Handles keys that may contain dots via greedy matching.
+    使用点表示法从嵌套字典中检索值。
+    通过贪婪匹配处理可能包含点的键。
     """
-    # Check if a default was provided via *args
+    # 检查是否通过 *args 提供了默认值
     has_default = len(args) > 0
     default = args[0] if has_default else None
 
@@ -1481,13 +1472,13 @@ def deep_get(d, key_path, *args):
     while i < len(segments):
         found = False
 
-        # Greedy look-ahead: try to find the longest matching key
+        # 贪婪前瞻：尝试找到最长的匹配键
         for j in range(i + 1, len(segments) + 1):
             candidate_key = ".".join(segments[i:j])
 
             if isinstance(current, dict) and candidate_key in current:
                 current = current[candidate_key]
-                i = j  # Jump the pointer forward
+                i = j  # 将指针向前跳转
                 found = True
                 break
 

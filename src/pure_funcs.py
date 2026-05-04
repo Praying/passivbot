@@ -30,7 +30,7 @@ __all__ = [
 
 
 def safe_filename(symbol: str) -> str:
-    """Convert a symbol to a filesystem-safe string."""
+    """将交易对符号转换为文件系统安全的字符串。"""
     return re.sub(r'[<>:"/\|?*]', "_", symbol)
 
 
@@ -88,7 +88,7 @@ def filter_orders(
     ideal_orders,
     keys=("symbol", "side", "qty", "price"),
 ):
-    """Return orders to cancel and to create by comparing actual vs ideal."""
+    """通过比较实际订单与理想订单，返回需要取消和需要创建的订单。"""
 
     if not actual_orders:
         return [], ideal_orders
@@ -188,20 +188,20 @@ def calc_hash(data) -> str:
 
 
 def ensure_millis(timestamp):
-    """Normalize various timestamp formats to milliseconds."""
+    """将各种时间戳格式统一转换为毫秒。"""
     if not isinstance(timestamp, (int, float)):
         raise TypeError("Timestamp must be an int or float")
 
     ts = float(timestamp)
-    if ts > 1e16:  # nanoseconds
+    if ts > 1e16:  # 纳秒
         return ts / 1e6
-    if ts > 1e14:  # microseconds
+    if ts > 1e14:  # 微秒
         return ts / 1e3
-    if ts > 1e11:  # milliseconds
+    if ts > 1e11:  # 毫秒
         return ts
-    if ts > 1e9:  # seconds with decimals
+    if ts > 1e9:  # 带小数的秒
         return ts * 1e3
-    if ts > 1e6:  # seconds
+    if ts > 1e6:  # 秒
         return ts * 1e3
     raise ValueError("Timestamp value too small or unrecognized format")
 
@@ -253,7 +253,7 @@ def remove_OD(d):
 
 
 def log_dict_changes(d1, d2, parent_key=""):
-    """Return a summary of differences between two nested dictionaries."""
+    """返回两个嵌套字典之间的差异摘要。"""
 
     changes = {"added": [], "removed": [], "changed": []}
     if not d1:
