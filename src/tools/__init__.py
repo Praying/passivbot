@@ -1,1 +1,1 @@
-"""Passivbot auxiliary tools."""
+"""Passivbot 辅助工具。"""

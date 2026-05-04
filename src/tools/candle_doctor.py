@@ -1,20 +1,20 @@
 """
-Candlestick Doctor: audit and repair OHLCV shard caches.
+K 线医生：审计和修复 OHLCV 分片缓存。
 
-Scans ``caches/ohlcv/{exchange}/{timeframe}/{symbol}/`` directories for
-corrupted files, stale index entries, legacy formats, and data anomalies.
+扫描 ``caches/ohlcv/{exchange}/{timeframe}/{symbol}/`` 目录，
+查找损坏的文件、过期的索引条目、旧格式和数据异常。
 
-Examples
+示例
 --------
-Report-only scan of all caches::
+仅报告扫描所有缓存::
 
     python -m src.tools.candle_doctor --progress
 
-Filtered scan with JSON output::
+带 JSON 输出的过滤扫描::
 
     python -m src.tools.candle_doctor --exchange binance --json
 
-Apply automatic fixes::
+应用自动修复::
 
     python -m src.tools.candle_doctor --fix --progress
 """
@@ -34,7 +34,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-# Add src/ to path so we can import candlestick_manager
+# 将 src/ 添加到路径以便导入 candlestick_manager
 SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
@@ -42,7 +42,7 @@ if str(SRC_ROOT) not in sys.path:
 from candlestick_manager import CANDLE_DTYPE, ONE_MIN_MS  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Data structures
+# 数据结构
 # ---------------------------------------------------------------------------
 
 SHARD_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -73,7 +73,7 @@ class DoctorSummary:
 
 
 # ---------------------------------------------------------------------------
-# Atomic write helpers (mirrors candlestick_manager patterns)
+# 原子写入辅助函数（镜像 candlestick_manager 模式）
 # ---------------------------------------------------------------------------
 
 

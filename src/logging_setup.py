@@ -1,4 +1,4 @@
-"""Utilities for configuring consistent logging across Passivbot."""
+"""用于配置 Passivbot 统一日志的工具函数。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ DEFAULT_LOG_FILENAME_MAX_LEN = 100
 
 
 class PrefixFilter(logging.Filter):
-    """Filter that adds a log_prefix attribute to log records."""
+    """为日志记录添加 log_prefix 属性的过滤器。"""
 
     def __init__(self, prefix: str = ""):
         super().__init__()
@@ -34,7 +34,7 @@ class PrefixFilter(logging.Filter):
 
 
 class ActivityFilter(logging.Filter):
-    """Filter that tracks the most recent emitted log record."""
+    """追踪最近发出的日志记录的过滤器。"""
 
     def filter(self, record: logging.LogRecord) -> bool:
         mark_log_activity()
@@ -64,7 +64,7 @@ _LOG_LEVEL_ALIASES = {
 
 
 def normalize_log_level(value, default=None):
-    """Return normalized log level 0-3 or default when invalid/missing."""
+    """返回标准化的日志级别 0-3，无效或缺失时返回默认值。"""
     if value is None:
         return default
     if isinstance(value, str):
@@ -83,7 +83,7 @@ def normalize_log_level(value, default=None):
 
 
 def resolve_log_level(cli_value, config_value, fallback=1):
-    """Resolve final log level from CLI override and config value."""
+    """从 CLI 覆盖值和配置值解析最终日志级别。"""
     cli_level = normalize_log_level(cli_value, None)
     if cli_level is not None:
         return cli_level
@@ -94,7 +94,7 @@ def resolve_log_level(cli_value, config_value, fallback=1):
 
 
 def _ensure_trace_level() -> None:
-    """Register the TRACE log level on the logging module if missing."""
+    """如果缺少 TRACE 日志级别，则在 logging 模块上注册它。"""
     if logging.getLevelName(TRACE_LEVEL) != TRACE_LEVEL_NAME:
         logging.addLevelName(TRACE_LEVEL, TRACE_LEVEL_NAME)
     if getattr(logging, TRACE_LEVEL_NAME, None) != TRACE_LEVEL:
@@ -127,7 +127,7 @@ def _debug_to_level(debug: int) -> int:
 
 
 def sanitize_log_filename(text: str, *, max_len: int = DEFAULT_LOG_FILENAME_MAX_LEN) -> str:
-    """Return a filesystem-safe filename fragment."""
+    """返回文件系统安全的文件名片段。"""
     sanitized = re.sub(r"[\s/\\]", "_", text)
     sanitized = re.sub(r'[<>:"|?*]', "", sanitized)
     sanitized = sanitized.strip(". ")
@@ -139,7 +139,7 @@ def sanitize_log_filename(text: str, *, max_len: int = DEFAULT_LOG_FILENAME_MAX_
 def create_command_log_filename(
     command_args: Sequence[object], *, timestamp: Optional[datetime] = None
 ) -> str:
-    """Return a timestamped log filename for a command invocation."""
+    """返回命令调用的带时间戳日志文件名。"""
     if timestamp is None:
         timestamp = datetime.now(timezone.utc)
     elif timestamp.tzinfo is None:
@@ -153,12 +153,12 @@ def create_command_log_filename(
 def build_command_log_path(
     command_args: Sequence[object], log_dir: str | Path, *, timestamp: Optional[datetime] = None
 ) -> Path:
-    """Return the log file path for a command invocation under the given directory."""
+    """返回给定目录下命令调用的日志文件路径。"""
     return Path(log_dir).expanduser() / create_command_log_filename(command_args, timestamp=timestamp)
 
 
 def update_stable_log_alias(alias_path: str | Path, target_path: str | Path) -> None:
-    """Point a stable log alias at the current run's timestamped logfile."""
+    """将稳定的日志别名指向当前运行的带时间戳日志文件。"""
     alias = Path(alias_path).expanduser()
     target = Path(target_path).expanduser()
     alias.parent.mkdir(parents=True, exist_ok=True)
@@ -189,25 +189,25 @@ def configure_logging(
     datefmt: str = DEFAULT_DATEFMT,
     prefix: Optional[str] = None,
 ) -> None:
-    """Initialise the root logger based on Passivbot's debug settings.
+    """根据 Passivbot 的调试设置初始化根日志记录器。
 
     Args:
-        debug: Logging level (0=warning, 1=info, 2=debug, 3=trace)
-        log_file: Optional path to canonical log file
-        current_log_file: Optional stable alias path pointing at the current log file
-        rotation: Enable log rotation
-        max_bytes: Max bytes per log file before rotation
-        backup_count: Number of backup files to keep
-        stream: Enable console output
-        fmt: Custom log format (defaults based on prefix)
-        datefmt: Date format string
-        prefix: Optional prefix to add to all log messages (e.g., exchange name)
+        debug: 日志级别 (0=warning, 1=info, 2=debug, 3=trace)
+        log_file: 可选的标准日志文件路径
+        current_log_file: 可选的稳定别名路径，指向当前日志文件
+        rotation: 启用日志轮转
+        max_bytes: 轮转前每个日志文件的最大字节数
+        backup_count: 保留的备份数量
+        stream: 启用控制台输出
+        fmt: 自定义日志格式（默认基于前缀）
+        datefmt: 日期格式字符串
+        prefix: 可选的前缀，添加到所有日志消息中（如交易所名称）
     """
     _ensure_trace_level()
     debug_level = _normalize_debug(debug)
     numeric_level = _debug_to_level(debug_level)
 
-    # Choose format based on prefix
+    # 根据前缀选择格式
     if fmt is None:
         fmt = DEFAULT_FORMAT_WITH_PREFIX if prefix else DEFAULT_FORMAT
 
@@ -215,7 +215,7 @@ def configure_logging(
     formatter.converter = time.gmtime
     handlers: list[logging.Handler] = []
 
-    # Create prefix filter if needed
+    # 如果需要则创建前缀过滤器
     prefix_filter = PrefixFilter(prefix or "") if prefix else None
     activity_filter = ActivityFilter()
 
@@ -254,23 +254,23 @@ def configure_logging(
     for handler in handlers:
         root.addHandler(handler)
 
-    # Configure CCXT logger to only log at TRACE level.
-    # CCXT logs full API request/response payloads at DEBUG, which is too noisy.
-    # These payloads belong at TRACE (level 3) per log_analysis_prompt.md guidelines.
+    # 配置 CCXT 日志记录器仅在 TRACE 级别记录。
+    # CCXT 在 DEBUG 级别记录完整的 API 请求/响应负载，过于嘈杂。
+    # 根据 log_analysis_prompt.md 指南，这些负载应属于 TRACE（级别 3）。
     ccxt_logger = logging.getLogger("ccxt")
     if debug_level >= 3:
-        # TRACE mode: allow CCXT logs through
+        # TRACE 模式：允许 CCXT 日志通过
         ccxt_logger.setLevel(TRACE_LEVEL)
     else:
-        # DEBUG and below: suppress CCXT's noisy API payloads
-        # Set to WARNING so only actual warnings/errors from CCXT are shown
+        # DEBUG 及以下：抑制 CCXT 嘈杂的 API 负载
+        # 设置为 WARNING，仅显示 CCXT 的实际警告/错误
         ccxt_logger.setLevel(logging.WARNING)
 
 
 def resolve_live_log_file_settings(
     config: dict[str, Any], *, user: str, command_args: Optional[Sequence[object]] = None
 ) -> dict[str, Any]:
-    """Return configure_logging kwargs for canonical live file logging."""
+    """返回用于标准实盘文件日志的 configure_logging 关键字参数。"""
     logging_cfg = config.get("logging", {}) if isinstance(config, dict) else {}
     if not isinstance(logging_cfg, dict):
         logging_cfg = {}

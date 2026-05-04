@@ -16,15 +16,15 @@ from tools.hyperliquid_probe_common import (
 async def _main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Read-only Hyperliquid balance smoke test. "
-            "Fetches one wallet balance and prints a normalized summary."
+            "只读 Hyperliquid 余额冒烟测试。"
+            "获取一个钱包余额并打印标准化摘要。"
         )
     )
     add_probe_identity_args(parser)
     parser.add_argument(
         "--dump-raw",
         action="store_true",
-        help="print the full raw fetch_balance payload after the summary",
+        help="在摘要后打印完整的原始 fetch_balance 负载",
     )
     args = parser.parse_args()
 

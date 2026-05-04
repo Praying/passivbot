@@ -178,9 +178,9 @@ def load_backtest_artifact(artifact_dir: str | Path) -> BacktestArtifact:
 
 def load_backtest_artifact_workspace(artifact_dir: str | Path) -> dict[str, Any]:
     """
-    Return a Jupyter-friendly dict for `globals().update(...)`.
+    返回适用于 `globals().update(...)` 的 Jupyter 友好字典。
 
-    Example:
+    示例：
         workspace = load_backtest_artifact_workspace("backtests/combined/latest_run")
         globals().update(workspace)
         candles = candles_for_coin("BTC")
@@ -345,11 +345,10 @@ def plot_fills_for_coin(
     include_high_low: bool = True,
 ):
     """
-    Plot cached candles and fill markers for one coin from a loaded backtest artifact.
+    从已加载的回测产物中绘制单个币种的缓存 K 线和成交标记。
 
-    `artifact` should be a `BacktestArtifact` or workspace dict returned by
-    `load_backtest_artifact_workspace()`. This avoids reloading large HLCV arrays for repeated
-    notebook plots.
+    `artifact` 应为 `BacktestArtifact` 或 `load_backtest_artifact_workspace()` 返回的工作区字典。
+    这避免了为重复的 notebook 绘图重新加载大型 HLCV 数组。
     """
     try:
         from plotting import plt

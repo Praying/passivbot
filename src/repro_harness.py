@@ -17,7 +17,7 @@ from utils import format_approved_ignored_coins
 
 
 class HarnessIndividual(list):
-    """List subclass so optimizer evaluators can attach metadata to it."""
+    """列表子类，使优化器评估器可以附加元数据。"""
 
 
 def collect_rust_binary_provenance() -> Dict[str, Any]:
@@ -364,24 +364,24 @@ async def async_main(args: argparse.Namespace) -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Replay a config through the optimizer evaluation path and the backtest path in the "
-            "same process, then compare metrics and Rust binary provenance."
+            "在同一进程中通过优化器评估路径和回测路径重放配置，"
+            "然后比较指标和 Rust 二进制文件来源。"
         )
     )
-    parser.add_argument("config_path", help="Config or Pareto JSON to replay.")
+    parser.add_argument("config_path", help="要重放的配置或 Pareto JSON。")
     parser.add_argument(
         "--metrics",
         default="",
         help=(
-            "Comma-separated metrics to compare. Defaults to adg_pnl, adg_pnl_w, mdg_pnl_w, "
-            "peak_recovery_hours_pnl, position_held_hours_max, backtest_completion_ratio."
+            "要比较的逗号分隔指标。默认为 adg_pnl, adg_pnl_w, mdg_pnl_w, "
+            "peak_recovery_hours_pnl, position_held_hours_max, backtest_completion_ratio。"
         ),
     )
-    parser.add_argument("--json", action="store_true", help="Emit the report as JSON.")
+    parser.add_argument("--json", action="store_true", help="以 JSON 格式输出报告。")
     parser.add_argument(
         "--log-level",
         default="INFO",
-        help="Logging level for the harness runtime.",
+        help="测试框架运行时的日志级别。",
     )
     return parser.parse_args()
 

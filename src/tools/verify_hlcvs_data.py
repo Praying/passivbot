@@ -1,17 +1,17 @@
 """
-Utility for inspecting and validating cached HLCVs datasets.
+用于检查和验证缓存的 HLCVs 数据集的工具。
 
-Examples
+示例
 --------
-Summarise every dataset located under the default cache directory::
+汇总默认缓存目录下的每个数据集::
 
     python -m src.tools.verify_hlcvs_data summarize
 
-Summarise a specific dataset and return the output in JSON format::
+汇总特定数据集并以 JSON 格式返回输出::
 
     python -m src.tools.verify_hlcvs_data summarize caches/hlcvs_data/binance__BTC_ETH__2024-01-01_to_2025-01-01__68153d270ccd83d4 --json
 
-Compare two datasets and list each metric that differs::
+比较两个数据集并列出每个不同的指标::
 
     python -m src.tools.verify_hlcvs_data compare path/to/datasetA path/to/datasetB
 """

@@ -11,39 +11,39 @@ from ccxt_contracts import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Capture live CCXT contract snapshots for Passivbot upgrade checks."
+        description="捕获实时 CCXT 合约快照，用于 Passivbot 升级检查。"
     )
-    parser.add_argument("--user", required=True, help="api-keys.json user to capture with")
+    parser.add_argument("--user", required=True, help="用于捕获的 api-keys.json 用户名")
     parser.add_argument(
         "--label",
         default=None,
-        help="Friendly label used in metadata and default output filename (default: user)",
+        help="用于元数据和默认输出文件名的友好标签（默认：user）",
     )
     parser.add_argument(
         "--output",
         default=None,
-        help="Output file path. Defaults to artifacts/ccxt_contracts/{exchange}/{label}.json",
+        help="输出文件路径。默认为 artifacts/ccxt_contracts/{exchange}/{label}.json",
     )
     parser.add_argument(
         "--output-dir",
         default="artifacts/ccxt_contracts",
-        help="Base directory for default output paths",
+        help="默认输出路径的基础目录",
     )
     parser.add_argument(
         "--sections",
         default=",".join(DEFAULT_CAPTURE_SECTIONS),
-        help=f"Comma-separated sections to capture (default: {','.join(DEFAULT_CAPTURE_SECTIONS)})",
+        help=f"要捕获的逗号分隔部分（默认：{','.join(DEFAULT_CAPTURE_SECTIONS)}）",
     )
     parser.add_argument(
         "--symbols",
         default="",
-        help="Optional comma-separated symbols for symbol-scoped order/trade capture",
+        help="可选的逗号分隔交易对，用于限定订单/成交捕获范围",
     )
     parser.add_argument(
         "--trades-limit",
         type=int,
         default=25,
-        help="Limit for raw trade capture when trades section is enabled",
+        help="启用成交部分时的原始成交捕获限制",
     )
     return parser.parse_args()
 

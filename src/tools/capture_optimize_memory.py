@@ -1,13 +1,13 @@
 """
-Capture memory diagnostics for optimizer runs into a single JSON file.
+将优化器运行的内存诊断捕获到单个 JSON 文件中。
 
-Examples
+示例
 --------
-Watch the newest running optimizer process whose command line contains ``src/optimize.py``::
+监视命令行包含 ``src/optimize.py`` 的最新运行中的优化器进程::
 
     python3 src/tools/capture_optimize_memory.py --wait --output /tmp/opt_mem.json
 
-Watch a specific optimizer process by PID::
+按 PID 监视特定优化器进程::
 
     python3 src/tools/capture_optimize_memory.py --pid 12345 --output /tmp/opt_mem.json
 """
@@ -225,42 +225,42 @@ def make_sample(rows: list[ProcessInfo], root_pid: int, top_n_global: int) -> di
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Capture optimizer memory diagnostics to JSON.")
-    parser.add_argument("--pid", type=int, default=None, help="PID of the running optimize process.")
+    parser = argparse.ArgumentParser(description="将优化器内存诊断捕获为 JSON。")
+    parser.add_argument("--pid", type=int, default=None, help="正在运行的优化进程的 PID。")
     parser.add_argument(
         "--match",
         type=str,
         default="src/optimize.py",
-        help="Substring used to locate the optimize process when --pid is omitted.",
+        help="省略 --pid 时用于定位优化进程的子字符串。",
     )
     parser.add_argument(
         "--wait",
         action="store_true",
-        help="Wait for a matching optimize process to appear instead of failing immediately.",
+        help="等待匹配的优化进程出现，而不是立即失败。",
     )
     parser.add_argument(
         "--interval",
         type=float,
         default=2.0,
-        help="Seconds between samples.",
+        help="采样间隔秒数。",
     )
     parser.add_argument(
         "--duration",
         type=float,
         default=0.0,
-        help="Optional max duration in seconds. 0 means until the target exits.",
+        help="可选的最大持续时间（秒）。0 表示直到目标退出。",
     )
     parser.add_argument(
         "--top-global",
         type=int,
         default=20,
-        help="How many top-RSS global processes to include per sample.",
+        help="每个采样中包含的全局 RSS 最高的进程数量。",
     )
     parser.add_argument(
         "--output",
         type=str,
         default="optimize_memory_capture.json",
-        help="Output JSON filepath.",
+        help="输出 JSON 文件路径。",
     )
     return parser.parse_args()
 

@@ -1,13 +1,13 @@
 """
-Utilities for mutating Pareto front artifacts (conversion, pruning, etc.).
+用于修改 Pareto 前沿产物的工具函数（转换、修剪等）。
 
-Examples
+示例
 --------
-Convert legacy Pareto entries in-place (dry-run by default)::
+原地转换旧版 Pareto 条目（默认为 dry-run）::
 
     python -m src.tools.pareto_transform pareto/ --convert-metrics
 
-Prune a large Pareto directory down to 500 diverse members (writing changes)::
+将大型 Pareto 目录修剪为 500 个多样化成员（写入更改）::
 
     python -m src.tools.pareto_transform pareto/ --prune 500 --apply
 """

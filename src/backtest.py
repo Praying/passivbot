@@ -4,16 +4,16 @@ import argparse
 from cli_utils import help_requested
 from rust_utils import check_and_maybe_compile, verify_loaded_runtime_extension
 
-# Perform Rust compilation check before importing any modules that may load the extension
+# 在导入任何可能加载扩展的模块之前执行 Rust 编译检查
 _rust_parser = argparse.ArgumentParser(add_help=False)
-_rust_parser.add_argument("--skip-rust-compile", action="store_true", help="Skip Rust build check.")
+_rust_parser.add_argument("--skip-rust-compile", action="store_true", help="跳过 Rust 构建检查。")
 _rust_parser.add_argument(
-    "--force-rust-compile", action="store_true", help="Force rebuild of Rust extension."
+    "--force-rust-compile", action="store_true", help="强制重建 Rust 扩展。"
 )
 _rust_parser.add_argument(
     "--fail-on-stale-rust",
     action="store_true",
-    help="Abort if Rust extension appears stale instead of attempting rebuild.",
+    help="如果 Rust 扩展过期则中止，而不是尝试重建。",
 )
 _rust_known, _rust_remaining = _rust_parser.parse_known_args()
 _help_only = help_requested(_rust_remaining)
@@ -26,9 +26,9 @@ try:
         fail_on_stale=_rust_known.fail_on_stale_rust,
     )
 except Exception as exc:
-    print(f"Rust extension check failed: {exc}")
+    print(f"Rust 扩展检查失败: {exc}")
     sys.exit(1)
-# rebuild argv for the real parser without rust flags
+# 为真正的解析器重建 argv，去掉 rust 标志
 sys.argv = [sys.argv[0]] + _rust_remaining
 
 import numpy as np

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Migrate historical_data/ to caches/ohlcv/ structure.
+将 historical_data/ 迁移到 caches/ohlcv/ 结构。
 
-This optional utility converts legacy downloader data to the CandlestickManager format.
+此可选工具将旧版下载器数据转换为 CandlestickManager 格式。
 
-Usage:
+用法：
     python src/tools/migrate_historical_data.py --exchange binanceusdm --dry-run
     python src/tools/migrate_historical_data.py --exchange binanceusdm --execute
     python src/tools/migrate_historical_data.py --exchange binanceusdm --execute --delete-legacy
@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-# Add src to path for imports
+# 将 src 添加到路径以导入
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from candlestick_manager import CANDLE_DTYPE, ONE_MIN_MS
@@ -38,13 +38,13 @@ logging.basicConfig(
 
 
 def coin_to_symbol(coin: str, exchange: str) -> str:
-    """Convert legacy coin name to full symbol format."""
+    """将旧版币种名称转换为完整的交易对格式。"""
     quote = get_quote(exchange)
     return f"{coin}/{quote}:{quote}"
 
 
 def symbol_to_safe_path(symbol: str) -> str:
-    """Convert symbol to safe filesystem path component."""
+    """将交易对转换为安全的文件系统路径组件。"""
     return symbol.replace("/", "_").replace(":", "_")
 
 

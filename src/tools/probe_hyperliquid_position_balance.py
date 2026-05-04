@@ -22,32 +22,32 @@ from tools.hyperliquid_probe_common import (
 async def _main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Mutating Hyperliquid diagnostic. Opens a tiny position, optionally adds resting "
-            "entry/close orders, snapshots balance/positions, and can flatten before exit."
+            "修改性 Hyperliquid 诊断。开一个微小仓位，可选地添加挂单的"
+            "开仓/平仓订单，快照余额/仓位，并可在退出前平仓。"
         )
     )
     add_probe_identity_args(parser)
     add_live_mutation_confirmation_arg(parser)
-    parser.add_argument("--symbol", default="XYZ-SP500/USDC:USDC", help="symbol to probe")
-    parser.add_argument("--side", default="buy", choices=("buy", "sell"), help="entry side")
+    parser.add_argument("--symbol", default="XYZ-SP500/USDC:USDC", help="要探测的交易对")
+    parser.add_argument("--side", default="buy", choices=("buy", "sell"), help="开仓方向")
     parser.add_argument(
         "--set-margin-mode",
         choices=("cross", "isolated"),
         default="cross",
-        help="margin mode to set before the probe",
+        help="探测前设置的保证金模式",
     )
-    parser.add_argument("--leverage", type=int, default=5, help="leverage to request")
+    parser.add_argument("--leverage", type=int, default=5, help="请求的杠杆倍数")
     parser.add_argument(
         "--notional-usdc",
         type=float,
         default=11.5,
-        help="target entry notional in USDC",
+        help="以 USDC 计的目标开仓名义价值",
     )
     parser.add_argument(
         "--settle-seconds",
         type=float,
         default=2.0,
-        help="sleep after create/close before refetching state",
+        help="创建/平仓后重新获取状态前的等待时间",
     )
     parser.add_argument(
         "--place-reduce-only-close-order",

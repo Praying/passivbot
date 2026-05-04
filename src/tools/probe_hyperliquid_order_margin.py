@@ -22,30 +22,30 @@ from tools.hyperliquid_probe_common import (
 async def _main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Mutating Hyperliquid diagnostic. Places one tiny post-only order, waits for balance "
-            "state to settle, then cancels it and reports before/create/cancel snapshots."
+            "修改性 Hyperliquid 诊断。下一个微小的 post-only 订单，等待余额状态稳定，"
+            "然后取消它并报告之前/创建/取消的快照。"
         )
     )
     add_probe_identity_args(parser)
     add_live_mutation_confirmation_arg(parser)
-    parser.add_argument("--symbol", default="BTC/USDC:USDC", help="swap symbol to probe")
+    parser.add_argument("--symbol", default="BTC/USDC:USDC", help="要探测的永续合约交易对")
     parser.add_argument(
         "--side",
         default="buy",
         choices=("buy", "sell"),
-        help="resting side; buy posts below market, sell posts above market",
+        help="挂单方向；buy 挂在市场价下方，sell 挂在市场价上方",
     )
     parser.add_argument(
         "--distance-pct",
         type=float,
         default=0.25,
-        help="fractional price distance from mid so order stays resting (default 0.25 = 25%%)",
+        help="与中间价的分数距离，使订单保持挂单状态（默认 0.25 = 25%%）",
     )
     parser.add_argument(
         "--notional-usdc",
         type=float,
         default=11.5,
-        help="target notional in USDC (kept just above Hyperliquid minimum by default)",
+        help="以 USDC 计的目标名义价值（默认保持在 Hyperliquid 最低要求之上）",
     )
     parser.add_argument(
         "--settle-seconds",

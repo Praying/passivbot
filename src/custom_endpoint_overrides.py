@@ -1,11 +1,11 @@
 """
-Utility helpers for loading and applying custom REST endpoint overrides.
+加载和应用自定义 REST 端点覆盖的工具函数。
 
-These helpers are intentionally isolated from the rest of the codebase for now.
-Subsequent integration steps can import this module to mutate ccxt exchange
-instances or other HTTP clients before any network calls are made.
+这些辅助函数目前有意与代码库的其余部分隔离。
+后续集成步骤可以导入此模块，在任何网络调用之前修改 ccxt 交易所
+实例或其他 HTTP 客户端。
 
-Configuration overview (formalized in ``custom_endpoints.json.example``):
+配置概述（在 ``custom_endpoints.json.example`` 中正式定义）：
 
 {
     "defaults": {
@@ -39,8 +39,8 @@ Configuration overview (formalized in ``custom_endpoints.json.example``):
     }
 }
 
-Only REST overrides are handled at this stage. If ``disable_ws`` is ``True``
-websocket helpers should decide whether to skip initialisation entirely.
+此阶段仅处理 REST 覆盖。如果 ``disable_ws`` 为 ``True``，
+websocket 辅助函数应决定是否完全跳过初始化。
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ from typing import Dict, Iterable, Mapping, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-# Canonical fallback values for optional sections
+# 可选部分的标准后备值
 _BASE_EXCHANGE_TEMPLATE = {
     "disable_ws": False,
     "rest": {
@@ -69,19 +69,18 @@ DEFAULT_CONFIG_SEARCH_PATHS: Tuple[str, ...] = (os.path.join("configs", "custom_
 
 
 class CustomEndpointConfigError(RuntimeError):
-    """Raised when the custom endpoint configuration cannot be parsed."""
+    """当自定义端点配置无法解析时抛出。"""
 
 
 @dataclass(frozen=True)
 class ResolvedEndpointOverride:
     """
-    Represents the fully merged override for a single exchange.
+    表示单个交易所的完全合并覆盖。
 
-    ``rest_domain_rewrites`` maps hostname (or full base URLs) to replacement
-    hostnames. ``rest_url_overrides`` replaces concrete ccxt URL keys (e.g.
-    ``fapiPrivate``) with explicit URLs. ``rest_extra_headers`` lists headers
-    that downstream HTTP clients should send alongside all REST requests routed
-    through the override.
+    ``rest_domain_rewrites`` 将主机名（或完整基础 URL）映射到替换主机名。
+    ``rest_url_overrides`` 将具体的 ccxt URL 键（如 ``fapiPrivate``）
+    替换为显式 URL。``rest_extra_headers`` 列出下游 HTTP 客户端
+    在通过覆盖路由的所有 REST 请求中应发送的头部。
     """
 
     exchange_id: str
@@ -100,11 +99,11 @@ class ResolvedEndpointOverride:
 
     def rewrite_url(self, url: str, *, hostname: Optional[str] = None) -> str:
         """
-        Return ``url`` with domain-level rewrites applied.
+        返回应用了域名级重写的 ``url``。
 
-        Any configured replacement that matches the start of ``url`` is applied.
-        Matches can be either bare hostnames (``fapi.binance.com``) or full base
-        URLs (``https://fapi.binance.com``).
+        任何匹配 ``url`` 开头的已配置替换都会被应用。
+        匹配可以是裸主机名（``fapi.binance.com``）或完整基础
+        URL（``https://fapi.binance.com``）。
         """
         if not url:
             return url
@@ -139,8 +138,8 @@ class ResolvedEndpointOverride:
         self, urls: Mapping[str, str], *, hostname: Optional[str] = None
     ) -> Dict[str, str]:
         """
-        Return a new ``dict`` with REST URL overrides applied to the provided
-        ccxt ``urls['api']`` mapping.
+        返回一个新的 ``dict``，其中 REST URL 覆盖已应用到提供的
+        ccxt ``urls['api']`` 映射上。
         """
         updated = dict(urls)
         for key, value in self.rest_url_overrides.items():
@@ -152,10 +151,10 @@ class ResolvedEndpointOverride:
 
 class CustomEndpointConfig:
     """
-    High-level helper for custom endpoint configuration.
+    自定义端点配置的高级辅助类。
 
-    This class loads raw JSON structures and exposes a mergeable API so that
-    future integration steps can resolve overrides per exchange.
+    此类加载原始 JSON 结构并提供可合并的 API，
+    以便后续集成步骤可以按交易所解析覆盖。
     """
 
     def __init__(
@@ -180,8 +179,7 @@ class CustomEndpointConfig:
 
     def get_override(self, exchange_id: str) -> Optional[ResolvedEndpointOverride]:
         """
-        Resolve the override for ``exchange_id`` (case insensitive). Returns
-        ``None`` if no customisation exists.
+        解析 ``exchange_id`` 的覆盖（不区分大小写）。如果不存在自定义则返回 ``None``。
         """
         if not exchange_id:
             return None
@@ -203,11 +201,11 @@ def load_custom_endpoint_config(
     search_paths: Iterable[str] = DEFAULT_CONFIG_SEARCH_PATHS,
 ) -> CustomEndpointConfig:
     """
-    Load custom endpoint configuration from JSON.
+    从 JSON 加载自定义端点配置。
 
-    If ``path`` is provided it takes precedence. Otherwise the loader searches
-    ``search_paths`` in order and returns the first file found. Missing files
-    result in an empty configuration rather than an error.
+    如果提供了 ``path``，则优先使用。否则加载器按顺序搜索
+    ``search_paths`` 并返回找到的第一个文件。缺失的文件
+    会导致空配置而非错误。
     """
     candidate_path: Optional[Path] = None
     if path:
@@ -256,7 +254,7 @@ def load_custom_endpoint_config(
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# 内部辅助函数
 # ---------------------------------------------------------------------------
 
 
@@ -319,15 +317,13 @@ def configure_custom_endpoint_loader(
     preloaded: Optional[CustomEndpointConfig] = None,
 ) -> None:
     """
-    Configure the loader to use a specific path or disable auto-discovery.
+    配置加载器使用特定路径或禁用自动发现。
 
     Args:
-        path: Explicit JSON filepath to load; when provided the loader ignores
-              auto-discovery. Use ``None`` together with ``autodiscover=False``
-              to disable custom endpoints entirely.
-        autodiscover: Whether to search default locations when ``path`` is None.
-        preloaded: Optional already-parsed configuration to reuse, avoiding
-              an additional file read on next access.
+        path: 要加载的显式 JSON 文件路径；提供时加载器忽略自动发现。
+              将 ``None`` 与 ``autodiscover=False`` 一起使用可完全禁用自定义端点。
+        autodiscover: 当 ``path`` 为 None 时是否搜索默认位置。
+        preloaded: 可选的已解析配置，用于重用以避免下次访问时额外的文件读取。
     """
     global _CONFIG_CACHE, _CONFIG_LOAD_PARAMS, _CONFIG_SOURCE_PATH
     _CONFIG_LOAD_PARAMS = (path, bool(autodiscover))
@@ -340,10 +336,9 @@ def configure_custom_endpoint_loader(
 
 def get_cached_custom_endpoint_config() -> CustomEndpointConfig:
     """
-    Return the cached custom endpoint configuration, loading it on first use.
+    返回缓存的自定义端点配置，首次使用时加载。
 
-    If loading fails due to parsing errors the function logs the issue and
-    returns an empty configuration to keep the application running.
+    如果加载因解析错误而失败，函数会记录问题并返回空配置以保持应用程序运行。
     """
     global _CONFIG_CACHE
     if _CONFIG_CACHE is None:
@@ -374,17 +369,17 @@ def get_cached_custom_endpoint_config() -> CustomEndpointConfig:
 
 def resolve_custom_endpoint_override(exchange_id: str) -> Optional[ResolvedEndpointOverride]:
     """
-    Return the resolved override for ``exchange_id`` or ``None`` when not found.
+    返回 ``exchange_id`` 的已解析覆盖，未找到时返回 ``None``。
 
-    ``exchange_id`` should be the normalized ccxt exchange identifier
-    (e.g. ``binanceusdm``).
+    ``exchange_id`` 应为标准化的 ccxt 交易所标识符
+    （如 ``binanceusdm``）。
     """
     config = get_cached_custom_endpoint_config()
     return config.get_override(exchange_id) if config else None
 
 
 def get_custom_endpoint_source() -> Optional[Path]:
-    """Return the filesystem path the current overrides were loaded from."""
+    """返回当前覆盖加载自的文件系统路径。"""
     return _CONFIG_SOURCE_PATH
 
 
@@ -393,10 +388,10 @@ def apply_rest_overrides_to_ccxt(
     override: Optional[ResolvedEndpointOverride],
 ) -> None:
     """
-    Mutate a ccxt exchange instance so that REST requests honour ``override``.
+    修改 ccxt 交易所实例，使 REST 请求遵循 ``override``。
 
-    The helper updates ``exchange.urls['api']`` and merges any ``extra_headers``.
-    The exchange instance is modified in-place.
+    辅助函数更新 ``exchange.urls['api']`` 并合并任何 ``extra_headers``。
+    交易所实例被原地修改。
     """
     if not override:
         return

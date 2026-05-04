@@ -18,7 +18,7 @@ def expand_limit_checks(
     aggregate_cfg: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Transform normalized limit entries into executable checks.
+    将标准化的限制条目转换为可执行的检查。
     """
     if not limits:
         return []

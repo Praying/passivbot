@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Rewrites JSON files using utils.dump_json_streamlined for more compact formatting.
+使用 utils.dump_json_streamlined 重写 JSON 文件以获得更紧凑的格式。
 
-Usage
+用法
 -----
     python -m src.tools.streamline_json path/to/file_or_directory [options]
 
-Options
+选项
 -------
-    --indent INT            Base indentation level (default: 4)
-    --max-inline INT        Maximum inline container length (default: 72)
-    --separators ", :"      Comma/colon separators passed to json dumps (default: ", :")
-    --sort-keys             Sort dictionary keys before writing
+    --indent INT            基础缩进级别（默认：4）
+    --max-inline INT        最大内联容器长度（默认：72）
+    --separators ", :"      传递给 json dumps 的逗号/冒号分隔符（默认：", :"）
+    --sort-keys             写入前排序字典键
 """
 
 from __future__ import annotations

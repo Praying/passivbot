@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Quick-and-dirty visualizer for iterative backtester history logs.
+迭代回测器历史日志的快速可视化工具。
 
-Example:
+示例：
     python src/tools/iterative_history_plot.py backtests/iterative/iterative_20251025_113401 \
         --output tmp/flat_vs_adg.png
 """

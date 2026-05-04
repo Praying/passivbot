@@ -1,7 +1,7 @@
 """
-Utility to canonicalize daily OHLCV `.npy` files by padding missing minutes.
+通过填充缺失分钟来规范化每日 OHLCV `.npy` 文件的工具。
 
-Usage
+用法
 -----
     python -m src.tools.pad_historical_daily
     python -m src.tools.pad_historical_daily historical_data/ohlcvs_binanceusdm --dry-run

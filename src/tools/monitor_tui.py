@@ -19,31 +19,31 @@ from monitor_tui import MonitorTuiClient
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Minimal terminal dashboard for the Passivbot monitor relay."
+        description="Passivbot 监控中继的最小终端仪表板。"
     )
     parser.add_argument(
         "--relay-url",
         type=str,
         default="http://127.0.0.1:8765",
-        help="Base URL for the monitor relay.",
+        help="监控中继的基础 URL。",
     )
     parser.add_argument(
         "--exchange",
         type=str,
         default=None,
-        help="Exchange name when selecting one bot from a multi-bot relay.",
+        help="从多机器人中继选择一个机器人时的交易所名称。",
     )
     parser.add_argument(
         "--user",
         type=str,
         default=None,
-        help="User/account name when selecting one bot from a multi-bot relay.",
+        help="从多机器人中继选择一个机器人时的用户/账户名。",
     )
     parser.add_argument(
         "--focus-symbol",
         type=str,
         default=None,
-        help="Optional symbol to prioritize in the TUI panels.",
+        help="可选的在 TUI 面板中优先显示的交易对。",
     )
     parser.add_argument(
         "--snapshot-refresh-seconds",

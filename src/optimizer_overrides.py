@@ -3,13 +3,13 @@ from config.access import require_config_value
 
 def optimizer_overrides(overrides_list, config, pside):
     if not overrides_list:
-        # No overrides to apply
+        # 没有要应用的覆盖
         return config
 
     for override in overrides_list:
         if override == "lossless_close_trailing":
 
-            # Logic for lossless close
+            # 无损平仓逻辑
             threshold = require_config_value(config, f"bot.{pside}.close_trailing_threshold_pct")
             retracement = require_config_value(config, f"bot.{pside}.close_trailing_retracement_pct")
             config["bot"][pside]["close_trailing_threshold_pct"] = max(threshold, retracement)
@@ -41,7 +41,7 @@ def optimizer_overrides(overrides_list, config, pside):
             )
 
         elif override == "example":
-            # Logic for override 'example'
+            # 覆盖 'example' 的逻辑
             pass
 
         else:

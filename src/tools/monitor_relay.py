@@ -20,31 +20,31 @@ from monitor_relay import create_monitor_relay_app
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Serve read-only Passivbot monitor snapshots and live streams."
+        description="提供只读的 Passivbot 监控快照和实时流服务。"
     )
     parser.add_argument(
         "--monitor-root",
         type=str,
         default="monitor",
-        help="Base monitor root containing {exchange}/{user}/ manifests and snapshots.",
+        help="包含 {exchange}/{user}/ 清单和快照的基础监控根目录。",
     )
     parser.add_argument(
         "--host",
         type=str,
         default="127.0.0.1",
-        help="Bind host for the relay server.",
+        help="中继服务器绑定主机。",
     )
     parser.add_argument(
         "--port",
         type=int,
         default=8765,
-        help="Bind port for the relay server.",
+        help="中继服务器绑定端口。",
     )
     parser.add_argument(
         "--poll-interval-ms",
         type=int,
         default=250,
-        help="Polling interval for current event/history files.",
+        help="当前事件/历史文件的轮询间隔。",
     )
     parser.add_argument(
         "--queue-size",

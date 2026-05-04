@@ -14,7 +14,7 @@ def is_stablecoin(elm):
     try:
         if elm["symbol"] in ["tether", "usdb", "usdy", "tusd", "usd0", "usde"]:
             return True
-        # Check if all required price fields are not None before comparing
+        # 比较前检查所有必需的价格字段是否不为 None
         price_fields = ["high_24h", "low_24h", "current_price"]
         if (
             all([elm.get(k) is not None for k in price_fields])
@@ -31,7 +31,7 @@ def is_stablecoin(elm):
 
 
 def get_top_market_caps(n_coins, minimum_market_cap_millions, exchange=None):
-    # Fetch the top N coins by market cap
+    # 按市值获取前 N 个币种
     markets_url = "https://api.coingecko.com/api/v3/coins/markets"
     per_page = 150
     page = 1

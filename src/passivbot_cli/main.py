@@ -22,20 +22,20 @@ class CommandSpec:
 
 
 CORE_COMMANDS: dict[str, CommandSpec] = {
-    "live": CommandSpec("main", "run the live trading bot"),
+    "live": CommandSpec("main", "运行实盘交易机器人"),
     "backtest": CommandSpec(
         "backtest",
-        "run historical backtests (requires full install)",
+        "运行历史回测（需要完整安装）",
         requires_full=True,
     ),
     "optimize": CommandSpec(
         "optimize",
-        "run the optimizer (requires full install)",
+        "运行优化器（需要完整安装）",
         requires_full=True,
     ),
     "download": CommandSpec(
         "ohlcv_download",
-        "download OHLCV data (requires full install)",
+        "下载 OHLCV 数据（需要完整安装）",
         requires_full=True,
     ),
 }
@@ -43,111 +43,111 @@ CORE_COMMANDS: dict[str, CommandSpec] = {
 TOOL_COMMANDS: dict[str, CommandSpec] = {
     "candle-doctor": CommandSpec(
         "tools.candle_doctor",
-        "audit candle caches (requires full install)",
+        "审计 K 线缓存（需要完整安装）",
         requires_full=True,
     ),
-    "fetch-balance": CommandSpec("tools.fetch_balance", "fetch exchange balances"),
+    "fetch-balance": CommandSpec("tools.fetch_balance", "获取交易所余额"),
     "hyperliquid-balance-probe": CommandSpec(
         "tools.probe_hyperliquid_balance",
-        "read-only Hyperliquid balance smoke test",
+        "只读 Hyperliquid 余额冒烟测试",
     ),
     "hyperliquid-order-margin-probe": CommandSpec(
         "tools.probe_hyperliquid_order_margin",
-        "mutating Hyperliquid order-margin diagnostic",
+        "修改性 Hyperliquid 订单保证金诊断",
     ),
     "hyperliquid-position-probe": CommandSpec(
         "tools.probe_hyperliquid_position_balance",
-        "mutating Hyperliquid position/balance diagnostic",
+        "修改性 Hyperliquid 仓位/余额诊断",
     ),
     "fill-events-dash": CommandSpec(
         "tools.fill_events_dash",
-        "launch fill events dashboard (requires full install)",
+        "启动成交事件仪表板（需要完整安装）",
         requires_full=True,
     ),
     "fill-events-doctor": CommandSpec(
         "tools.fill_events_doctor",
-        "audit fill-events cache (requires full install)",
+        "审计成交事件缓存（需要完整安装）",
         requires_full=True,
     ),
     "generate-mcap-list": CommandSpec(
         "tools.generate_mcap_list",
-        "generate approved-coin lists by market cap (requires full install)",
+        "按市值生成批准币种列表（需要完整安装）",
         requires_full=True,
     ),
     "iterative-backtester": CommandSpec(
         "tools.iterative_backtester",
-        "launch interactive iterative backtester (requires full install)",
+        "启动交互式迭代回测器（需要完整安装）",
         requires_full=True,
     ),
     "iterative-history-plot": CommandSpec(
         "tools.iterative_history_plot",
-        "plot iterative history files (requires full install)",
+        "绘制迭代历史文件（需要完整安装）",
         requires_full=True,
     ),
     "inspect-ohlcvs": CommandSpec(
         "tools.inspect_ohlcvs",
-        "inspect v2 OHLCV cache metadata and gaps (requires full install)",
+        "检查 v2 OHLCV 缓存元数据和间隙（需要完整安装）",
         requires_full=True,
     ),
     "migrate-historical-data": CommandSpec(
         "tools.migrate_historical_data",
-        "migrate historical data layout (requires full install)",
+        "迁移历史数据布局（需要完整安装）",
         requires_full=True,
     ),
     "merge-paretos": CommandSpec(
         "tools.merge_paretos",
-        "merge Pareto fronts into starting configs (requires full install)",
+        "将 Pareto 前沿合并为起始配置（需要完整安装）",
         requires_full=True,
     ),
     "monitor-relay": CommandSpec(
         "tools.monitor_relay",
-        "serve monitor snapshots and live streams (requires full install)",
+        "提供监控快照和实时流服务（需要完整安装）",
         requires_full=True,
     ),
     "monitor-dev": CommandSpec(
         "tools.monitor_dev",
-        "launch relay if needed and attach the terminal monitor (requires full install)",
+        "根据需要启动中继并附加终端监控器（需要完整安装）",
         requires_full=True,
     ),
     "monitor-web": CommandSpec(
         "tools.monitor_web",
-        "launch relay if needed and keep the web dashboard available (requires full install)",
+        "根据需要启动中继并保持 Web 仪表板可用（需要完整安装）",
         requires_full=True,
     ),
     "monitor-tui": CommandSpec(
         "tools.monitor_tui",
-        "launch terminal monitor reader (requires full install)",
+        "启动终端监控读取器（需要完整安装）",
         requires_full=True,
     ),
     "pad-historical-daily": CommandSpec(
         "tools.pad_historical_daily",
-        "pad missing daily historical data (requires full install)",
+        "填充缺失的每日历史数据（需要完整安装）",
         requires_full=True,
     ),
     "pareto": CommandSpec(
         "tools.pareto_explorer",
-        "select a single candidate from a Pareto front (requires full install)",
+        "从 Pareto 前沿选择单个候选（需要完整安装）",
         requires_full=True,
     ),
     "pareto-dash": CommandSpec(
         "tools.pareto_dash",
-        "launch Pareto dashboard (requires full install)",
+        "启动 Pareto 仪表板（需要完整安装）",
         requires_full=True,
     ),
     "pareto-explorer": CommandSpec(
         "tools.pareto_explorer",
-        "select a single candidate from a Pareto front (requires full install)",
+        "从 Pareto 前沿选择单个候选（需要完整安装）",
         requires_full=True,
     ),
     "pareto-transform": CommandSpec(
         "tools.pareto_transform",
-        "transform Pareto result data (requires full install)",
+        "转换 Pareto 结果数据（需要完整安装）",
         requires_full=True,
     ),
-    "streamline-json": CommandSpec("tools.streamline_json", "reformat config or result JSON"),
+    "streamline-json": CommandSpec("tools.streamline_json", "重新格式化配置或结果 JSON"),
     "verify-hlcvs-data": CommandSpec(
         "tools.verify_hlcvs_data",
-        "verify cached OHLCV datasets (requires full install)",
+        "验证缓存的 OHLCV 数据集（需要完整安装）",
         requires_full=True,
     ),
 }
@@ -177,32 +177,32 @@ ENV_REEXEC_GUARD_ENV = "PASSIVBOT_ENV_REEXEC"
 def _build_root_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="passivbot",
-        description="Passivbot unified CLI",
+        description="Passivbot 统一 CLI",
         epilog=(
-            "Use 'passivbot <command> -h' for command-specific help.\n"
-            "Base install supports live trading. Install passivbot with "
-            "'python3 -m pip install -e \".[full]\"' for backtesting, optimization, downloader, "
-            "and advanced tools."
+            "使用 'passivbot <command> -h' 获取特定命令的帮助。\n"
+            "基础安装支持实盘交易。使用 "
+            "'python3 -m pip install -e \".[full]\"' 安装 Passivbot 以获取回测、优化、下载器"
+            "和高级工具。"
         ),
     )
     subparsers = parser.add_subparsers(dest="command", metavar="command")
     for name, spec in CORE_COMMANDS.items():
         subparsers.add_parser(name, help=spec.summary)
-    subparsers.add_parser("tool", help="run auxiliary tools (some require full install)")
+    subparsers.add_parser("tool", help="运行辅助工具（部分需要完整安装）")
     return parser
 
 
 def _build_tool_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="passivbot tool",
-        description="Run auxiliary Passivbot tools",
+        description="运行 Passivbot 辅助工具",
         epilog=(
-            "Use 'passivbot tool <tool> -h' for tool-specific help.\n"
-            "Install passivbot with 'python3 -m pip install -e \".[full]\"' for tools marked as "
-            "requiring the full install."
+            "使用 'passivbot tool <tool> -h' 获取特定工具的帮助。\n"
+            "使用 'python3 -m pip install -e \".[full]\"' 安装 Passivbot 以使用标记为"
+            "需要完整安装的工具。"
         ),
     )
-    parser.add_argument("tool_name", nargs="?", help="Tool to run")
+    parser.add_argument("tool_name", nargs="?", help="要运行的工具")
     return parser
 
 
@@ -278,16 +278,16 @@ def _environment_mismatch_message(prefix: Path, actual_python: Path) -> str:
     script = _resolve_path(sys.argv[0]) if sys.argv and sys.argv[0] else None
     expected_script = _expected_console_script(prefix)
     return (
-        "passivbot detected an active environment mismatch.\n"
-        f"  Active environment: {prefix}\n"
-        f"  Running python:     {actual_python}\n"
-        f"  Running script:     {script}\n"
-        f"  Expected script:    {expected_script}\n"
-        "This usually means your shell resolved a stale shim or a different install.\n\n"
+        "passivbot 检测到活动环境不匹配。\n"
+        f"  活动环境: {prefix}\n"
+        f"  运行的 python:     {actual_python}\n"
+        f"  运行的脚本:     {script}\n"
+        f"  期望的脚本:    {expected_script}\n"
+        "这通常意味着你的 shell 解析了过期的 shim 或不同的安装。\n\n"
         f"{_install_guidance(prefix)}"
-        "After installing, reactivate the environment and refresh shell command lookup "
-        "(for example: 'hash -r'; with zsh also run 'rehash').\n"
-        f"Set {ENV_MISMATCH_IGNORE_ENV}=1 to bypass this check intentionally.\n"
+        "安装后，重新激活环境并刷新 shell 命令查找"
+        "（例如：'hash -r'；使用 zsh 时还需运行 'rehash'）。\n"
+        f"设置 {ENV_MISMATCH_IGNORE_ENV}=1 以有意绕过此检查。\n"
     )
 
 

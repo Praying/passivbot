@@ -1,13 +1,13 @@
 """
-Interactive dashboard for exploring cached/fresh fill events.
+用于探索缓存/新鲜成交事件的交互式仪表板。
 
-Features:
-- Multi-account view with parallel refresh
-- Cumulative/daily PnL charts
-- Top symbols analysis
-- Cache health monitoring (gaps, coverage)
-- CSV export functionality
-- Console log panel for progress feedback
+功能：
+- 多账户视图，支持并行刷新
+- 累计/每日 PnL 图表
+- 热门交易对分析
+- 缓存健康监控（间隙、覆盖率）
+- CSV 导出功能
+- 控制台日志面板用于进度反馈
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from dash import Dash, Input, Output, State, callback_context, dash_table, dcc, 
 from dash.exceptions import PreventUpdate
 from config import load_prepared_config
 
-# Ensure we can import modules from src/
+# 确保可以从 src/ 导入模块
 SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(SRC_ROOT) not in sys.path:
     sys.path.append(str(SRC_ROOT))
@@ -50,15 +50,15 @@ from fill_events_manager import (
 )
 from logging_setup import configure_logging
 
-# Global log buffer for UI display
+# 用于 UI 显示的全局日志缓冲区
 _LOG_BUFFER: deque = deque(maxlen=200)
 _LOG_LOCK = threading.Lock()
 
-# Global event loop for async operations - persists across calls
+# 用于异步操作的全局事件循环 - 跨调用持久化
 _EVENT_LOOP: Optional[asyncio.AbstractEventLoop] = None
 _LOOP_THREAD: Optional[threading.Thread] = None
 
-# Background refresh state management
+# 后台刷新状态管理
 _REFRESH_STATE: Dict[str, Any] = {
     "is_running": False,
     "progress": "",
@@ -70,13 +70,13 @@ _REFRESH_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 
 
 def _get_or_create_event_loop() -> asyncio.AbstractEventLoop:
-    """Get or create a persistent event loop running in a background thread."""
+    """获取或创建在后台线程中运行的持久事件循环。"""
     global _EVENT_LOOP, _LOOP_THREAD
 
     if _EVENT_LOOP is not None and _EVENT_LOOP.is_running():
         return _EVENT_LOOP
 
-    # Create new event loop in a background thread
+    # 在后台线程中创建新的事件循环
     _EVENT_LOOP = asyncio.new_event_loop()
 
     def run_loop():
@@ -86,7 +86,7 @@ def _get_or_create_event_loop() -> asyncio.AbstractEventLoop:
     _LOOP_THREAD = threading.Thread(target=run_loop, daemon=True)
     _LOOP_THREAD.start()
 
-    # Give the loop a moment to start
+    # 给循环一点时间启动
     time.sleep(0.1)
     return _EVENT_LOOP
 
@@ -151,10 +151,10 @@ def _extract_base_coin(symbol: str) -> str:
     """
     if not symbol:
         return ""
-    # Handle CCXT format: BASE/QUOTE:SETTLE (e.g., BTC/USDT:USDT)
+    # 处理 CCXT 格式：BASE/QUOTE:SETTLE（如 BTC/USDT:USDT）
     if "/" in symbol:
         return symbol.split("/")[0]
-    # Handle raw format without separators (e.g., BTCUSDT)
+    # 处理无分隔符的原始格式（如 BTCUSDT）
     for suffix in ["USDT", "USDC", "USD", "BUSD", "TUSD"]:
         if symbol.endswith(suffix):
             return symbol[: -len(suffix)]
@@ -166,16 +166,16 @@ def _events_to_dataframe(events: List[dict], account_label: str) -> pd.DataFrame
         return pd.DataFrame()
     df = pd.DataFrame(events)
     df["account"] = account_label
-    # Use timestamp (ms) for proper sorting, create datetime for display
+    # 使用时间戳（毫秒）进行正确排序，创建 datetime 用于显示
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
     df["date"] = df["datetime"].dt.date
-    # Create formatted string for display (consistent format across exchanges)
+    # 创建格式化字符串用于显示（跨交易所一致的格式）
     df["datetime_str"] = df["datetime"].apply(_format_datetime_str)
     fees_col = df.get("fees", pd.Series([None] * len(df)))
     df["fee_cost"] = [_normalize_fee_cost(x) for x in fees_col]
     df["pnl_with_fees"] = df["pnl"] - df["fee_cost"]
-    # Add normalized coin column (base asset only, e.g., BTC instead of BTC/USDT:USDT)
-    # This allows aggregation across different quote currencies (USDT, USDC, etc.)
+    # 添加标准化的币种列（仅基础资产，如 BTC 而非 BTC/USDT:USDT）
+    # 这允许跨不同计价货币（USDT、USDC 等）进行聚合
     df["coin"] = df["symbol"].apply(_extract_base_coin)
     return df
 
@@ -242,7 +242,7 @@ def _rebuild_manager(data: Dict[str, Any]) -> None:
         fetcher = _build_fetcher_for_bot(bot, symbol_pool)
         cache_path = Path(data["cache_root"]) / bot.exchange / bot.user
 
-        # Create new manager
+        # 创建新的管理器
         data["manager"] = FillEventsManager(
             exchange=bot.exchange, user=bot.user, fetcher=fetcher, cache_path=cache_path
         )
@@ -256,7 +256,7 @@ async def _refresh_single(data: Dict[str, Any], start_ms: int, end_ms: int) -> i
     """Refresh a single account. Returns number of events after refresh."""
     try:
         await data["manager"].refresh_range(start_ms, end_ms)
-        # Reload from disk to get fresh data
+        # 从磁盘重新加载以获取新数据
         await data["manager"].ensure_loaded()
         return len(data["manager"]._events)
     except Exception as e:
@@ -293,7 +293,7 @@ def _refresh_range(
     accounts: Dict[str, Dict[str, Any]], selected_accounts: List[str], start_ms: int, end_ms: int
 ) -> Dict[str, int]:
     """Refresh accounts in parallel using persistent event loop."""
-    # Rebuild managers to get fresh connections before refresh
+    # 在刷新前重建管理器以获取新的连接
     for account in selected_accounts:
         data = accounts.get(account)
         if data:
@@ -319,7 +319,7 @@ def _start_background_refresh(
             with _REFRESH_LOCK:
                 _REFRESH_STATE["progress"] = f"Refreshing {len(selected_accounts)} account(s)..."
 
-            # Rebuild managers to get fresh connections before refresh
+            # 在刷新前重建管理器以获取新的连接
             for i, account in enumerate(selected_accounts):
                 data = accounts.get(account)
                 if data:
@@ -381,11 +381,11 @@ def _aggregate_accounts(
         if selected_accounts and account not in selected_accounts:
             continue
         try:
-            # Ensure loaded (synchronous via persistent loop)
+            # 确保已加载（通过持久循环同步）
             _run_async(data["manager"].ensure_loaded())
             events = data["manager"].get_events(start_ms, end_ms)
             frame = _events_to_dataframe([ev.to_dict() for ev in events], account)
-            # Filter by normalized coin (base asset only)
+            # 按标准化币种过滤（仅基础资产）
             if coins_filter:
                 frame = frame[frame["coin"].isin(coins_filter)]
             if not frame.empty:
@@ -447,7 +447,7 @@ def build_figures(df: pd.DataFrame):
         title="Daily Realized PnL",
         barmode="group",
     )
-    # Group by normalized coin (base asset only) to merge BTC/USDT:USDT and BTC/USDC:USDC
+    # 按标准化币种（仅基础资产）分组以合并 BTC/USDT:USDT 和 BTC/USDC:USDC
     top_coins = (
         df.groupby(["coin", "account"], as_index=False)
         .agg({"pnl": "sum", "qty": "sum"})
@@ -461,7 +461,7 @@ def build_figures(df: pd.DataFrame):
         color="account",
         title="Top Coins by Realized PnL",
     )
-    # Replace fees chart with PnL by account summary
+    # 用按账户汇总的 PnL 替换手续费图表
     account_pnl = (
         df.groupby("account", as_index=False).agg({"pnl": "sum"}).sort_values("pnl", ascending=False)
     )
@@ -475,10 +475,10 @@ def build_symbol_chart(df: pd.DataFrame, symbol: str) -> go.Figure:
     if symbol_df.empty:
         return px.scatter(title=f"No fills for {symbol}")
 
-    # Sort by timestamp for correct chronological ordering
+    # 按时间戳排序以获得正确的时间顺序
     symbol_df = symbol_df.sort_values("timestamp")
 
-    # Simple scatter plot
+    # 简单散点图
     fig = px.scatter(
         symbol_df,
         x="datetime",
@@ -498,10 +498,10 @@ def build_coin_chart(df: pd.DataFrame, coin: str) -> go.Figure:
     if coin_df.empty:
         return px.scatter(title=f"No fills for {coin}")
 
-    # Sort by timestamp for correct chronological ordering
+    # 按时间戳排序以获得正确的时间顺序
     coin_df = coin_df.sort_values("timestamp")
 
-    # Simple scatter plot - color by account to show fills from different exchanges
+    # 简单散点图 - color by account to show fills from different exchanges
     fig = px.scatter(
         coin_df,
         x="datetime",
@@ -532,7 +532,7 @@ def build_cache_health_panel(summaries: List[Dict[str, Any]]) -> html.Div:
         first_event = summary.get("first_event", "N/A")
         last_event = summary.get("last_event", "N/A")
 
-        # Determine health status
+        # 确定健康状态
         if total_gaps == 0:
             status_color = "success"
             status_text = "Healthy"
@@ -544,7 +544,7 @@ def build_cache_health_panel(summaries: List[Dict[str, Any]]) -> html.Div:
             status_text = f"{persistent_gaps} known gap(s)"
 
         gap_details = []
-        for gap in summary.get("gaps", [])[:5]:  # Show first 5 gaps
+        for gap in summary.get("gaps", [])[:5]:  # 显示前 5 个间隙
             gap_details.append(
                 html.Li(
                     f"{gap['start']} → {gap['end']} "
@@ -593,7 +593,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
         suppress_callback_exceptions=True,
     )
 
-    # Setup log handler
+    # 设置日志处理器
     log_handler = DashLogHandler()
     log_handler.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
@@ -603,7 +603,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
     app.layout = dbc.Container(
         [
             html.H2("Fill Events Dashboard"),
-            # Loading overlay - shows when refresh is running
+            # 加载覆盖层 - 刷新运行时显示
             html.Div(
                 id="loading-overlay",
                 style={
@@ -640,7 +640,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
                     )
                 ],
             ),
-            # Controls row
+            # 控制行
             dbc.Row(
                 [
                     dbc.Col(
@@ -714,7 +714,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
                 ],
                 className="mb-3",
             ),
-            # Tabs
+            # 标签页
             dbc.Tabs(
                 [
                     dbc.Tab(label="Overview", tab_id="tab-overview"),
@@ -727,21 +727,21 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
                 active_tab="tab-overview",
                 className="mb-3",
             ),
-            # Tab content container
+            # 标签页内容容器
             html.Div(id="tab-content"),
-            # Data stores
+            # 数据存储
             dcc.Store(id="fill-data"),
             dcc.Store(id="refresh-trigger", data=0),
-            dcc.Store(id="refresh-params"),  # Store params for background refresh
+            dcc.Store(id="refresh-params"),  # 存储后台刷新的参数
             dcc.Download(id="download-csv"),
-            # Interval for refresh polling and log updates
+            # 刷新轮询和日志更新的间隔
             dcc.Interval(id="refresh-poll-interval", interval=500, n_intervals=0),
             dcc.Interval(id="log-interval", interval=1000, n_intervals=0),
         ],
         fluid=True,
     )
 
-    # Quick select updates date range
+    # 快速选择更新日期范围
     @app.callback(
         Output("date-range", "start_date"),
         Output("date-range", "end_date"),
@@ -755,7 +755,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
         start = now - pd.Timedelta(days=days)
         return start.date(), now.date()
 
-    # Refresh button starts background refresh
+    # 刷新按钮启动后台刷新
     @app.callback(
         Output("refresh-params", "data"),
         Output("refresh-btn", "disabled"),
@@ -788,7 +788,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
 
         return {"selected": selected, "start_ms": start_ms, "end_ms": end_ms}, True
 
-    # Poll for refresh completion and update loading overlay
+    # 轮询刷新完成并更新加载覆盖层
     @app.callback(
         Output("loading-overlay", "style"),
         Output("loading-progress", "children"),
@@ -817,14 +817,14 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
         if state["is_running"]:
             return overlay_style, state["progress"], True, dash.no_update
 
-        # Check if there's a result to consume
+        # 检查是否有结果需要处理
         if state["result"] is not None or state["error"] is not None:
             _clear_refresh_result()
             return overlay_style, "", False, (trigger or 0) + 1
 
         return overlay_style, "", False, dash.no_update
 
-    # Load data from cache (triggered by refresh completion or initial load)
+    # 从缓存加载数据（由刷新完成或初始加载触发）
     @app.callback(
         Output("fill-data", "data"),
         Output("symbols", "options"),
@@ -843,9 +843,9 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
             int(pd.Timestamp(end_date, tz="UTC").timestamp() * 1000) + 86400000 if end_date else None
         )
 
-        # Aggregate from cache
+        # 从缓存聚合
         df = _aggregate_accounts(accounts, selected, start_ms, end_ms, symbols if symbols else None)
-        # Use normalized coin for dropdown (base asset only, merges USDT/USDC variants)
+        # 使用标准化币种作为下拉选项（仅基础资产，合并 USDT/USDC 变体）
         coins_options = (
             [{"label": c, "value": c} for c in sorted(df["coin"].unique())] if not df.empty else []
         )
@@ -853,7 +853,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
         status = f"{len(df)} events" if not df.empty else "No data"
         return df.to_dict(orient="records"), coins_options, status
 
-    # Render tab content
+    # 渲染标签页内容
     @app.callback(
         Output("tab-content", "children"),
         Input("tabs", "active_tab"),
@@ -866,7 +866,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
         ctx = callback_context
         trigger_id = ctx.triggered[0]["prop_id"] if ctx.triggered else ""
 
-        # Only update on interval if we're on console tab
+        # 仅在控制台标签页上按间隔更新
         if "log-interval" in trigger_id and active_tab != "tab-console":
             raise PreventUpdate
 
@@ -906,11 +906,11 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
                 )
 
             figs = build_figures(df)
-            # Sort by timestamp (numeric) for correct ordering, use datetime_str for display
+            # 按时间戳（数值）排序以获得正确顺序，使用 datetime_str 进行显示
             recent = df.sort_values("timestamp", ascending=False).head(200).to_dict(orient="records")
-            # Define columns: datetime_str for readable display, exclude fee_cost from main view
+            # 定义列：datetime_str 用于可读显示，从主视图中排除 fee_cost
             # (fees are inconsistent across exchanges)
-            # Use normalized coin (base asset) instead of full symbol to merge USDT/USDC variants
+            # 使用标准化币种（基础资产）而非完整交易对以合并 USDT/USDC 变体
             table_columns = [
                 {"name": "Time", "id": "datetime_str"},
                 {"name": "Account", "id": "account"},
@@ -957,7 +957,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
             if df.empty:
                 return html.Div("No data available. Please refresh first.", className="text-muted")
 
-            # Use normalized coin (base asset) for grouping
+            # 使用标准化币种（基础资产）进行分组
             unique_coins = sorted(df["coin"].unique())
             selected_coin = (
                 selected_symbols[0]
@@ -970,7 +970,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
 
             fig = build_coin_chart(df, selected_coin)
 
-            # Coin stats (PnL without fees since fees are inconsistent)
+            # 币种统计（不含手续费的 PnL，因为手续费不一致）
             coin_df = df[df["coin"] == selected_coin]
             stats = {
                 "PnL": f"{coin_df['pnl'].sum():.4f}",
@@ -1020,7 +1020,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
             )
 
         elif active_tab == "tab-health":
-            # Load health data lazily only when this tab is active
+            # 仅在此标签页激活时延迟加载健康数据
             selected = selected_accounts or list(accounts.keys())
             health_summaries = _get_coverage_summaries(accounts, selected)
             return html.Div(
@@ -1037,7 +1037,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
         elif active_tab == "tab-export":
             if df.empty:
                 return html.Div("No data to export. Please refresh first.", className="text-muted")
-            # Select columns for preview, use datetime_str for display
+            # 选择预览列，使用 datetime_str 进行显示
             preview_cols = [
                 "datetime_str",
                 "account",
@@ -1100,10 +1100,10 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
         ctx = callback_context
         trigger = ctx.triggered[0]["prop_id"] if ctx.triggered else ""
 
-        # Drop internal columns, keep datetime_str as the readable timestamp
+        # 删除内部列，保留 datetime_str 作为可读时间戳
         drop_cols = ["raw", "fees", "datetime", "date", "fee_cost", "pnl_with_fees"]
         export_df = df.drop(columns=[c for c in drop_cols if c in df.columns], errors="ignore")
-        # Rename datetime_str to datetime for export clarity
+        # 将 datetime_str 重命名为 datetime 以提高导出清晰度
         if "datetime_str" in export_df.columns:
             export_df = export_df.rename(columns={"datetime_str": "datetime"})
 
@@ -1114,7 +1114,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
             return dict(content=json.dumps(export_data, indent=2), filename="fill_events.json")
         raise PreventUpdate
 
-    # Run server
+    # 运行服务器
     logging.info(f"Starting dashboard on http://localhost:{port}")
     logging.info("Press Ctrl+C to stop the server")
 
@@ -1124,7 +1124,7 @@ def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port
 
     def shutdown_handler(signum, frame):
         logging.info("Shutting down...")
-        # Schedule force exit after 2 seconds if graceful shutdown fails
+        # 如果优雅关闭失败，安排 2 秒后强制退出
         threading.Timer(2.0, force_exit).start()
         sys.exit(0)
 

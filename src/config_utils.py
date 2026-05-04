@@ -581,8 +581,8 @@ def _clean_with_template(template_node, source_node, path: Path = ()):
 
 def clean_config(config: dict) -> dict:
     """
-    Return a sanitized config aligned with the template structure, stripped of helper keys,
-    with dictionaries sorted recursively.
+    返回与模板结构对齐的清理后的配置，去除辅助键，
+    字典递归排序。
     """
     template = get_template_config()
     cleaned = _clean_with_template(template, config or {})
@@ -591,8 +591,8 @@ def clean_config(config: dict) -> dict:
 
 def strip_config_metadata(config: dict, *, keys: Iterable[str] | None = None) -> dict:
     """
-    Return a deep-copied config with the provided metadata keys removed recursively.
-    Defaults to removing `_raw`, `_raw_effective`, and `_transform_log`.
+    返回递归移除提供的元数据键的深拷贝配置。
+    默认移除 `_raw`、`_raw_effective` 和 `_transform_log`。
     """
 
     removal = set(keys or ("_raw", "_raw_effective", "_transform_log", "_coins_sources"))
@@ -609,8 +609,7 @@ def strip_config_metadata(config: dict, *, keys: Iterable[str] | None = None) ->
 
 def sanitize_prepared_config_for_dump(config: dict, *, extra_keys: Iterable[str] | None = None) -> dict:
     """
-    Return a prepared config stripped of runtime/metadata payload so the dumped artifact remains
-    clean and directly reusable.
+    返回去除了运行时/元数据负载的已准备配置，使转储产物保持干净且可直接重用。
     """
 
     removal = ["_raw", "_raw_effective", "_transform_log", "_coins_sources", "analysis"]
@@ -650,7 +649,7 @@ def comma_separated_values_float(x):
 
 
 def comma_separated_values(x):
-    # Preserve JSON/HJSON-like strings (used for approved/ignored coin dicts)
+    # 保留类 JSON/HJSON 的字符串（用于 approved/ignored 币种字典）
     if isinstance(x, str):
         raw = x.strip()
         if raw and raw[0] in "[{" and raw[-1] in "]}":
@@ -665,7 +664,7 @@ def optional_float(x):
 
 
 def merge_negative_cli_values(argv):
-    """Allow comma-separated values that begin with '-' to be parsed as option values."""
+    """允许以 '-' 开头的逗号分隔值被解析为选项值。"""
     out = []
     i = 0
     while i < len(argv):
@@ -703,7 +702,7 @@ def create_acronym(full_name, acronyms=set()):
                 shortened_name = shortened_name.replace(k, "")
                 break
 
-        # Split on both '_' and '.' using regex
+        # 使用正则表达式同时按 '_' 和 '.' 分割
         splitted = re.split(r"[._]+", shortened_name)
         acronym = "".join(word[0] for word in splitted if word)  # skip any empty splits
 
@@ -715,8 +714,8 @@ def create_acronym(full_name, acronyms=set()):
     return acronym
 
 
-# Hard-coded CLI shortcuts for backwards compatibility and cleaner default help.
-# Format:
+# 硬编码的 CLI 快捷方式，用于向后兼容和更清晰的默认帮助。
+# 格式：
 #   config_key -> {
 #       "visible": ["--preferred-name", "-x"],
 #       "hidden": ["--legacy_name", "--legacy_name_with_dots"],
@@ -724,7 +723,7 @@ def create_acronym(full_name, acronyms=set()):
 #       "group": {"live": "Coin Selection", ...},
 #       "type": type_converter,
 #       "metavar": "CSV|INT|...",
-#       "help": "Human-facing help text",
+#       "help": "面向用户的帮助文本",
 #   }
 RESERVED_CLI_ARGS = {
     "live.approved_coins": {
@@ -1312,10 +1311,9 @@ def add_reserved_arguments(
     help_all: bool = False,
     group_map=None,
 ) -> Tuple[set, set]:
-    """Add hard-coded CLI arguments for backwards compatibility.
+    """添加硬编码的 CLI 参数以实现向后兼容。
 
-    Returns the set of reserved acronyms and config keys that should be
-    skipped by add_arguments_recursively().
+    返回应被 add_arguments_recursively() 跳过的保留缩写和配置键集合。
     """
     reserved_acronyms = set()
     reserved_keys = set()
@@ -1363,15 +1361,15 @@ def add_reserved_arguments(
 def add_config_arguments(
     parser, config, *, command: Optional[str] = None, help_all: bool = False, group_map=None
 ):
-    """Add all CLI arguments for config parameters.
+    """为配置参数添加所有 CLI 参数。
 
-    This is the main entry point for adding config-based arguments.
-    It first adds hard-coded reserved arguments (for backwards compat),
-    then recursively adds remaining config parameters.
+    这是添加基于配置的参数的主入口点。
+    它首先添加硬编码的保留参数（用于向后兼容），
+    然后递归添加剩余的配置参数。
 
     Args:
         parser: argparse.ArgumentParser
-        config: Config dict (typically from get_template_config())
+        config: 配置字典（通常来自 get_template_config()）
     """
     reserved_acronyms, reserved_keys = add_reserved_arguments(
         parser, command=command, help_all=help_all, group_map=group_map
@@ -1402,14 +1400,14 @@ def add_arguments_recursively(
     group_map=None,
     registered_keys=None,
 ):
-    """Recursively add CLI arguments for config parameters.
+    """递归为配置参数添加 CLI 参数。
 
     Args:
         parser: argparse.ArgumentParser
-        config: Config dict to process
-        prefix: Current key prefix (e.g., "live.")
-        acronyms: Set of already-used acronyms to avoid collisions
-        skip_keys: Set of full config keys to skip (already added by reserved args)
+        config: 要处理的配置字典
+        prefix: 当前键前缀（如 "live."）
+        acronyms: 已使用的缩写集合，用于避免冲突
+        skip_keys: 要跳过的完整配置键集合（已由保留参数添加）
     """
     if acronyms is None:
         acronyms = set()
@@ -1422,13 +1420,13 @@ def add_arguments_recursively(
         value = config[key]
         full_name = f"{prefix}{key}"
 
-        # Skip if this key was already added as a reserved argument
+        # 如果此键已作为保留参数添加则跳过
         if full_name in skip_keys:
             continue
 
         if isinstance(value, dict):
             if any(full_name.endswith(x) for x in ["approved_coins", "ignored_coins"]):
-                # Handle coin dict configs as comma-separated values
+                # 将币种字典配置作为逗号分隔值处理
                 acronym = create_acronym(full_name, acronyms)
                 visible_group = classify_config_argument(full_name, command, help_all)
                 container = (
@@ -1595,9 +1593,8 @@ def update_config_with_args(config, args, verbose=False, allowed_keys: Optional[
             )
             change = recursive_config_update(config, key, normalized, verbose=verbose)
             source_key = key.split(".")[-1]
-            # Preserve the raw CLI source so live coin-list refreshes can re-read external files
-            # passed via CLI (e.g. `-s path/to/approved_coins.json`) instead of freezing the
-            # first parsed snapshot into `_coins_sources`.
+            # 保留原始 CLI 来源，以便实盘币种列表刷新可以重新读取通过 CLI 传递的外部文件
+            #（如 `-s path/to/approved_coins.json`），而不是将第一次解析的快照冻结到 `_coins_sources` 中。
             config.setdefault("_coins_sources", {})[source_key] = deepcopy(value)
             if change:
                 changed_keys.append(key)

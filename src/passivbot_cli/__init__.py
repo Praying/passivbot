@@ -1,1 +1,1 @@
-"""Unified Passivbot CLI package."""
+"""统一的 Passivbot CLI 包。"""

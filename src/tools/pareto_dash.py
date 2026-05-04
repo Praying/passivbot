@@ -1,6 +1,6 @@
-"""Pareto Dashboard - Interactive explorer for optimization results.
+"""Pareto 仪表板 - 优化结果的交互式探索器。
 
-Usage:
+用法：
     python src/tools/pareto_dash.py --data-root optimize_results --host 127.0.0.1 --port 8050
 """
 
@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import re
 
-# Ensure we can import modules from src/
+# 确保可以从 src/ 导入模块
 SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(SRC_ROOT) not in sys.path:
     sys.path.append(str(SRC_ROOT))

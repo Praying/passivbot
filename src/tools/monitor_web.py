@@ -19,7 +19,7 @@ from monitor_web import run_monitor_web
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Launch the monitor relay if needed and keep the multiplexed web dashboard available."
+        description="根据需要启动监控中继，并保持多路复用 Web 仪表板可用。"
     )
     parser.add_argument("--relay-url", type=str, default="http://127.0.0.1:8765")
     parser.add_argument("--exchange", type=str, default=None)

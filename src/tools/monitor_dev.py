@@ -19,7 +19,7 @@ from monitor_dev import run_monitor_dev
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Launch the monitor relay if needed and open the minimal TUI with bot-log tailing."
+        description="根据需要启动监控中继，并打开带有机器人日志跟踪的最小 TUI。"
     )
     parser.add_argument("--relay-url", type=str, default="http://127.0.0.1:8765")
     parser.add_argument("--exchange", type=str, default=None)

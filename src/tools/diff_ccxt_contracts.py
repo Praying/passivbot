@@ -6,25 +6,25 @@ from ccxt_contracts import DEFAULT_DIFF_IGNORE_PATHS, diff_snapshots, load_snaps
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Diff two CCXT contract snapshots captured for Passivbot."
+        description="比较两个为 Passivbot 捕获的 CCXT 合约快照的差异。"
     )
-    parser.add_argument("old_snapshot", help="Baseline snapshot JSON")
-    parser.add_argument("new_snapshot", help="Candidate snapshot JSON")
+    parser.add_argument("old_snapshot", help="基线快照 JSON")
+    parser.add_argument("new_snapshot", help="候选快照 JSON")
     parser.add_argument(
         "--ignore",
         default=",".join(sorted(DEFAULT_DIFF_IGNORE_PATHS)),
-        help="Comma-separated flattened paths to ignore",
+        help="要忽略的逗号分隔扁平路径",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=50,
-        help="Maximum number of per-path changes to print for each bucket",
+        help="每个类别中每个路径变更的最大打印数量",
     )
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Print full JSON diff instead of a readable summary",
+        help="打印完整 JSON 差异而不是可读摘要",
     )
     return parser.parse_args()
 

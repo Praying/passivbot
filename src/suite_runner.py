@@ -1,9 +1,8 @@
 """
-Shared helpers for running backtest/optimizer suites.
+运行回测/优化器套件的共享辅助函数。
 
-The suite runner prepares shared datasets, applies scenario overrides, and
-invokes the existing backtest pipeline for every scenario.  Both the CLI
-backtester and the optimizer import this module when operating in suite mode.
+套件运行器准备共享数据集，应用场景覆盖，并为每个场景调用现有的回测管道。
+CLI 回测器和优化器在套件模式下都会导入此模块。
 """
 
 from __future__ import annotations
@@ -39,7 +38,7 @@ from shared_arrays import SharedArraySpec
 from metrics_schema import flatten_metric_stats, merge_suite_payload
 
 # --------------------------------------------------------------------------- #
-# Data containers
+# 数据容器
 # --------------------------------------------------------------------------- #
 
 
@@ -74,32 +73,32 @@ class SuiteSummary:
 
 
 # --------------------------------------------------------------------------- #
-# Suite specification helpers
+# 套件规格辅助函数
 # --------------------------------------------------------------------------- #
 
 
 def extract_suite_config(
     base_config: Dict[str, Any], suite_override: Optional[Dict[str, Any]]
 ) -> Dict[str, Any]:
-    """Extract suite configuration from the new flattened config structure.
+    """从新的扁平化配置结构中提取套件配置。
 
-    New structure reads from:
-    - backtest.scenarios (list of scenario dicts)
-    - backtest.aggregate (aggregation settings)
-    - backtest.exchanges (default exchanges for scenarios)
-    - backtest.volume_normalization (bool, default True)
-    - backtest.suite_enabled (bool, default False) - master switch for suite mode
+    新结构从以下位置读取：
+    - backtest.scenarios（场景字典列表）
+    - backtest.aggregate（聚合设置）
+    - backtest.exchanges（场景的默认交易所）
+    - backtest.volume_normalization（布尔值，默认 True）
+    - backtest.suite_enabled（布尔值，默认 False）- 套件模式的主开关
 
     Args:
-        base_config: Full config dict
-        suite_override: Optional override dict with scenarios/aggregate keys
+        base_config: 完整配置字典
+        suite_override: 可选的覆盖字典，包含 scenarios/aggregate 键
 
     Returns:
-        Dict with 'scenarios', 'aggregate', 'exchanges', 'volume_normalization', and 'enabled' keys
+        包含 'scenarios'、'aggregate'、'exchanges'、'volume_normalization' 和 'enabled' 键的字典
     """
     backtest = base_config.get("backtest", {})
 
-    # Build config from new flattened structure
+    # 从新的扁平化结构构建配置
     cfg = {
         "scenarios": deepcopy(backtest.get("scenarios", [])),
         "aggregate": deepcopy(backtest.get("aggregate", {"default": "mean"})),
@@ -107,7 +106,7 @@ def extract_suite_config(
         "volume_normalization": backtest.get("volume_normalization", True),
     }
 
-    # Apply overrides if provided
+    # 如果提供了覆盖则应用
     if suite_override:
         if "scenarios" in suite_override:
             cfg["scenarios"] = deepcopy(suite_override["scenarios"])
@@ -118,9 +117,9 @@ def extract_suite_config(
         if "volume_normalization" in suite_override:
             cfg["volume_normalization"] = suite_override["volume_normalization"]
 
-    # Determine if suite mode is enabled:
-    # - suite_enabled config param must be true (default: false)
-    # - AND scenarios must exist
+    # 确定套件模式是否启用：
+    # - suite_enabled 配置参数必须为 true（默认：false）
+    # - 且场景必须存在
     suite_enabled_config = backtest.get("suite_enabled", False)
     has_scenarios = bool(cfg.get("scenarios"))
     cfg["enabled"] = suite_enabled_config and has_scenarios
@@ -132,17 +131,17 @@ def filter_scenarios_by_label(
     scenarios: List[Dict[str, Any]],
     labels: List[str],
 ) -> List[Dict[str, Any]]:
-    """Filter scenarios to only include those matching the given labels.
+    """过滤场景以仅包含与给定标签匹配的场景。
 
     Args:
-        scenarios: List of scenario dicts (each with a 'label' key)
-        labels: List of labels to keep
+        scenarios: 场景字典列表（每个包含 'label' 键）
+        labels: 要保留的标签列表
 
     Returns:
-        Filtered list of scenarios
+        过滤后的场景列表
 
     Raises:
-        ValueError: If no scenarios match the given labels
+        ValueError: 如果没有场景匹配给定标签
     """
     if not labels:
         return scenarios
@@ -260,19 +259,19 @@ def build_scenarios(
     suite_cfg: Dict[str, Any],
     base_exchanges: Optional[List[str]] = None,
 ) -> Tuple[List[SuiteScenario], Dict[str, Any]]:
-    """Build list of SuiteScenario objects from suite config.
+    """从套件配置构建 SuiteScenario 对象列表。
 
-    In the new flattened structure:
-    - Scenarios without explicit 'exchanges' inherit from suite_cfg['exchanges'] or base_exchanges
-    - Single exchange in scenario = use that exchange's data
-    - Multiple exchanges in scenario = best-per-coin combination
+    在新的扁平化结构中：
+    - 没有显式 'exchanges' 的场景继承自 suite_cfg['exchanges'] 或 base_exchanges
+    - 场景中单个交易所 = 使用该交易所的数据
+    - 场景中多个交易所 = 按币种最优组合
 
     Args:
-        suite_cfg: Suite configuration dict with 'scenarios' and 'aggregate'
-        base_exchanges: Default exchanges to inherit when scenario doesn't specify
+        suite_cfg: 包含 'scenarios' 和 'aggregate' 的套件配置字典
+        base_exchanges: 场景未指定时继承的默认交易所
 
     Returns:
-        Tuple of (scenarios list, aggregate config dict)
+        (场景列表, 聚合配置字典) 的元组
     """
     scenarios_cfg = suite_cfg.get("scenarios") or []
     if not scenarios_cfg:
@@ -285,7 +284,7 @@ def build_scenarios(
         exchanges_value = raw.get("exchanges")
         coin_sources_value = raw.get("coin_sources")
 
-        # Resolve exchanges: scenario-specific or inherit from defaults
+        # 解析交易所：场景特定或继承默认值
         if exchanges_value:
             exchanges_list = _coerce_exchange_list(exchanges_value)
         elif default_exchanges:
@@ -327,12 +326,10 @@ def collect_suite_coin_sources(
     scenarios: Sequence[SuiteScenario],
 ) -> Dict[str, str]:
     """
-    Merge baseline coin_sources with any scenario overrides.
+    将基线 coin_sources 与场景覆盖合并。
 
-    The merged mapping is shared across the suite so all scenarios consume a
-    consistent view of the underlying exchange assignment.  Conflicting
-    requests raise immediately to avoid silently running scenarios with
-    mismatched data.
+    合并后的映射在整个套件中共享，以便所有场景使用一致的底层交易所分配视图。
+    冲突的请求会立即抛出错误，以避免静默运行数据不匹配的场景。
     """
 
     base_sources = deepcopy(config.get("backtest", {}).get("coin_sources") or {})
@@ -366,8 +363,7 @@ def filter_coins_by_exchange_assignment(
     default_exchange: str,
 ) -> Tuple[List[str], List[str]]:
     """
-    Split the provided coins into those whose assigned exchange is allowed and
-    those that should be skipped.
+    将提供的币种分为允许的交易所分配的币种和应跳过的币种。
     """
 
     allowed_set = {str(ex) for ex in allowed_exchanges} if allowed_exchanges else None
@@ -383,7 +379,7 @@ def filter_coins_by_exchange_assignment(
 
 
 # --------------------------------------------------------------------------- #
-# Dataset preparation
+# 数据集准备
 # --------------------------------------------------------------------------- #
 
 
@@ -411,10 +407,10 @@ def _determine_needed_individual_exchanges(
     base_exchanges: List[str],
 ) -> Set[str]:
     """
-    Analyze scenarios to determine which individual exchange datasets are needed.
+    分析场景以确定需要哪些单独的交易所数据集。
 
-    Returns a set of exchange names that need individual datasets (for scenarios
-    that restrict to a subset of exchanges). Empty set means only combined is needed.
+    返回需要单独数据集的交易所名称集合（用于限制为交易所子集的场景）。
+    空集表示只需要组合数据集。
     """
     base_set = set(base_exchanges)
     needed: Set[str] = set()
@@ -430,7 +426,7 @@ def _determine_needed_individual_exchanges(
 
 
 def _apply_candle_aggregation(hlcvs, timestamps, btc_usd_prices, mss, interval):
-    """Aggregate candles and update mss metadata. Returns (hlcvs, timestamps, btc_usd_prices)."""
+    """聚合 K 线并更新 mss 元数据。返回 (hlcvs, timestamps, btc_usd_prices)。"""
     n_before = hlcvs.shape[0]
     hlcvs, timestamps, btc_usd_prices, offset_bars = align_and_aggregate_hlcvs(
         hlcvs, timestamps, btc_usd_prices, int(interval)
@@ -502,15 +498,15 @@ async def prepare_master_datasets(
             btc_spec=btc_spec,
         )
 
-    # Data strategy:
-    # - Single exchange = use that exchange's data only
-    # - Multiple exchanges = prepare combined (best-per-coin) dataset
-    # - If any scenario restricts to a subset of exchanges, also prepare
-    #   individual datasets for those exchanges (determined by caller)
+    # 数据策略：
+    # - 单个交易所 = 仅使用该交易所的数据
+    # - 多个交易所 = 准备组合（按币种最优）数据集
+    # - 如果任何场景限制为交易所子集，还为这些交易所准备
+    #   单独的数据集（由调用者确定）
     use_combined = len(exchanges) > 1
 
     if use_combined:
-        # Prepare combined (best-per-coin) dataset
+        # 准备组合（按币种最优）数据集
         (
             coins,
             hlcvs,
@@ -534,10 +530,10 @@ async def prepare_master_datasets(
             btc_usd_prices,
             timestamps,
         )
-        # Free original arrays after copying to SharedMemory (can save ~5GB+ RAM)
+        # 复制到 SharedMemory 后释放原始数组（可节省约 5GB+ 内存）
         del hlcvs, btc_usd_prices
 
-        # Only prepare individual exchange datasets if scenarios need them
+        # 仅在场景需要时准备单独的交易所数据集
         if needed_individual_exchanges:
             for exchange in exchanges:
                 if exchange not in needed_individual_exchanges:
@@ -569,7 +565,7 @@ async def prepare_master_datasets(
                     ex_btc_usd_prices,
                     ex_timestamps,
                 )
-                # Free original arrays after copying to SharedMemory
+                # 复制到 SharedMemory 后释放原始数组
                 del ex_hlcvs, ex_btc_usd_prices
     else:
         for exchange in exchanges:
@@ -596,13 +592,13 @@ async def prepare_master_datasets(
                 btc_usd_prices,
                 timestamps,
             )
-            # Free original arrays after copying to SharedMemory
+            # 复制到 SharedMemory 后释放原始数组
             del hlcvs, btc_usd_prices
     return datasets
 
 
 # --------------------------------------------------------------------------- #
-# Scenario execution
+# 场景执行
 # --------------------------------------------------------------------------- #
 
 
@@ -748,7 +744,7 @@ def _compute_effective_coin_exchange(
     datasets: Dict[str, "ExchangeDataset"],
     available_exchanges: List[str],
 ) -> Dict[str, str]:
-    """Return effective coin->exchange assignment for a scenario."""
+    """返回场景的有效币种->交易所分配。"""
     has_combined = "combined" in datasets
     raw_scenario_exchanges = set(scenario.exchanges) if scenario.exchanges else None
     actual_exchanges_set = {ex for ex in available_exchanges if ex != "combined"}
@@ -792,15 +788,15 @@ def _build_scenario_signature(
     scenario_config: Dict[str, Any],
     coin_exchange: Dict[str, str],
 ) -> str:
-    """Build a stable signature for scenario deduplication."""
+    """构建场景去重的稳定签名。"""
     payload = deepcopy(scenario_config)
-    # Ignore transform metadata; it differs per scenario but doesn't affect results.
+    # 忽略转换元数据；每个场景不同但不影响结果。
     payload.pop("_transform_log", None)
     backtest_section = payload.setdefault("backtest", {})
     coins_by_ex = _normalize_coins_by_exchange(coin_exchange)
     backtest_section["coins"] = coins_by_ex
     backtest_section["exchanges"] = sorted(coins_by_ex.keys())
-    # cache_dir paths are environment-specific and don't affect results
+    # cache_dir 路径是环境特定的，不影响结果
     backtest_section["cache_dir"] = {}
     serialized = json.dumps(payload, sort_keys=True, default=str)
     return hashlib.sha256(serialized.encode()).hexdigest()
@@ -865,13 +861,13 @@ async def run_backtest_scenario(
         scenario_dir = results_root / scenario.label
         scenario_dir.mkdir(parents=True, exist_ok=True)
 
-    # Determine which dataset(s) to use based on scenario's exchange restriction
+    # 根据场景的交易所限制确定使用哪些数据集
     has_combined = "combined" in datasets
     raw_scenario_exchanges = set(scenario.exchanges) if scenario.exchanges else None
-    # Compute actual exchanges (excluding "combined" which is a synthetic dataset label)
+    # 计算实际交易所（排除"combined"，它是合成数据集标签）
     actual_exchanges_set = {ex for ex in available_exchanges if ex != "combined"}
 
-    # Filter scenario exchanges to only those actually available in the dataset
+    # 将场景交易所过滤为数据集中实际可用的
     if raw_scenario_exchanges:
         unavailable = raw_scenario_exchanges - actual_exchanges_set
         if unavailable:
@@ -883,14 +879,14 @@ async def run_backtest_scenario(
             )
         scenario_exchanges = raw_scenario_exchanges & actual_exchanges_set
         if not scenario_exchanges:
-            # If no overlap, fall back to all available exchanges
+            # 如果没有重叠，回退到所有可用交易所
             scenario_exchanges = actual_exchanges_set
     else:
         scenario_exchanges = actual_exchanges_set
 
-    # Use combined dataset when:
-    # 1. It exists, AND
-    # 2. Scenario uses all actual exchanges (not a strict subset)
+    # 使用组合数据集的条件：
+    # 1. 它存在，且
+    # 2. 场景使用所有实际交易所（非严格子集）
     use_combined = has_combined and scenario_exchanges == actual_exchanges_set
 
     if use_combined:
@@ -907,8 +903,8 @@ async def run_backtest_scenario(
             BacktestPlotContext.from_payload,
         )
     else:
-        # Use per-exchange datasets for scenarios with exchange restrictions
-        # Filter datasets to only include those requested by the scenario
+        # 对有交易所限制的场景使用按交易所的数据集
+        # 将数据集过滤为仅包含场景请求的那些
         filtered_datasets = {
             k: v for k, v in datasets.items() if k != "combined" and k in scenario_exchanges
         }
@@ -1132,8 +1128,8 @@ def _compute_slice_indices(
     scenario_label: str,
 ) -> Tuple[int, int, List[int]]:
     """
-    Compute slice indices for lazy slicing from master dataset.
-    Returns (start_idx, end_idx, coin_indices) without creating actual array slices.
+    计算从主数据集延迟切片的切片索引。
+    返回 (start_idx, end_idx, coin_indices)，不创建实际数组切片。
     """
     start_value = require_config_value(scenario_config, "backtest.start_date")
     end_value = require_config_value(scenario_config, "backtest.end_date")
@@ -1296,7 +1292,7 @@ def _recompute_index_metadata(
 
 
 # --------------------------------------------------------------------------- #
-# Aggregation
+# 聚合
 # --------------------------------------------------------------------------- #
 
 
@@ -1353,8 +1349,7 @@ def build_suite_metrics_payload(
     results: Sequence[ScenarioResult], aggregate_summary: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Build the canonical suite metrics payload (aggregate + per-scenario) used by both
-    optimizer and backtester outputs.
+    构建标准的套件指标负载（聚合 + 按场景），供优化器和回测器输出使用。
     """
 
     scenario_metrics = {res.scenario.label: res.metrics for res in results}
@@ -1367,8 +1362,8 @@ def build_suite_metrics_payload(
 
 def summarize_scenario_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Convert a metrics dict containing only stats into a flat metric -> value map,
-    preferring the mean when available.
+    将仅包含统计信息的指标字典转换为扁平的指标 -> 值映射，
+    优先使用均值（如果可用）。
     """
 
     if not isinstance(metrics, dict):
@@ -1392,7 +1387,7 @@ def summarize_scenario_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# Public API
+# 公共 API
 # --------------------------------------------------------------------------- #
 
 
@@ -1412,15 +1407,15 @@ async def run_backtest_suite_async(
 
     scenarios, aggregate_cfg = build_scenarios(suite_cfg, base_exchanges=base_exchanges)
 
-    # Determine which individual exchange datasets are needed for single-exchange scenarios
+    # 确定单个交易所场景需要哪些单独的交易所数据集
     needed_individual = _determine_needed_individual_exchanges(scenarios, base_exchanges)
 
-    # Expand exchanges_list to include scenario-required exchanges that aren't in base
+    # 扩展 exchanges_list 以包含场景要求但不在基线中的交易所
     exchanges_list = sorted(set(base_exchanges) | needed_individual)
     added_exchanges = needed_individual - set(base_exchanges)
     if added_exchanges:
         logging.info(
-            "Expanded exchanges from %s to %s (added %s from scenario requirements)",
+            "将交易所从 %s 扩展到 %s（从场景需求中添加了 %s）",
             base_exchanges,
             exchanges_list,
             sorted(added_exchanges),
@@ -1472,7 +1467,7 @@ async def run_backtest_suite_async(
     else:
         dataset_available_exchanges = [ds.exchange for ds in datasets.values()]
 
-    # Deduplicate scenarios that resolve to identical effective inputs.
+    # 对解析为相同有效输入的场景进行去重。
     seen_signatures: Dict[str, str] = {}
     deduped: List[SuiteScenario] = []
     for scenario in scenarios:
@@ -1513,10 +1508,10 @@ async def run_backtest_suite_async(
     )
     suite_dir.mkdir(parents=True, exist_ok=True)
 
-    logging.info("Starting backtest suite: %d scenario(s)", len(scenarios))
+    logging.info("开始回测套件：%d 个场景", len(scenarios))
     results: List[ScenarioResult] = []
     for scenario in scenarios:
-        logging.info("Running scenario '%s'...", scenario.label)
+        logging.info("正在运行场景 '%s'...", scenario.label)
         result = await run_backtest_scenario(
             scenario,
             base_config,
@@ -1533,7 +1528,7 @@ async def run_backtest_suite_async(
         )
         results.append(result)
         logging.info(
-            "Scenario %s finished in %.2fs with %d metrics.",
+            "场景 %s 在 %.2fs 内完成，共 %d 个指标。",
             scenario.label,
             result.elapsed_seconds,
             len(result.metrics.get("stats", {})),
@@ -1541,7 +1536,7 @@ async def run_backtest_suite_async(
 
     aggregate_summary = aggregate_metrics(results, aggregate_cfg)
     suite_metrics = build_suite_metrics_payload(results, aggregate_summary)
-    # Persist a lean, canonical payload: shared schema + elapsed per scenario.
+    # 持久化精简的标准负载：共享 schema + 每个场景的耗时。
     summary_payload = {
         "suite_id": suite_timestamp,
         "meta": {
@@ -1585,14 +1580,14 @@ def run_backtest_suite_sync(
     if suite_config_path:
         override_config = load_prepared_config(str(suite_config_path), verbose=False)
         override_backtest = override_config.get("backtest", {})
-        # Support both new (scenarios at top level) and legacy (suite wrapper) formats
+        # 支持新格式（场景在顶层）和旧格式（套件包装器）
         if "scenarios" in override_backtest:
             suite_override = {
                 "scenarios": override_backtest.get("scenarios", []),
                 "aggregate": override_backtest.get("aggregate", {"default": "mean"}),
             }
         elif "suite" in override_backtest:
-            # Legacy format - extract from suite wrapper
+            # 旧格式 - 从套件包装器中提取
             suite_override = override_backtest["suite"]
         else:
             raise ValueError(
@@ -1613,7 +1608,7 @@ def run_backtest_suite_sync(
 
 
 # --------------------------------------------------------------------------- #
-# Legacy compatibility shim
+# 旧版兼容性垫片
 # --------------------------------------------------------------------------- #
 
 

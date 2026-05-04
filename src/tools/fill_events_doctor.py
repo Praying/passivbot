@@ -1,4 +1,4 @@
-"""Audit and repair cached fill-event anomalies."""
+"""审计和修复缓存的成交事件异常。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-# Ensure we can import modules from src/
+# 确保可以从 src/ 导入模块
 SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(SRC_ROOT) not in sys.path:
     sys.path.append(str(SRC_ROOT))
@@ -25,23 +25,23 @@ class _NoopFetcher(BaseFetcher):
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Audit and repair fill-events cache anomalies")
-    parser.add_argument("--exchange", required=True, help="Exchange id (e.g. bybit)")
-    parser.add_argument("--user", required=True, help="User/account name")
+    parser = argparse.ArgumentParser(description="审计和修复成交事件缓存异常")
+    parser.add_argument("--exchange", required=True, help="交易所 ID（如 bybit）")
+    parser.add_argument("--user", required=True, help="用户/账户名")
     parser.add_argument(
         "--cache-root",
         default="caches/fill_events",
-        help="Root fill-events cache directory (default: caches/fill_events)",
+        help="成交事件缓存根目录（默认：caches/fill_events）",
     )
     parser.add_argument(
         "--repair",
         action="store_true",
-        help="Auto-repair detected anomalies in cache files",
+        help="自动修复缓存文件中检测到的异常",
     )
     parser.add_argument(
         "--logging-level",
         default="info",
-        help="Logging level name or integer (warning=0, info=1, debug=2, trace=3)",
+        help="日志级别名称或整数（warning=0, info=1, debug=2, trace=3）",
     )
     return parser
 

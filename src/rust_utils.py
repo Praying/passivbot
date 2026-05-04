@@ -1,8 +1,7 @@
 """
-Helpers for managing the compiled Rust extension.
+管理已编译 Rust 扩展的辅助工具。
 
-This module is intentionally free of imports that would load the extension
-itself; it only inspects filesystem state.
+本模块有意不导入会加载扩展本身的模块；它只检查文件系统状态。
 """
 
 from __future__ import annotations
@@ -18,16 +17,16 @@ from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
 LOCK_FILE = Path("passivbot-rust/.compile.lock")
-LOCK_TIMEOUT = 300  # seconds
-LOCK_CHECK_INTERVAL = 2  # seconds
+LOCK_TIMEOUT = 300  # 秒
+LOCK_CHECK_INTERVAL = 2  # 秒
 COMPILED_EXTENSION_NAME = "libpassivbot_rust"
 PYTHON_MODULE_NAME = "passivbot_rust"
 SOURCE_STAMP_SUFFIX = ".rust-src-sha256"
 
 
 def _extension_suffixes() -> list[str]:
-    # Prefer the exact interpreter suffix when available (e.g. `.cpython-312-darwin.so`),
-    # but keep broad fallbacks for non-standard environments.
+    # 优先使用精确的解释器后缀（如 `.cpython-312-darwin.so`），
+    # 但为非标准环境保留广泛的后备方案。
     suffix = sysconfig.get_config_var("EXT_SUFFIX")
     if suffix:
         return [suffix.lstrip(".")]
@@ -45,9 +44,8 @@ def _local_extension_candidates() -> list[Path]:
 def _installed_extension_candidates() -> list[Path]:
     exts = _extension_suffixes()
     out: list[Path] = []
-    # The installed extension produced by `maturin develop` is typically a direct module in
-    # `<site-packages>/passivbot_rust.*.so` (platform-specific), though some layouts may place
-    # it under a package directory.
+    # `maturin develop` 生成的已安装扩展通常是 `<site-packages>/passivbot_rust.*.so` 中的
+    # 直接模块（平台特定），但某些布局可能将其放在包目录下。
     for key in ("platlib", "purelib"):
         root = sysconfig.get_paths().get(key)
         if not root:
@@ -60,7 +58,7 @@ def _installed_extension_candidates() -> list[Path]:
             continue
         for ext in exts:
             out.extend(pkg_dir.glob(f"{PYTHON_MODULE_NAME}*.{ext}"))
-    # Deduplicate (platlib/purelib often match).
+    # 去重（platlib/purelib 通常匹配）。
     return list(dict.fromkeys(out))
 
 
@@ -74,10 +72,10 @@ def _target_extension_candidates() -> list[Path]:
 
 def compiled_extension_paths() -> List[Path]:
     """
-    Return extension candidates in import-precedence order.
+    按导入优先顺序返回扩展候选路径。
 
-    When running `src/*.py` scripts, `src/` is typically first on `sys.path`, so a local
-    `src/passivbot_rust*.so` will shadow an installed site-packages build.
+    运行 `src/*.py` 脚本时，`src/` 通常在 `sys.path` 的首位，因此本地的
+    `src/passivbot_rust*.so` 会遮蔽已安装的 site-packages 构建。
     """
     return (
         _local_extension_candidates()
@@ -88,11 +86,11 @@ def compiled_extension_paths() -> List[Path]:
 
 def _import_target_compiled_path() -> Optional[Path]:
     """
-    Resolve the compiled artifact Python would import in the current process.
+    解析当前进程中 Python 会导入的编译产物路径。
 
-    This must work both for direct extension modules and for the package layout produced by
-    `maturin develop`, where `find_spec("passivbot_rust")` resolves to `__init__.py` and the
-    compiled extension lives alongside it.
+    这对直接扩展模块和 `maturin develop` 生成的包布局都必须有效，
+    后者中 `find_spec("passivbot_rust")` 解析到 `__init__.py`，
+    编译扩展与其并列存放。
     """
     spec = importlib.util.find_spec(PYTHON_MODULE_NAME)
     if spec is None:
@@ -147,11 +145,11 @@ def _compiled_path_from_loaded_module() -> Optional[Path]:
 
 def preferred_compiled_mtime() -> Optional[float]:
     """
-    Mtime of the extension artifact that is *most likely* to be imported.
+    最可能被导入的扩展产物的修改时间。
 
-    Priority:
-    1) `src/passivbot_rust*.so` (shadows everything when running `src/*.py`)
-    2) installed site-packages `passivbot_rust/passivbot_rust*.so`
+    优先级：
+    1) `src/passivbot_rust*.so`（运行 `src/*.py` 时遮蔽一切）
+    2) 已安装的 site-packages `passivbot_rust/passivbot_rust*.so`
     3) `passivbot-rust/target/release/libpassivbot_rust.*`
     """
     import_target = _import_target_compiled_path()
@@ -169,9 +167,9 @@ def preferred_compiled_mtime() -> Optional[float]:
 
 def preferred_compiled_path() -> Optional[Path]:
     """
-    Path of the extension artifact that is *most likely* to be imported.
+    最可能被导入的扩展产物的路径。
 
-    Priority matches `preferred_compiled_mtime()`.
+    优先级与 `preferred_compiled_mtime()` 一致。
     """
     import_target = _import_target_compiled_path()
     if import_target is not None and import_target.exists():
@@ -264,11 +262,11 @@ def _tracked_source_files(root: Path = Path("passivbot-rust")) -> list[Path]:
 
 def latest_source_mtime(root: Path = Path("passivbot-rust")) -> Optional[float]:
     """
-    Return the latest mtime of inputs that should trigger a rebuild.
+    返回应触发重建的输入文件的最新修改时间。
 
-    Notes:
-    - Avoid scanning `target/` since build artifacts may contain generated `.rs` files and
-      can cause perpetual "stale" detection.
+    注意：
+    - 避免扫描 `target/`，因为构建产物可能包含生成的 `.rs` 文件，
+      会导致永久性的"过期"检测。
     """
     mtimes: list[float] = []
     for file_path in _tracked_source_files(root):
@@ -390,11 +388,11 @@ def stamp_compiled_extensions(fingerprint: Optional[str]) -> None:
 
 def prune_shadowing_local_extensions() -> None:
     """
-    Remove local `src/passivbot_rust*.so` copies when an installed build exists.
+    当存在已安装的构建时，移除本地 `src/passivbot_rust*.so` 副本。
 
-    The canonical runtime artifact is the editable-install output in site-packages. A local copied
-    extension in `src/` can shadow that build when `src/` is first on `sys.path`, which is exactly
-    how stale-extension confusion happens in this repo.
+    标准的运行时产物是 site-packages 中的 editable-install 输出。`src/` 中的本地
+    副本扩展在 `src/` 位于 `sys.path` 首位时会遮蔽该构建，这正是本仓库中
+    过期扩展混淆的根源。
     """
     installed = [p for p in _installed_extension_candidates() if p.exists()]
     if not installed:
@@ -439,21 +437,21 @@ def check_and_maybe_compile(
     fail_on_stale: bool = False,
 ) -> None:
     """
-    Ensure the Rust extension exists and is up to date.
+    确保 Rust 扩展存在且为最新版本。
 
-    This must be called before importing passivbot_rust.
+    必须在导入 passivbot_rust 之前调用。
     """
     if skip:
         return
 
     if "passivbot_rust" in sys.modules:
-        # Already loaded in this process; if caller insists on force/fail, error out.
+        # 已在此进程中加载；如果调用方坚持 force/fail，则报错。
         if force or fail_on_stale:
             raise RuntimeError("passivbot_rust is already imported; restart required.")
         print("passivbot_rust already imported; using existing binary.")
         return
 
-    # Prefer the editable-install artifact in site-packages and delete shadowing local copies.
+    # 优先使用 site-packages 中的 editable-install 产物，并删除遮蔽的本地副本。
     prune_shadowing_local_extensions()
 
     source_mtime = latest_source_mtime()
@@ -482,7 +480,7 @@ def check_and_maybe_compile(
     finally:
         release_lock()
 
-    # Re-check staleness after compile
+    # 编译后重新检查是否过期
     prune_shadowing_local_extensions()
     compiled_path = preferred_compiled_path()
     if extension_needs_rebuild(compiled_path, latest_source_mtime(), source_fingerprint()):
@@ -491,19 +489,19 @@ def check_and_maybe_compile(
 
 def sync_installed_extension_into_src() -> None:
     """
-    Deprecated compatibility shim.
+    已弃用的兼容性垫片。
 
-    The robust fix for stale-extension shadowing is to remove local `src/passivbot_rust*.so`
-    copies entirely and rely on the installed editable build in site-packages.
+    修复过期扩展遮蔽问题的可靠方法是完全移除本地 `src/passivbot_rust*.so` 副本，
+    依赖 site-packages 中已安装的 editable 构建。
     """
     prune_shadowing_local_extensions()
 
 
 def verify_loaded_runtime_extension(*, fingerprint: Optional[str] = None) -> dict:
     """
-    Verify that the compiled artifact loaded in this Python process matches current Rust sources.
+    验证此 Python 进程中加载的编译产物是否与当前 Rust 源码匹配。
 
-    This should be called after importing `passivbot_rust` in long-lived command entrypoints.
+    应在长期运行的命令入口点中导入 `passivbot_rust` 后调用。
     """
     if fingerprint is None:
         fingerprint = source_fingerprint()
@@ -511,7 +509,7 @@ def verify_loaded_runtime_extension(*, fingerprint: Optional[str] = None) -> dic
     module = sys.modules.get(PYTHON_MODULE_NAME)
     runtime_path = _compiled_path_from_loaded_module()
     if runtime_path is None and module is not None:
-        # Test environments frequently install a lightweight stub module under this name.
+        # 测试环境通常会安装一个轻量级的桩模块。
         if not hasattr(module, "__path__") and not getattr(module, "__file__", None):
             return {
                 "runtime_compiled_path": None,

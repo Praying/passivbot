@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-Interactive iterative backtesting helper.
+交互式迭代回测辅助工具。
 
-Usage:
+用法：
     python src/tools/iterative_backtester.py path/to/config.hjson --auto-run
     python src/tools/iterative_backtester.py path/to/config.hjson --auto-run \\
         --override backtest.start_date=2022-01-01 --override backtest.end_date=now
 
-The script loads all OHLCV data up-front and then lets you rerun backtests
-quickly after editing bot parameters. It prints a concise metrics table per run
-and keeps track of the best configuration seen so far according to the
-optimizer's scoring rules.
+此脚本预先加载所有 OHLCV 数据，然后允许您在编辑机器人参数后快速重新运行回测。
+它每次运行打印简洁的指标表，并根据优化器的评分规则跟踪迄今为止看到的最佳配置。
 """
 
 from __future__ import annotations
@@ -34,7 +32,7 @@ import numpy as np
 from prettytable import PrettyTable
 from config import load_prepared_config  # noqa: E402
 
-# Ensure we can import modules from src/
+# 确保可以从 src/ 导入模块
 SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(SRC_ROOT) not in sys.path:
     sys.path.append(str(SRC_ROOT))
