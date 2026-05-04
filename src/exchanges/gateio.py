@@ -9,7 +9,7 @@ class GateIOBot(CCXTBot):
     def __init__(self, config: dict):
         super().__init__(config)
         self.ohlcvs_1m_init_duration_seconds = (
-            120  # gateio has stricter rate limiting on fetching ohlcvs
+            120  # gateio 获取 ohlcvs 有更严格的速率限制
         )
         self.hedge_mode = False
         max_cancel = int(require_live_value(config, "max_n_cancellations_per_batch"))
@@ -19,36 +19,35 @@ class GateIOBot(CCXTBot):
         self.custom_id_max_length = 28
 
     def create_ccxt_sessions(self):
-        """GateIO: Add broker header to CCXT config."""
+        """GateIO：向 CCXT 配置添加经纪人头部。"""
         super().create_ccxt_sessions()
-        # Add broker header to both clients
+        # 向两个客户端添加经纪人头部
         headers = {"X-Gate-Channel-Id": self.broker_code} if self.broker_code else {}
         for client in [self.cca, self.ccp]:
             if client is not None:
                 client.headers.update(headers)
 
-    # ═══════════════════ HOOK OVERRIDES ═══════════════════
+    # ═══════════════════ 钩子重写 ═══════════════════
 
     def _get_position_side_for_order(self, order: dict) -> str:
-        """GateIO: Derive position side from order side + reduceOnly (one-way mode)."""
+        """GateIO：从订单方向 + reduceOnly 推导持仓方向（单向模式）。"""
         return self.determine_pos_side(order)
 
     def determine_pos_side(self, order):
-        """GateIO-specific logic for one-way mode position side derivation."""
+        """GateIO 单向模式持仓方向推导的专用逻辑。"""
         if order["side"] == "buy":
             return "short" if order["reduceOnly"] else "long"
         if order["side"] == "sell":
             return "long" if order["reduceOnly"] else "short"
         raise Exception(f"unsupported order side {order['side']}")
 
-    # ═══════════════════ GATEIO-SPECIFIC METHODS ═══════════════════
+    # ═══════════════════ GateIO 专用方法 ═══════════════════
 
     async def fetch_balance(self) -> float:
-        """GateIO: Fetch balance with special UID logic for websockets.
+        """GateIO：获取余额，包含用于 websocket 的特殊 UID 逻辑。
 
-        GateIO requires UID for websocket subscriptions, which is obtained
-        from the balance response. Also handles classic vs multi_currency
-        margin modes.
+        GateIO 的 websocket 订阅需要 UID，该 UID 从余额响应中获取。
+        同时处理 classic 与 multi_currency 保证金模式。
         """
         balance_fetched = await self.cca.fetch_balance()
         if not hasattr(self, "uid") or not self.uid:
@@ -93,7 +92,7 @@ class GateIOBot(CCXTBot):
         return sorted(all_fetched.values(), key=lambda x: x["timestamp"])
 
     async def gather_fill_events(self, start_time=None, end_time=None, limit=None):
-        """Return canonical fill events for Gate.io."""
+        """返回 Gate.io 的标准成交事件。"""
         events = []
         fills = await self.fetch_pnls(start_time=start_time, end_time=end_time, limit=limit)
         for fill in fills:
@@ -137,8 +136,8 @@ class GateIOBot(CCXTBot):
         order_type = order["type"] if "type" in order else "limit"
         params = {
             "reduce_only": order["reduce_only"],
-            # Gate.io requires contract order text to start with "t-". CCXT maps
-            # clientOrderId to that exchange text field while preserving our marker.
+            # Gate.io 要求合约订单文本以 "t-" 开头。CCXT 将
+            # clientOrderId 映射到该交易所文本字段，同时保留我们的标记。
             "clientOrderId": order["custom_id"],
         }
         if order_type == "limit":
@@ -154,9 +153,9 @@ class GateIOBot(CCXTBot):
             return False
 
     async def update_exchange_config_by_symbols(self, symbols):
-        """GateIO: No per-symbol configuration needed."""
+        """GateIO：无需按品种配置。"""
         pass
 
     async def update_exchange_config(self):
-        """GateIO: No exchange-level configuration needed."""
+        """GateIO：无需交易所级别配置。"""
         pass

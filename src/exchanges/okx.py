@@ -17,45 +17,45 @@ class OKXBot(CCXTBot):
             "sell": {"long": "close_long", "short": "open_short"},
         }
         self.custom_id_max_length = 32
-        # Track whether dual-side/hedge mode is available; default to True.
+        # 跟踪是否可用双向/对冲模式；默认为 True。
         self.okx_dual_side = True
         self.okx_pm_account = False
 
     async def _detect_account_config(self):
         """
-        Inspect account configuration to detect portfolio margin (PM) and position mode.
-        Falls back silently if the endpoint is unavailable.
+        检查账户配置以检测组合保证金（PM）和持仓模式。
+        如果端点不可用则静默回退。
         """
         try:
             cfg = await self.cca.private_get_account_config()
             data = cfg.get("data", [{}])
             data0 = data[0] if data else {}
-            pos_mode = str(data0.get("posMode", "")).lower()  # "long_short_mode" or "net_mode"
-            acct_lv = str(data0.get("acctLv", "")).lower()  # "pm" for portfolio margin accounts
+            pos_mode = str(data0.get("posMode", "")).lower()  # "long_short_mode" 或 "net_mode"
+            acct_lv = str(data0.get("acctLv", "")).lower()  # "pm" 表示组合保证金账户
             if pos_mode == "net_mode":
                 self.okx_dual_side = False
                 self.hedge_mode = False
             elif pos_mode == "long_short_mode":
                 self.okx_dual_side = True
-            # If unknown, keep default True and let later failures flip it off.
+            # 如果未知，保持默认 True，让后续失败将其关闭。
             self.okx_pm_account = acct_lv == "pm"
             if self.okx_pm_account:
                 logging.info(
-                    "OKX account detected as Portfolio Margin (PM); mode/leverage changes may be restricted."
+                    "OKX 账户检测为组合保证金（PM）；模式/杠杆变更可能受限。"
                 )
             if not self.okx_dual_side:
-                logging.info("OKX account is in net (one-way) mode; running without posSide/hedge.")
+                logging.info("OKX 账户为净额（单向）模式；不使用 posSide/对冲运行。")
         except Exception as e:
-            logging.warning(f"Unable to detect OKX account configuration: {e}")
+            logging.warning(f"无法检测 OKX 账户配置：{e}")
 
-    # ═══════════════════ HOOK OVERRIDES ═══════════════════
+    # ═══════════════════ 钩子重写 ═══════════════════
 
     def _get_position_side_for_order(self, order: dict) -> str:
-        """OKX provides posSide in info."""
+        """OKX 在 info 中提供 posSide。"""
         return order.get("info", {}).get("posSide", "long").lower()
 
     def _normalize_positions(self, fetched: list) -> list:
-        """OKX: Preserve live positions across both cross and isolated margin modes."""
+        """OKX：在全仓和逐仓模式下保留实盘持仓。"""
         positions = []
         for elm in fetched:
             contracts = float(elm.get("contracts", 0))
@@ -74,20 +74,20 @@ class OKXBot(CCXTBot):
         return positions
 
     def _get_pnl_from_trade(self, trade: dict) -> float:
-        """OKX uses fillPnl in info."""
+        """OKX 使用 info 中的 fillPnl。"""
         return float(trade.get("info", {}).get("fillPnl", 0))
 
     def _get_position_side_from_trade(self, trade: dict) -> str:
-        """OKX provides posSide in info."""
+        """OKX 在 info 中提供 posSide。"""
         return trade.get("info", {}).get("posSide", "long").lower()
 
-    # ═══════════════════ OKX-SPECIFIC METHODS ═══════════════════
+    # ═══════════════════ OKX 专用方法 ═══════════════════
 
     async def fetch_balance(self) -> float:
-        """OKX: Complex multi-asset mode balance calculation.
+        """OKX：复杂的多资产模式余额计算。
 
-        OKX has a unique balance structure that requires summing collateral
-        across multiple assets, converting each to quote currency.
+        OKX 拥有独特的余额结构，需要对多种资产的抵押品求和，
+        并将每种资产转换为报价货币。
         """
         fetched_balance = await self.cca.fetch_balance()
         balance = 0.0
@@ -135,7 +135,7 @@ class OKXBot(CCXTBot):
         return sorted(all_fetched.values(), key=lambda x: x["timestamp"])
 
     async def gather_fill_events(self, start_time=None, end_time=None, limit=None):
-        """Return canonical fill events for OKX."""
+        """返回 OKX 的标准成交事件。"""
         events = []
         fills = await self.fetch_pnls(start_time=start_time, end_time=end_time, limit=limit)
         for fill in fills:
@@ -160,7 +160,7 @@ class OKXBot(CCXTBot):
         start_time: int = None,
         end_time: int = None,
     ):
-        """Fetch trades from OKX. If there are more than 100 fills, fetches latest."""
+        """从 OKX 获取交易。如果超过 100 笔成交，则获取最新的。"""
         if end_time is None:
             end_time = utc_ms() + 1000 * 60 * 60 * 24
         if start_time is None:
@@ -174,13 +174,13 @@ class OKXBot(CCXTBot):
         return sorted(fetched, key=lambda x: x["timestamp"])
 
     async def execute_cancellation(self, order: dict) -> dict:
-        """OKX: Cancel order with special handling for 51400 (already cancelled/filled)."""
+        """OKX：取消订单，特殊处理 51400（已取消/已成交）。"""
         try:
             return await self.cca.cancel_order(order["id"], symbol=order["symbol"])
         except Exception as e:
-            # 51400 = order already cancelled or filled - not an error
+            # 51400 = 订单已取消或已成交 - 非错误
             if '"sCode":"51400"' in str(e):
-                logging.info(f"Order already cancelled/filled: {e}")
+                logging.info(f"订单已取消/已成交：{e}")
                 return {}
             raise
 
@@ -194,7 +194,7 @@ class OKXBot(CCXTBot):
             "clOrdId": order["custom_id"],
             "marginMode": margin_mode,
         }
-        # Only send positionSide when dual-side mode is confirmed.
+        # 仅在确认双向模式时发送 positionSide。
         if self.okx_dual_side:
             params["positionSide"] = order["position_side"]
         return params
@@ -235,10 +235,10 @@ class OKXBot(CCXTBot):
                 logging.info(f"{symbol}: {to_print}")
 
     async def update_exchange_config(self):
-        # Detect current account mode; adjust expectations before attempting changes.
+        # 检测当前账户模式；在尝试变更前调整预期。
         await self._detect_account_config()
         if not self.okx_dual_side:
-            # One-way mode: skip attempting to set hedge mode; orders will omit posSide.
+            # 单向模式：跳过设置双向持仓模式的尝试；订单将省略 posSide。
             return
         try:
             res = await self.cca.set_position_mode(True)
@@ -246,19 +246,19 @@ class OKXBot(CCXTBot):
         except Exception as e:
             err_str = str(e)
             if '"code":"59000"' in err_str:
-                logging.info("[config] hedge mode update skipped: %s", e)
+                logging.info("[config] 双向持仓模式更新已跳过：%s", e)
             elif '"code":"51039"' in err_str or '"code":"51000"' in err_str:
-                # Cannot switch to dual/hedge (often due to PM or open orders/positions).
+                # 无法切换到双向/对冲模式（通常由于 PM 或未成交订单/持仓）。
                 self.okx_dual_side = False
                 self.hedge_mode = False
                 logging.warning(
-                    "[config] OKX rejected hedge/dual-side switch (51039/51000). Continuing in net mode without posSide."
+                    "[config] OKX 拒绝双向/对冲切换（51039/51000）。以净额模式继续运行，不使用 posSide。"
                 )
             else:
-                logging.error("[config] error setting hedge mode: %s", e)
+                logging.error("[config] 设置双向持仓模式出错：%s", e)
 
     async def calc_ideal_orders(self):
-        # okx has max 100 open orders. Drop orders whose pprice diff is greatest.
+        # okx 最多 100 个未成交订单。丢弃价格差异最大的订单。
         ideal_orders = await super().calc_ideal_orders()
         ideal_orders_tmp = []
         for s in ideal_orders:

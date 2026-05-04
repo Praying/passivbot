@@ -1,34 +1,33 @@
 """
-CCXTBot: Universal exchange connector using CCXT unified API.
+CCXTBot: 使用 CCXT 统一 API 的通用交易所连接器。
 
-This is a base class for quickly onboarding new exchanges. Subclass this
-and override only the methods that need exchange-specific behavior.
+这是快速接入新交易所的基类。继承此类并仅覆盖需要交易所特定行为的方法。
 
-See docs/plans/2026-01-02-ccxtbot-design.md for design rationale.
+设计原理详见 docs/plans/2026-01-02-ccxtbot-design.md。
 
-Hook Taxonomy
-=============
-CCXTBot uses a consistent naming convention for extension points:
+钩子分类
+========
+CCXTBot 使用统一的命名约定来定义扩展点：
 
-    can_*        - Capability checks (return bool)
-                   Example: can_watch_orders() -> True if WebSocket supported
+    can_*        - 能力检查（返回 bool）
+                   示例：can_watch_orders() -> 如果支持 WebSocket 则返回 True
 
-    _do_*        - Async actions that call the exchange API
-                   Example: _do_fetch_balance() -> dict from CCXT
+    _do_*        - 调用交易所 API 的异步操作
+                   示例：_do_fetch_balance() -> 来自 CCXT 的 dict
 
-    _get_*       - Value extraction from API responses
-                   Example: _get_balance(fetched) -> float
+    _get_*       - 从 API 响应中提取值
+                   示例：_get_balance(fetched) -> float
 
-    _normalize_* - Data transformation to passivbot format
-                   Example: _normalize_positions(fetched) -> list[dict]
+    _normalize_* - 数据转换为 passivbot 格式
+                   示例：_normalize_positions(fetched) -> list[dict]
 
-    _build_*     - Config/parameter construction
-                   Example: _build_order_params(order) -> dict for CCXT
+    _build_*     - 配置/参数构建
+                   示例：_build_order_params(order) -> CCXT 所需的 dict
 
-To customize behavior for a new exchange:
-1. Subclass CCXTBot
-2. Override only the hooks that need exchange-specific logic
-3. Template methods (fetch_balance, fetch_positions, etc.) orchestrate the hooks
+为新交易所自定义行为：
+1. 继承 CCXTBot
+2. 仅覆盖需要交易所特定逻辑的钩子
+3. 模板方法（fetch_balance、fetch_positions 等）负责编排钩子
 """
 
 import asyncio
@@ -47,51 +46,51 @@ assert_correct_ccxt_version(ccxt=ccxt_async)
 
 
 def format_exchange_config_response(res: dict) -> str:
-    """Format exchange config API response (leverage, margin mode) concisely.
+    """简洁格式化交易所配置 API 响应（杠杆、保证金模式）。
 
-    Instead of logging full JSON like:
+    不记录完整 JSON，例如：
         {'symbol': 'ADAUSDT', 'leverage': '10', 'maxNotionalValue': '10000000'}
-    Returns:
-        'ok' or 'leverage=10x' or error message
+    返回：
+        'ok' 或 'leverage=10x' 或错误信息
     """
     if not isinstance(res, dict):
         return str(res)[:50]
 
-    # Check for success indicators
+    # 检查成功指示器
     code = res.get("code") or res.get("retCode")
     msg = res.get("msg") or res.get("retMsg") or res.get("message", "")
     status = res.get("status", "")
 
-    # Success cases
+    # 成功情况
     if code in (0, "0", "200000", 200000):
         return "ok"
     if status == "ok":
         return "ok"
 
-    # "No need to change" is success
+    # "无需更改"视为成功
     if "no need" in str(msg).lower():
         return "ok (unchanged)"
 
-    # Extract useful info
+    # 提取有用信息
     leverage = res.get("leverage") or res.get("lever")
     if leverage:
         return f"leverage={leverage}x"
 
-    # Error cases - show code and message
+    # 错误情况 - 显示代码和消息
     if code and msg:
         return f"code={code}: {msg[:40]}"
     if msg:
         return msg[:50]
 
-    # Fallback: truncated string
+    # 回退：截断字符串
     s = str(res)
     return s[:60] + "..." if len(s) > 60 else s
 
 
 class CCXTBot(Passivbot):
-    """Generic exchange bot using CCXT unified API.
+    """使用 CCXT 统一 API 的通用交易所机器人。
 
-    See module docstring for hook taxonomy and extension patterns.
+    钩子分类和扩展模式详见模块文档字符串。
     """
 
     def __init__(self, config: dict):
@@ -100,50 +99,50 @@ class CCXTBot(Passivbot):
         self._live_margin_modes = {}
         self._blocked_margin_symbols_warned = set()
 
-    # ═══════════════════ ORDER WATCHING HOOKS ═══════════════════
+    # ═══════════════════ 订单监听钩子 ═══════════════════
 
     def can_watch_orders(self) -> bool:
-        """Hook: Can this exchange watch orders in real-time?
+        """钩子：此交易所是否支持实时监听订单？
 
-        Default: Check CCXT's has['watchOrders']
-        Override: Return True if implementing native WebSocket
+        默认：检查 CCXT 的 has['watchOrders']
+        覆盖：如果实现了原生 WebSocket 则返回 True
         """
         if self.ccp is None:
             return False
         return bool(self.ccp.has.get("watchOrders"))
 
     async def _do_watch_orders(self) -> list:
-        """Hook: Fetch the next batch of order updates.
+        """钩子：获取下一批订单更新。
 
-        Default: Use CCXT's watchOrders()
-        Override: Implement native WebSocket
+        默认：使用 CCXT 的 watchOrders()
+        覆盖：实现原生 WebSocket
         """
         return await self.ccp.watch_orders()
 
     def _normalize_order_update(self, order: dict) -> dict:
-        """Hook: Transform raw order to passivbot format.
+        """钩子：将原始订单转换为 passivbot 格式。
 
-        Default: Handle CCXT unified format
-        Override: Handle exchange-specific format
+        默认：处理 CCXT 统一格式
+        覆盖：处理交易所特定格式
         """
         order["position_side"] = self._get_position_side_for_order(order)
         order["qty"] = order["amount"]
         return order
 
     def _get_position_side_for_order(self, order: dict) -> str:
-        """Hook: Derive position_side from order data.
+        """钩子：从订单数据推导 position_side。
 
-        Default: Use CCXT unified fields, fall back to custom_id derivation.
-        Override: Exchange-specific logic when neither source is available.
+        默认：使用 CCXT 统一字段，回退到 custom_id 推导。
+        覆盖：当两个来源都不可用时使用交易所特定逻辑。
         """
         info = order.get("info", {})
 
-        # 1. Exchange provides positionSide directly
+        # 1. 交易所直接提供 positionSide
         pos_side = info.get("positionSide", "")
         if pos_side:
             return pos_side.lower()
 
-        # 2. Derive from CCXT unified clientOrderId
+        # 2. 从 CCXT 统一 clientOrderId 推导
         custom_id = order.get("clientOrderId", "")
         if custom_id:
             order_type = custom_id_to_snake(custom_id)
@@ -154,13 +153,13 @@ class CCXTBot(Passivbot):
 
         return "both"
 
-    # ═══════════════════ PNL FETCHING HOOKS ═══════════════════
+    # ═══════════════════ PnL 获取钩子 ═══════════════════
 
     def _get_pnl_from_trade(self, trade: dict) -> float:
-        """Hook: Extract realized PnL from trade.
+        """钩子：从交易中提取已实现 PnL。
 
-        Default: Look for common CCXT info fields
-        Override: Exchange-specific field names
+        默认：查找常见的 CCXT info 字段
+        覆盖：交易所特定的字段名
         """
         info = trade.get("info", {})
         for field in ["realized_pnl", "realizedPnl", "pnl", "profit"]:
@@ -169,16 +168,16 @@ class CCXTBot(Passivbot):
         return 0.0
 
     def _get_position_side_from_trade(self, trade: dict) -> str:
-        """Hook: Determine position side from trade.
+        """钩子：从交易中判断持仓方向。
 
-        Default: Infer from side + PnL (entry vs exit)
-        Override: Exchange-specific logic
+        默认：根据 side + PnL 推断（开仓 vs 平仓）
+        覆盖：交易所特定逻辑
 
-        Logic: PnL=0 means entry, PnL!=0 means exit
-        - buy + entry = long
-        - buy + exit = short (closing short)
-        - sell + entry = short
-        - sell + exit = long (closing long)
+        逻辑：PnL=0 表示开仓，PnL!=0 表示平仓
+        - buy + 开仓 = long
+        - buy + 平仓 = short（平空仓）
+        - sell + 开仓 = short
+        - sell + 平仓 = long（平多仓）
         """
         pnl = self._get_pnl_from_trade(trade)
         if trade["side"] == "buy":
@@ -187,21 +186,20 @@ class CCXTBot(Passivbot):
             return "short" if pnl == 0.0 else "long"
 
     def _build_ccxt_config(self) -> dict:
-        """Build CCXT config by passing through all user_info fields.
+        """通过透传所有 user_info 字段来构建 CCXT 配置。
 
-        CCXT ignores unknown fields, so we pass everything except
-        passivbot-specific fields. Users can use any CCXT-supported
-        credential field directly in api-keys.json (apiKey, secret,
-        password, walletAddress, privateKey, etc.).
+        CCXT 会忽略未知字段，因此我们传递除 passivbot 特定字段以外的所有内容。
+        用户可以在 api-keys.json 中直接使用任何 CCXT 支持的凭据字段
+        （apiKey、secret、password、walletAddress、privateKey 等）。
         """
-        # Fields used by passivbot, not CCXT
+        # passivbot 使用的字段，非 CCXT 字段
         passivbot_fields = {"exchange", "options", "quote"}
 
         config = {k: v for k, v in self.user_info.items() if k not in passivbot_fields}
         config["enableRateLimit"] = True
-        config.setdefault("timeout", 30000)  # 30 s — CCXT default ~10 s is too tight on cold boot
+        config.setdefault("timeout", 30000)  # 30 秒 - CCXT 默认约 10 秒在冷启动时过于紧张
 
-        # Remap legacy credential field names to CCXT-native names for backwards compatibility
+        # 为向后兼容，将旧版凭据字段名映射为 CCXT 原生名称
         legacy_mappings = {
             "key": "apiKey",
             "api_key": "apiKey",
@@ -210,13 +208,13 @@ class CCXTBot(Passivbot):
             "passphrase": "password",
             "wallet_address": "walletAddress",
         }
-        deprecated_fields = []  # Collect for aggregated logging
+        deprecated_fields = []  # 收集用于聚合日志记录
         for old_name, new_name in legacy_mappings.items():
             if old_name in config and new_name not in config:
                 deprecated_fields.append(f"{old_name}->{new_name}")
                 config[new_name] = config.pop(old_name)
 
-        # Log all deprecated fields in a single message (once per exchange)
+        # 在单条消息中记录所有已弃用字段（每个交易所仅记录一次）
         if deprecated_fields:
             cache_key = f"_deprecated_keys_warned_{self.exchange}"
             if not getattr(self, cache_key, False):
@@ -230,16 +228,16 @@ class CCXTBot(Passivbot):
         return config
 
     def create_ccxt_sessions(self):
-        """Initialize REST and WebSocket CCXT clients.
+        """初始化 REST 和 WebSocket CCXT 客户端。
 
-        The REST client (cca) is always created. The WebSocket client (ccp)
-        is created only when ws_enabled=True; otherwise ccp is set to None
-        and the bot falls back to REST polling for order updates.
+        REST 客户端（cca）始终创建。WebSocket 客户端（ccp）
+        仅在 ws_enabled=True 时创建；否则 ccp 设为 None，
+        机器人回退到 REST 轮询来获取订单更新。
         """
         ccxt_config = self._build_ccxt_config()
         user_options = self.user_info.get("options", {})
 
-        # REST client — prefer futures-specific id (e.g. binanceusdm) over generic name
+        # REST 客户端 - 优先使用期货特定 id（如 binanceusdm）而非通用名称
         ccxt_id = getattr(self, "exchange_ccxt_id", self.exchange)
         exchange_class = getattr(ccxt_async, ccxt_id)
         self.cca = exchange_class(ccxt_config)
@@ -248,7 +246,7 @@ class CCXTBot(Passivbot):
         self.cca.options["defaultType"] = "swap"
         self._apply_endpoint_override(self.cca)
 
-        # WebSocket client - optional, enables faster order updates
+        # WebSocket 客户端 - 可选，启用更快的订单更新
         if self.ws_enabled:
             ws_class = getattr(ccxt_pro, ccxt_id)
             self.ccp = ws_class(ccxt_config)
@@ -261,11 +259,10 @@ class CCXTBot(Passivbot):
             logging.info(f"{self.exchange}: WebSocket disabled, using REST polling")
 
     async def validate_websocket_support(self):
-        """Check WebSocket capabilities (informational, non-fatal).
+        """检查 WebSocket 能力（信息性，非致命）。
 
-        Logs whether watchOrders is available. Does not raise.
-        Subclasses can override to set ws_orders_supported=True if
-        implementing native WebSocket.
+        记录 watchOrders 是否可用。不会抛出异常。
+        子类可以覆盖此方法，在实现原生 WebSocket 时设置 ws_orders_supported=True。
         """
         if self.ccp is None:
             logging.info(f"{self.exchange}: WebSocket client not initialized")
@@ -277,32 +274,32 @@ class CCXTBot(Passivbot):
             logging.info(f"{self.exchange}: watchOrders not supported in CCXT, using REST polling")
 
     async def fetch_balance(self) -> float:
-        """Template method: Fetch account balance for quote currency.
+        """模板方法：获取报价货币的账户余额。
 
-        Uses hooks:
-        - _do_fetch_balance(): Call exchange API
-        - _get_balance(): Extract balance value
+        使用钩子：
+        - _do_fetch_balance()：调用交易所 API
+        - _get_balance()：提取余额值
 
-        Returns:
-            float: Total balance in quote currency.
+        返回：
+            float：报价货币的总余额。
 
-        Raises:
-            Exception: On API errors or missing required balance fields
-                (caller handles via restart_bot_on_too_many_errors).
+        异常：
+            Exception：API 错误或缺少必需的余额字段时
+                （调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         fetched = await self._do_fetch_balance()
         return self._get_balance(fetched)
 
     async def capture_balance_snapshot(self) -> tuple[dict, float]:
-        """Fetch balance once and derive normalized value from the same payload."""
+        """获取一次余额并从同一数据中派生标准化值。"""
         fetched = await self._do_fetch_balance()
         return fetched, self._get_balance(deepcopy(fetched))
 
     async def _do_fetch_balance(self) -> dict:
-        """Hook: Call exchange API for balance.
+        """钩子：调用交易所 API 获取余额。
 
-        Default: Use CCXT's fetch_balance()
-        Override: Custom API call or different endpoint
+        默认：使用 CCXT 的 fetch_balance()
+        覆盖：自定义 API 调用或不同端点
         """
         logging.debug(f"{self.exchange}: fetching balance via CCXT fetch_balance()")
         t0 = time.time()
@@ -312,10 +309,10 @@ class CCXTBot(Passivbot):
         return result
 
     def _get_balance(self, fetched: dict) -> float:
-        """Hook: Extract balance value from response.
+        """钩子：从响应中提取余额值。
 
-        Default: CCXT unified format total[quote]
-        Override: Exchange-specific field paths (e.g., info.totalCrossWalletBalance)
+        默认：CCXT 统一格式 total[quote]
+        覆盖：交易所特定的字段路径（如 info.totalCrossWalletBalance）
         """
         total = fetched.get("total")
         if not isinstance(total, dict):
@@ -329,32 +326,32 @@ class CCXTBot(Passivbot):
         return float(total[self.quote])
 
     async def fetch_positions(self) -> list:
-        """Template method: Fetch all open positions.
+        """模板方法：获取所有持仓。
 
-        Uses hooks:
-        - _do_fetch_positions(): Call exchange API
-        - _normalize_positions(): Transform to passivbot format
-        - _get_position_side(): Derive position_side per position
+        使用钩子：
+        - _do_fetch_positions()：调用交易所 API
+        - _normalize_positions()：转换为 passivbot 格式
+        - _get_position_side()：为每个持仓推导 position_side
 
-        Returns:
-            list: List of position dicts with normalized fields.
+        返回：
+            list：标准化字段的持仓字典列表。
 
-        Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+        异常：
+            Exception：API 错误时（调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         fetched = await self._do_fetch_positions()
         return self._normalize_positions(fetched)
 
     async def capture_positions_snapshot(self) -> tuple[list, list]:
-        """Fetch positions once and derive normalized positions from the same payload."""
+        """获取一次持仓并从同一数据中派生标准化持仓。"""
         fetched = await self._do_fetch_positions()
         return fetched, self._normalize_positions(deepcopy(fetched))
 
     async def _do_fetch_positions(self) -> list:
-        """Hook: Call exchange API for positions.
+        """钩子：调用交易所 API 获取持仓。
 
-        Default: Use CCXT's fetch_positions()
-        Override: Custom API call
+        默认：使用 CCXT 的 fetch_positions()
+        覆盖：自定义 API 调用
         """
         logging.debug(f"{self.exchange}: fetching positions via CCXT fetch_positions()")
         t0 = time.time()
@@ -366,10 +363,10 @@ class CCXTBot(Passivbot):
         return result
 
     def _normalize_positions(self, fetched: list) -> list:
-        """Hook: Transform raw positions to passivbot format.
+        """钩子：将原始持仓转换为 passivbot 格式。
 
-        Default: Use CCXT unified fields (contracts, entryPrice, side)
-        Override: Exchange-specific field mappings
+        默认：使用 CCXT 统一字段（contracts、entryPrice、side）
+        覆盖：交易所特定的字段映射
         """
         positions = []
         for elm in fetched:
@@ -389,15 +386,15 @@ class CCXTBot(Passivbot):
         return positions
 
     def _get_position_side(self, elm: dict) -> str:
-        """Hook: Derive position_side from position data.
+        """钩子：从持仓数据推导 position_side。
 
-        Default: CCXT unified 'side' field
-        Override: Exchange-specific logic (e.g., info.positionSide)
+        默认：CCXT 统一的 'side' 字段
+        覆盖：交易所特定逻辑（如 info.positionSide）
         """
         return elm.get("side", "long").lower()
 
     async def _do_fetch_open_orders(self, symbol: str = None) -> list:
-        """Hook: Call exchange API for open orders."""
+        """钩子：调用交易所 API 获取未成交订单。"""
         exchange = getattr(self, "exchange", "unknown")
         sym_str = symbol if symbol else "all symbols"
         logging.debug(f"{exchange}: fetching open orders for {sym_str}")
@@ -410,7 +407,7 @@ class CCXTBot(Passivbot):
         return fetched
 
     def _normalize_open_orders(self, fetched: list) -> list:
-        """Hook: Transform raw open orders to passivbot format."""
+        """钩子：将原始未成交订单转换为 passivbot 格式。"""
         for elm in fetched:
             elm["position_side"] = self._get_position_side_for_order(elm)
             elm["qty"] = elm["amount"]
@@ -418,34 +415,34 @@ class CCXTBot(Passivbot):
         return sorted(fetched, key=lambda x: x["timestamp"])
 
     async def fetch_open_orders(self, symbol: str = None) -> list:
-        """Fetch open orders, optionally filtered by symbol.
+        """获取未成交订单，可按交易对筛选。
 
-        Args:
-            symbol: Optional symbol to filter orders.
+        参数：
+            symbol：可选的交易对筛选条件。
 
-        Returns:
-            list: Orders sorted by timestamp with normalized fields.
+        返回：
+            list：按时间戳排序的标准化字段订单列表。
 
-        Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+        异常：
+            Exception：API 错误时（调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         fetched = await self._do_fetch_open_orders(symbol=symbol)
         return self._normalize_open_orders(fetched)
 
     async def capture_open_orders_snapshot(self, symbol: str = None) -> tuple[list, list]:
-        """Fetch open orders once and derive normalized orders from the same payload."""
+        """获取一次未成交订单并从同一数据中派生标准化订单。"""
         fetched = await self._do_fetch_open_orders(symbol=symbol)
         return fetched, self._normalize_open_orders(deepcopy(fetched))
 
     async def watch_orders(self):
-        """Template method: Watch for order updates.
+        """模板方法：监听订单更新。
 
-        Uses hooks for customization:
-        - can_watch_orders(): Check if watching is available
-        - _do_watch_orders(): Get raw order updates
-        - _normalize_order_update(): Transform to passivbot format
+        使用钩子进行自定义：
+        - can_watch_orders()：检查是否可监听
+        - _do_watch_orders()：获取原始订单更新
+        - _normalize_order_update()：转换为 passivbot 格式
 
-        If watching is not available, exits gracefully (polling handles updates).
+        如果不可监听，优雅退出（轮询处理更新）。
         """
         if not self.can_watch_orders():
             logging.info(f"[ws] {self.exchange}: watch_orders not available, using REST polling")
@@ -473,13 +470,13 @@ class CCXTBot(Passivbot):
                 logging.info("[ws] %s: reconnecting...", self.exchange)
 
     async def update_exchange_config(self):
-        """Set exchange to hedge mode if supported.
+        """如果支持，将交易所设置为对冲模式。
 
-        Uses capability check to determine if exchange supports position mode setting.
-        Skips gracefully if not supported.
+        使用能力检查来确定交易所是否支持持仓模式设置。
+        如果不支持则优雅跳过。
 
-        Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+        异常：
+            Exception：API 错误时（调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         if not self.cca.has.get("setPositionMode"):
             logging.debug("[config] %s does not support setPositionMode, skipping", self.exchange)
@@ -496,18 +493,18 @@ class CCXTBot(Passivbot):
         logging.debug("[config] set hedge mode response: %s", res)
 
     def _should_set_margin_mode(self, symbol: str) -> bool:
-        """Hook: Should we call set_margin_mode for this symbol?
+        """钩子：是否应为此交易对调用 set_margin_mode？
 
-        Default: Check CCXT's has['setMarginMode']
-        Override: Return False if exchange doesn't support/need it
+        默认：检查 CCXT 的 has['setMarginMode']
+        覆盖：如果交易所不支持/不需要则返回 False
         """
         return self.cca.has.get("setMarginMode", False)
 
     def _get_margin_mode_preference(self) -> str:
-        """Return normalized live.margin_mode_preference.
+        """返回标准化的 live.margin_mode_preference。
 
-        Isolated-margin entry support is intentionally disabled for now. Existing live
-        isolated positions/orders are still preserved and manageable after restart.
+        逐仓保证金开仓支持目前有意禁用。现有的实时逐仓
+        持仓/订单在重启后仍被保留和可管理。
         """
         config = getattr(self, "config", {}) or {}
         raw = get_optional_live_value(config, "margin_mode_preference", "cross")
@@ -625,7 +622,7 @@ class CCXTBot(Passivbot):
         return False
 
     def _get_margin_capability(self, symbol: str) -> str:
-        """Return one of: both, cross_only, isolated_only."""
+        """返回以下之一：both、cross_only、isolated_only。"""
         if self._requires_isolated_margin(symbol):
             return "isolated_only"
 
@@ -643,7 +640,7 @@ class CCXTBot(Passivbot):
         return "both"
 
     def _resolve_margin_policy_for_symbol(self, symbol: str) -> dict:
-        """Resolve actual mode to apply plus whether new entries must be blocked."""
+        """解析实际要应用的模式以及是否必须阻止新开仓。"""
         live_margin_mode = getattr(self, "_live_margin_modes", {}).get(symbol)
         if self._has_live_symbol_state(symbol) and live_margin_mode in {"cross", "isolated"}:
             capability = self._get_margin_capability(symbol)
@@ -664,22 +661,22 @@ class CCXTBot(Passivbot):
         return {"mode": "cross", "blocked": False, "capability": capability}
 
     def _requires_isolated_margin(self, symbol: str) -> bool:
-        """Check if a symbol requires isolated margin mode.
+        """检查交易对是否需要逐仓保证金模式。
 
-        Override in subclasses to detect exchange-specific isolated-only markets.
-        Examples: HIP-3 stock perps on Hyperliquid, certain leveraged tokens.
+        在子类中覆盖以检测交易所特定的仅逐仓市场。
+        示例：Hyperliquid 上的 HIP-3 股票永续合约、某些杠杆代币。
 
-        Args:
-            symbol: CCXT-style symbol
+        参数：
+            symbol：CCXT 格式的交易对
 
-        Returns:
-            True if this symbol requires isolated margin mode
+        返回：
+            如果此交易对需要逐仓保证金模式则返回 True
         """
-        # Default: check market info for common isolated-only flags
+        # 默认：检查市场信息中常见的仅逐仓标志
         market = getattr(self, "markets_dict", {}).get(symbol, {})
         info = market.get("info", {})
 
-        # Check common flags across exchanges
+        # 检查各交易所的通用标志
         if info.get("onlyIsolated", False):
             return True
         if info.get("marginMode") == "isolated":
@@ -690,27 +687,27 @@ class CCXTBot(Passivbot):
         return False
 
     def _get_margin_mode_for_symbol(self, symbol: str) -> str:
-        """Get the appropriate margin mode for a symbol.
+        """获取交易对的适当保证金模式。
 
-        Args:
-            symbol: CCXT-style symbol
+        参数：
+            symbol：CCXT 格式的交易对
 
-        Returns:
-            "isolated" or "cross"
+        返回：
+            "isolated" 或 "cross"
         """
         return self._resolve_margin_policy_for_symbol(symbol)["mode"]
 
     def _calc_min_isolated_leverage(self) -> int:
-        """Calculate minimum leverage required for isolated margin positions.
+        """计算逐仓持仓所需的最小杠杆。
 
-        For isolated margin, margin_required = exposure / leverage.
-        To ensure margin requirements never exceed balance:
+        对于逐仓保证金，margin_required = exposure / leverage。
+        为确保保证金需求不超过余额：
             margin_required <= balance
             (TWEL * balance) / leverage <= balance
             leverage >= TWEL
 
-        Returns:
-            Minimum leverage (ceiling of max TWEL across both sides)
+        返回：
+            最小杠杆（两侧最大 TWEL 的向上取整）
         """
         long_twel = float(self.bot_value("long", "total_wallet_exposure_limit") or 0.0)
         short_twel = float(self.bot_value("short", "total_wallet_exposure_limit") or 0.0)
@@ -719,20 +716,20 @@ class CCXTBot(Passivbot):
         if max_twel <= 0:
             return 1
 
-        # Ceiling ensures we always have enough margin
+        # 向上取整确保始终有足够的保证金
         return max(1, math.ceil(max_twel))
 
     def _calc_leverage_for_symbol(self, symbol: str) -> int:
-        """Calculate the appropriate leverage for a symbol.
+        """计算交易对的适当杠杆。
 
-        For isolated margin symbols, ensures leverage is high enough to meet
-        margin requirements given the configured TWEL.
+        对于逐仓交易对，确保杠杆足够高以满足
+        给定配置 TWEL 的保证金需求。
 
-        Args:
-            symbol: CCXT-style symbol
+        参数：
+            symbol：CCXT 格式的交易对
 
-        Returns:
-            Leverage to use (capped by max_leverage for the symbol)
+        返回：
+            使用的杠杆（受交易对的 max_leverage 限制）
         """
         configured = int(self.config_get(["live", "leverage"], symbol=symbol))
         max_lev = getattr(self, "max_leverage", {}).get(symbol, configured)
@@ -782,16 +779,16 @@ class CCXTBot(Passivbot):
         return kept
 
     async def update_exchange_config_by_symbols(self, symbols: list):
-        """Set leverage and margin mode for each symbol.
+        """为每个交易对设置杠杆和保证金模式。
 
-        For isolated margin symbols, leverage is automatically adjusted to ensure
-        margin requirements can be met given the configured TWEL.
+        对于逐仓交易对，杠杆会自动调整以确保
+        给定配置 TWEL 的保证金需求可以满足。
 
-        Args:
-            symbols: List of symbols to configure.
+        参数：
+            symbols：要配置的交易对列表。
 
-        Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+        异常：
+            Exception：API 错误时（调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         can_set_leverage = self.cca.has.get("setLeverage", False)
 
@@ -815,10 +812,10 @@ class CCXTBot(Passivbot):
                 logging.info(f"{symbol}: set {margin_mode} margin mode")
 
     def set_market_specific_settings(self):
-        """Extract market-specific settings from CCXT market info.
+        """从 CCXT 市场信息中提取市场特定设置。
 
-        Populates symbol_ids, min_costs, min_qtys, qty_steps, price_steps, and c_mults
-        from CCXT's unified market structure.
+        从 CCXT 的统一市场结构中填充 symbol_ids、min_costs、min_qtys、
+        qty_steps、price_steps 和 c_mults。
         """
         super().set_market_specific_settings()
         for symbol, market in self.markets_dict.items():
@@ -838,26 +835,26 @@ class CCXTBot(Passivbot):
             self.c_mults[symbol] = market.get("contractSize", 1)
 
     async def fetch_tickers(self) -> dict:
-        """Template method: Fetch current ticker data for all markets.
+        """模板方法：获取所有市场的当前行情数据。
 
-        Uses hooks:
-        - _do_fetch_tickers(): Call exchange API
-        - _normalize_tickers(): Transform to {symbol: {bid, ask, last}}
+        使用钩子：
+        - _do_fetch_tickers()：调用交易所 API
+        - _normalize_tickers()：转换为 {symbol: {bid, ask, last}}
 
-        Returns:
-            dict: Ticker data keyed by symbol with bid/ask/last prices.
+        返回：
+            dict：按交易对键控的行情数据，包含 bid/ask/last 价格。
 
-        Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+        异常：
+            Exception：API 错误时（调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         fetched = await self._do_fetch_tickers()
         return self._normalize_tickers(fetched)
 
     async def _do_fetch_tickers(self) -> dict:
-        """Hook: Call exchange API for tickers.
+        """钩子：调用交易所 API 获取行情数据。
 
-        Default: Use CCXT's fetch_tickers()
-        Override: Custom API call or different endpoint
+        默认：使用 CCXT 的 fetch_tickers()
+        覆盖：自定义 API 调用或不同端点
         """
         logging.debug(f"{self.exchange}: fetching tickers via CCXT fetch_tickers()")
         t0 = time.time()
@@ -869,10 +866,10 @@ class CCXTBot(Passivbot):
         return result
 
     def _normalize_tickers(self, fetched: dict) -> dict:
-        """Hook: Transform to {symbol: {bid, ask, last}} format.
+        """钩子：转换为 {symbol: {bid, ask, last}} 格式。
 
-        Default: Use CCXT unified fields, filter to markets_dict
-        Override: Exchange-specific field mappings
+        默认：使用 CCXT 统一字段，过滤到 markets_dict
+        覆盖：交易所特定的字段映射
         """
         tickers = {}
         for symbol, data in fetched.items():
@@ -885,17 +882,17 @@ class CCXTBot(Passivbot):
         return tickers
 
     async def fetch_ohlcv(self, symbol: str, timeframe: str = "1m") -> list:
-        """Fetch OHLCV candlestick data.
+        """获取 OHLCV K 线数据。
 
-        Args:
-            symbol: Trading pair symbol.
-            timeframe: Candle timeframe (default "1m").
+        参数：
+            symbol：交易对符号。
+            timeframe：K 线时间周期（默认 "1m"）。
 
-        Returns:
-            list: OHLCV data.
+        返回：
+            list：OHLCV 数据。
 
-        Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+        异常：
+            Exception：API 错误时（调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         logging.debug(f"{self.exchange}: fetching OHLCV for {symbol} ({timeframe})")
         t0 = time.time()
@@ -907,18 +904,18 @@ class CCXTBot(Passivbot):
         return result
 
     async def fetch_ohlcvs_1m(self, symbol: str, since: float = None, limit: int = None) -> list:
-        """Fetch 1-minute OHLCV data with pagination support.
+        """获取 1 分钟 OHLCV 数据，支持分页。
 
-        Args:
-            symbol: Trading pair symbol.
-            since: Start timestamp in milliseconds.
-            limit: Maximum number of candles.
+        参数：
+            symbol：交易对符号。
+            since：起始时间戳（毫秒）。
+            limit：最大 K 线数量。
 
-        Returns:
-            list: Sorted OHLCV candles by timestamp.
+        返回：
+            list：按时间戳排序的 OHLCV K 线数据。
 
-        Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+        异常：
+            Exception：API 错误时（调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         n_limit = limit or 1000
         logging.debug(
@@ -934,10 +931,10 @@ class CCXTBot(Passivbot):
             )
             return result
 
-        since = int(since // 60000 * 60000)  # Round to minute
+        since = int(since // 60000 * 60000)  # 取整到分钟
         all_candles = {}
         page_count = 0
-        for _ in range(5):  # Max 5 paginated requests
+        for _ in range(5):  # 最多 5 次分页请求
             fetched = await self.cca.fetch_ohlcv(symbol, timeframe="1m", since=since, limit=n_limit)
             page_count += 1
             if not fetched:
@@ -955,33 +952,33 @@ class CCXTBot(Passivbot):
         return sorted(all_candles.values(), key=lambda x: x[0])
 
     async def fetch_pnls(self, start_time=None, end_time=None, limit=None) -> list:
-        """Template method: Fetch trade history for PnL tracking.
+        """模板方法：获取交易历史用于 PnL 追踪。
 
-        Uses hooks:
-        - _do_fetch_pnls(): Call exchange API
-        - _normalize_pnls(): Add pnl, position_side, qty to each trade
-        - _get_pnl_from_trade(): Extract PnL value
-        - _get_position_side_from_trade(): Derive position_side
+        使用钩子：
+        - _do_fetch_pnls()：调用交易所 API
+        - _normalize_pnls()：为每笔交易添加 pnl、position_side、qty
+        - _get_pnl_from_trade()：提取 PnL 值
+        - _get_position_side_from_trade()：推导 position_side
 
-        Args:
-            start_time: Start timestamp in milliseconds.
-            end_time: End timestamp in milliseconds.
-            limit: Maximum number of trades to fetch.
+        参数：
+            start_time：起始时间戳（毫秒）。
+            end_time：结束时间戳（毫秒）。
+            limit：最大获取交易数量。
 
-        Returns:
-            list: Trades sorted by timestamp with pnl, position_side, qty fields.
+        返回：
+            list：按时间戳排序的交易列表，包含 pnl、position_side、qty 字段。
 
-        Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+        异常：
+            Exception：API 错误时（调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         trades = await self._do_fetch_pnls(start_time, end_time, limit)
         return self._normalize_pnls(trades)
 
     async def _do_fetch_pnls(self, start_time, end_time, limit) -> list:
-        """Hook: Call exchange API for trades.
+        """钩子：调用交易所 API 获取交易记录。
 
-        Default: Use CCXT's fetch_my_trades()
-        Override: Custom API call or different endpoint
+        默认：使用 CCXT 的 fetch_my_trades()
+        覆盖：自定义 API 调用或不同端点
         """
         logging.debug(
             f"{self.exchange}: fetching PnLs via CCXT fetch_my_trades(), "
@@ -1004,10 +1001,10 @@ class CCXTBot(Passivbot):
         return result
 
     def _normalize_pnls(self, trades: list) -> list:
-        """Hook: Add pnl, position_side, qty to each trade.
+        """钩子：为每笔交易添加 pnl、position_side、qty。
 
-        Default: Use _get_pnl_from_trade and _get_position_side_from_trade
-        Override: Exchange-specific normalization
+        默认：使用 _get_pnl_from_trade 和 _get_position_side_from_trade
+        覆盖：交易所特定的标准化
         """
         for trade in trades:
             trade["qty"] = trade["amount"]
@@ -1016,16 +1013,16 @@ class CCXTBot(Passivbot):
         return sorted(trades, key=lambda x: x["timestamp"])
 
     def _build_order_params(self, order: dict) -> dict:
-        """Hook: Build execution parameters for CCXT order creation.
+        """钩子：为 CCXT 订单创建构建执行参数。
 
-        Default: Handle positionSide, clientOrderId, postOnly/timeInForce
-        Override: Exchange-specific parameter requirements
+        默认：处理 positionSide、clientOrderId、postOnly/timeInForce
+        覆盖：交易所特定的参数需求
 
-        Args:
-            order: Order dict with type, position_side, custom_id, etc.
+        参数：
+            order：包含 type、position_side、custom_id 等的订单字典。
 
-        Returns:
-            dict: Parameters for CCXT create_order.
+        返回：
+            dict：CCXT create_order 的参数。
         """
         params = {}
 
@@ -1045,10 +1042,10 @@ class CCXTBot(Passivbot):
         return params
 
     async def execute_orders(self, orders: list[dict]) -> list[dict]:
-        """Execute order creations in parallel using asyncio.gather.
+        """使用 asyncio.gather 并行执行订单创建。
 
-        Unlike the base class sequential approach, this fires all orders
-        concurrently for better latency on exchanges with good rate limits.
+        与基类的顺序方式不同，此方法同时发送所有订单，
+        在具有良好限速的交易所上实现更低的延迟。
         """
         if not orders:
             return []
@@ -1056,7 +1053,7 @@ class CCXTBot(Passivbot):
         tasks = [self.execute_order(order) for order in orders]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Check for exceptions and trigger error handling if needed
+        # 检查异常并按需触发错误处理
         any_exceptions = any(isinstance(r, Exception) for r in results)
         if any_exceptions:
             for i, result in enumerate(results):
@@ -1067,7 +1064,7 @@ class CCXTBot(Passivbot):
         return results
 
     async def execute_cancellations(self, orders: list[dict]) -> list[dict]:
-        """Execute order cancellations in parallel using asyncio.gather."""
+        """使用 asyncio.gather 并行执行订单取消。"""
         if not orders:
             return []
 

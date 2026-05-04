@@ -15,7 +15,7 @@ class BinanceBot(CCXTBot):
         self.custom_id_max_length = 36
 
     def create_ccxt_sessions(self):
-        """Binance: Add broker codes after standard setup."""
+        """Binance：标准设置后添加经纪人代码。"""
         self.broker_code_spot = load_broker_code("binance_spot")
         super().create_ccxt_sessions()
         for client in [self.cca, self.ccp]:
@@ -40,7 +40,7 @@ class BinanceBot(CCXTBot):
                 params={"brokerid": self.broker_code}
             )
         except Exception as e:
-            # This endpoint may not be available on all accounts - expected failure
+            # 此端点可能并非所有账户都可用 - 预期的失败
             logging.debug(f"fapiprivate_get_apireferral_ifnewuser not available: {e}")
             return
         if res["ifNewUser"] and res["rebateWorking"]:
@@ -73,18 +73,18 @@ class BinanceBot(CCXTBot):
         await self.print_new_user_suggestion()
         return res
 
-    # ═══════════════════ HOOK OVERRIDES ═══════════════════
+    # ═══════════════════ 钩子覆盖 ═══════════════════
 
     def _get_position_side_for_order(self, order: dict) -> str:
-        """Binance provides ps (positionSide) in info."""
+        """Binance 在 info 中提供 ps（positionSide）。"""
         return order.get("info", {}).get("ps", "long").lower()
 
     async def _do_fetch_positions(self) -> list:
-        """Binance: Use fapiprivatev3_get_positionrisk endpoint."""
+        """Binance：使用 fapiprivatev3_get_positionrisk 端点。"""
         return await self.cca.fapiprivatev3_get_positionrisk()
 
     def _normalize_positions(self, fetched: list) -> list:
-        """Binance: Parse positionrisk response format."""
+        """Binance：解析 positionrisk 响应格式。"""
         positions = []
         for elm in fetched:
             if float(elm["positionAmt"]) != 0.0:
@@ -102,13 +102,13 @@ class BinanceBot(CCXTBot):
         return positions
 
     def _get_balance(self, fetched: dict) -> float:
-        """Binance uses totalCrossWalletBalance in info."""
+        """Binance 使用 info 中的 totalCrossWalletBalance。"""
         return float(fetched["info"]["totalCrossWalletBalance"])
 
-    # ═══════════════════ BINANCE-SPECIFIC METHODS ═══════════════════
+    # ═══════════════════ BINANCE 特定方法 ═══════════════════
 
     async def _do_fetch_open_orders(self, symbol: str = None, all=False) -> list:
-        """Binance: Parallel fetch per-symbol to avoid expensive all-symbols query."""
+        """Binance：按交易对并行获取以避免昂贵的全交易对查询。"""
         if all:
             self.cca.options["warnOnFetchOpenOrdersWithoutSymbol"] = False
             logging.info("fetching all open orders for binance")
@@ -140,7 +140,7 @@ class BinanceBot(CCXTBot):
         return self._normalize_open_orders(fetched)
 
     async def fetch_tickers(self) -> dict:
-        """Binance: Use bookticker endpoint for efficiency."""
+        """Binance：使用 bookticker 端点以提高效率。"""
         fetched = await self.cca.fapipublic_get_ticker_bookticker()
         tickers = {}
         for elm in fetched:
@@ -195,11 +195,11 @@ class BinanceBot(CCXTBot):
         end_time: int = None,
         limit: int = None,
     ):
-        # binance needs symbol specified for fetch fills
-        # but can fetch pnls for all symbols
-        # fetch fills for all symbols with pos
-        # fetch pnls for all symbols
-        # binance returns at most 7 days worth of pnls per fetch unless both start_time and end_time are given
+        # binance 需要指定交易对来获取成交记录
+        # 但可以获取所有交易对的 PnL
+        # 获取所有有持仓的交易对的成交记录
+        # 获取所有交易对的 PnL
+        # binance 每次获取最多返回 7 天的 PnL，除非同时给出 start_time 和 end_time
         if limit is None:
             limit = 1000
         else:
@@ -233,7 +233,7 @@ class BinanceBot(CCXTBot):
         return sorted(all_fetched.values(), key=lambda x: x["timestamp"])
 
     async def gather_fill_events(self, start_time=None, end_time=None, limit=None):
-        """Return canonical fill events for Binance."""
+        """返回 Binance 的标准成交事件。"""
         events = []
         fills = await self.fetch_pnls(start_time=start_time, end_time=end_time, limit=limit)
         for fill in fills:
@@ -256,8 +256,8 @@ class BinanceBot(CCXTBot):
     async def fetch_fills_sub(self, symbol, start_time=None, end_time=None, limit=None):
         if symbol not in self.markets_dict:
             return []
-        # limit is max 1000
-        # fetches at most 7 days worth
+        # limit 最大为 1000
+        # 最多获取 7 天的数据
         max_limit = 1000
         limit = min(max_limit, limit) if limit else max_limit
         if start_time is None and end_time is None:
@@ -329,10 +329,10 @@ class BinanceBot(CCXTBot):
         end_time: int = None,
         limit: int = None,
     ):
-        # will fetch from start_time until end_time, earliest first
-        # if start_time is None and end_time is None, will only fetch for last 7 days
-        # if end_time is None, will fetch for more than 7 days
-        # if start_time is None, will only fetch for last 7 days
+        # 从 start_time 获取到 end_time，最早优先
+        # 如果 start_time 和 end_time 都为 None，则只获取最近 7 天
+        # 如果 end_time 为 None，将获取超过 7 天
+        # 如果 start_time 为 None，则只获取最近 7 天
         max_limit = 1000
         if limit is None:
             limit = max_limit

@@ -20,7 +20,7 @@ class BybitBot(CCXTBot):
         super().__init__(config)
 
     def create_ccxt_sessions(self):
-        """Bybit: set Passivbot broker id so CCXT signs POST requests with Referer."""
+        """Bybit：设置 Passivbot 经纪人 id，使 CCXT 在 POST 请求中使用 Referer 签名。"""
         super().create_ccxt_sessions()
         if not isinstance(self.broker_code, str) or not self.broker_code:
             raise ValueError("Bybit broker code must be a non-empty string")
@@ -28,16 +28,16 @@ class BybitBot(CCXTBot):
             if client is not None:
                 client.options["brokerId"] = self.broker_code
 
-    # ═══════════════════ HOOK OVERRIDES ═══════════════════
+    # ═══════════════════ 钩子覆盖 ═══════════════════
 
     def _get_position_side_for_order(self, order: dict) -> str:
-        """Bybit: Use determine_pos_side_ccxt helper."""
+        """Bybit：使用 determine_pos_side_ccxt 辅助函数。"""
         return determine_pos_side_ccxt(order)
 
-    # ═══════════════════ BYBIT-SPECIFIC METHODS ═══════════════════
+    # ═══════════════════ BYBIT 特定方法 ═══════════════════
 
     async def _do_fetch_open_orders(self, symbol: str = None) -> list:
-        """Bybit: Handle nextPageCursor pagination."""
+        """Bybit：处理 nextPageCursor 分页。"""
         open_orders = []
         seen_ids = set()
         limit = 50
@@ -75,7 +75,7 @@ class BybitBot(CCXTBot):
         return self._normalize_open_orders(fetched)
 
     async def _do_fetch_positions_paginated(self) -> list:
-        """Bybit: Handle nextPageCursor pagination for raw position capture."""
+        """Bybit：处理原始持仓获取的 nextPageCursor 分页。"""
         positions = []
         seen_keys = set()
         limit = 200
@@ -126,7 +126,7 @@ class BybitBot(CCXTBot):
         return fetched, self._normalize_positions_snapshot(deepcopy(fetched))
 
     async def fetch_balance(self) -> float:
-        """Bybit: Complex UNIFIED account balance calculation."""
+        """Bybit：复杂的 UNIFIED 账户余额计算。"""
         fetched_balance = await self.cca.fetch_balance()
         balinfo = fetched_balance["info"]["result"]["list"][0]
         if balinfo["accountType"] == "UNIFIED":
@@ -162,8 +162,8 @@ class BybitBot(CCXTBot):
             pnls = []
             if end_time is None:
                 end_time = int(self.get_exchange_time() + 1000 * 60 * 60 * 24)
-            # bybit has limit of 7 days per paginated fetch
-            # fetch multiple times
+            # bybit 每次分页获取限制为 7 天
+            # 多次获取
             i = 1
             while i < 52:  # limit n fetches to 52 (one year)
                 sts = end_time - week * i
@@ -261,10 +261,10 @@ class BybitBot(CCXTBot):
         return sorted(all_fetched_fills, key=lambda x: x["timestamp"])
 
     async def fetch_pnls(self, start_time=None, end_time=None, limit=None):
-        # fetch fills first, then pnls (bybit has them in separate endpoints)
+        # 先获取成交记录，再获取 PnL（bybit 使用不同的端点）
         if start_time:
             if self.get_exchange_time() - start_time < 1000 * 60 * 60 * 4 and limit == 100:
-                # set start time to None (fetch latest) if start time is recent
+                # 如果 start time 较近，将其设为 None（获取最新）
                 start_time = None
         fills = await self.fetch_fills(start_time=start_time, end_time=end_time, limit=limit)
         if start_time:
@@ -294,7 +294,7 @@ class BybitBot(CCXTBot):
         return sorted(joined.values(), key=lambda x: x["timestamp"])
 
     async def gather_fill_events(self, start_time=None, end_time=None, limit=None):
-        """Return canonical fill events for equity reconstruction (draft implementation)."""
+        """返回用于权益重建的标准成交事件（草案实现）。"""
 
         def extract_fill_event_from_ph(elm):
             event = {
@@ -369,13 +369,13 @@ class BybitBot(CCXTBot):
         if start_time is None:
             start_time = end_time - 1000 * 60 * 60 * 24 * 3
 
-        # fetch concurrently
+        # 并发获取
         my_trades, positions_history = await asyncio.gather(
             self.fetch_my_trades(start_time, end_time),
             self.fetch_positions_history(start_time, end_time),
         )
 
-        # extract events
+        # 提取事件
         mt_events = sorted(
             [extract_fill_event_from_mt(x) for x in my_trades], key=lambda x: x["timestamp"]
         )
@@ -399,12 +399,12 @@ class BybitBot(CCXTBot):
         return unified
 
     async def fetch_my_trades(self, start_time, end_time, limit=100):
-        # wrapper for ccxt.fetch_my_trades
-        # multiple fetches to find all fills inside given date range
-        # limit is max 100
-        # The time range between startTime and endTime cannot exceed 7 days
-        # if start time is given without end time, will fetch fills closes to one week after start time
-        # strategy: fetch backwards from end time to start time
+        # ccxt.fetch_my_trades 的包装器
+        # 多次获取以找到给定日期范围内的所有成交记录
+        # limit 最大为 100
+        # startTime 和 endTime 之间的时间范围不能超过 7 天
+        # 如果给出 start time 但没有 end time，将获取 start time 后约一周的成交记录
+        # 策略：从 end time 向 start time 反向获取
         limit = min(limit, 100)
         max_n_fetches = 200
         week_with_buffer_ms = int(1000 * 60 * 60 * 24 * 6.5)
@@ -441,18 +441,18 @@ class BybitBot(CCXTBot):
         return sorted(my_trades_all, key=lambda x: x["timestamp"])
 
     async def fetch_positions_history(self, start_time, end_time, limit=100):
-        # wrapper for ccxt.fetch_positions_history
-        # limit is max 100
+        # ccxt.fetch_positions_history 的包装器
+        # limit 最大为 100
 
-        # The start timestamp (ms)
-        # startTime and endTime are not passed, return 7 days by default
-        # Only startTime is passed, return range between startTime and startTime+7 days
-        # Only endTime is passed, return range between endTime-7 days and endTime
-        # If both are passed, the rule is endTime - startTime <= 7 days
+        # 起始时间戳（毫秒）
+        # 未传递 startTime 和 endTime 时，默认返回 7 天
+        # 仅传递 startTime 时，返回 startTime 到 startTime+7 天的范围
+        # 仅传递 endTime 时，返回 endTime-7 天到 endTime 的范围
+        # 如果都传递，规则是 endTime - startTime <= 7 天
 
-        # The time range between startTime and endTime cannot exceed 7 days
-        # if start time is given without end time, will fetch positions closes to one week after start time
-        # strategy: fetch backwards from end time to start time
+        # startTime 和 endTime 之间的时间范围不能超过 7 天
+        # 如果给出 start time 但没有 end time，将获取 start time 后约一周的持仓历史
+        # 策略：从 end time 向 start time 反向获取
         limit = min(limit, 100)
         max_n_fetches = 200
         week_with_buffer_ms = int(1000 * 60 * 60 * 24 * 6.5)

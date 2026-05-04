@@ -14,7 +14,7 @@ calc_order_price_diff = pbr.calc_order_price_diff
 
 
 def deduce_side_pside(fill: dict) -> tuple[str, str]:
-    """Infer standard ``(side, pside)`` for a Bitget fill payload."""
+    """推断 Bitget 成交数据的标准 ``(side, pside)``。"""
 
     trade_side = str(fill.get("tradeSide", "")).lower()
     raw_side = str(fill.get("side", "")).lower()
@@ -24,7 +24,7 @@ def deduce_side_pside(fill: dict) -> tuple[str, str]:
         side = side or ("buy" if pside == "long" else "sell")
         return side, pside
 
-    # Normalize hedge mode strings first.
+    # 首先标准化对冲模式字符串。
     if pos_mode == "hedge_mode":
         if "close_long" in trade_side:
             return _canonical("sell", "long")
@@ -45,7 +45,7 @@ def deduce_side_pside(fill: dict) -> tuple[str, str]:
         if "short" in trade_side:
             return _canonical("sell", "short")
 
-    # One-way mode ("single") encodes direction explicitly.
+    # 单向模式（"single"）显式编码方向。
     if "buy_single" in trade_side:
         return _canonical("buy", "long")
     if "sell_single" in trade_side:
@@ -67,7 +67,7 @@ def deduce_side_pside(fill: dict) -> tuple[str, str]:
     if "dte_sys_adl_sell_in_single_side_mode" in trade_side:
         return _canonical("sell", "short")
 
-    # Generic fallback: look for keywords.
+    # 通用回退：查找关键字。
     if "close_long" in trade_side:
         return _canonical("sell", "long")
     if "close_short" in trade_side:
@@ -91,7 +91,7 @@ class BitgetBot(CCXTBot):
         self.custom_id_max_length = 64
 
     def create_ccxt_sessions(self):
-        """Bitget: set Passivbot channel code for broker rebate attribution."""
+        """Bitget：设置 Passivbot 渠道代码用于经纪人返佣归因。"""
         super().create_ccxt_sessions()
         if not isinstance(self.broker_code, str) or not self.broker_code:
             raise ValueError("Bitget broker code must be a non-empty string")
@@ -99,14 +99,14 @@ class BitgetBot(CCXTBot):
             if client is not None:
                 client.options["broker"] = self.broker_code
 
-    # ═══════════════════ HOOK OVERRIDES ═══════════════════
+    # ═══════════════════ 钩子覆盖 ═══════════════════
 
     def _get_position_side_for_order(self, order: dict) -> str:
-        """Bitget provides posSide in info."""
+        """Bitget 在 info 中提供 posSide。"""
         return order.get("info", {}).get("posSide", "long").lower()
 
     def get_symbol_id(self, symbol):
-        """Return the exchange-native identifier for `symbol`, caching defaults."""
+        """返回 `symbol` 的交易所原生标识符，缓存默认值。"""
         if symbol in self.symbol_ids:
             return self.symbol_ids[symbol]
         logging.debug(f"symbol {symbol} missing from self.symbol_ids, using as-is")
@@ -114,15 +114,15 @@ class BitgetBot(CCXTBot):
         return symbol
 
     def set_market_specific_settings(self):
-        """Bitget override: higher minimum cost floor (5.1 USDT)."""
+        """Bitget 覆盖：更高的最低成本下限（5.1 USDT）。"""
         super().set_market_specific_settings()
         for symbol in self.markets_dict:
             elm = self.markets_dict[symbol]
-            # Bitget requires minimum 5.1 USDT per order
+            # Bitget 要求每笔订单最低 5.1 USDT
             self.min_costs[symbol] = max(5.1, elm["limits"]["cost"]["min"] or 0.1)
 
     def _normalize_order_update(self, order: dict) -> dict:
-        """Bitget override: derive side from tradeSide/posSide."""
+        """Bitget 覆盖：从 tradeSide/posSide 推导方向。"""
         order["position_side"] = self._get_position_side_for_order(order)
         order["qty"] = order["amount"]
         order["side"] = self._determine_side(order)
@@ -144,7 +144,7 @@ class BitgetBot(CCXTBot):
         raise Exception(f"failed to determine side {order}")
 
     def _normalize_open_orders(self, fetched: list) -> list:
-        """Bitget override: derive side from tradeSide/posSide."""
+        """Bitget 覆盖：从 tradeSide/posSide 推导方向。"""
         for elm in fetched:
             elm["position_side"] = elm["info"]["posSide"]
             elm["qty"] = elm["amount"]
@@ -158,7 +158,7 @@ class BitgetBot(CCXTBot):
         return self._normalize_open_orders(fetched)
 
     async def fetch_positions(self):
-        """Bitget: use CCXT unified fields (contracts, entryPrice, side)."""
+        """Bitget：使用 CCXT 统一字段（contracts、entryPrice、side）。"""
         fetched = await self.cca.fetch_positions()
         for elm in fetched:
             elm["position_side"] = elm["side"]
@@ -186,7 +186,7 @@ class BitgetBot(CCXTBot):
         return fetched
 
     def _get_balance(self, fetched: dict) -> float:
-        """Bitget override: handle union margin mode."""
+        """Bitget 覆盖：处理联合保证金模式。"""
         balance_info = [x for x in fetched["info"] if x["marginCoin"] == self.quote][0]
         if (
             "assetMode" in balance_info
@@ -196,7 +196,7 @@ class BitgetBot(CCXTBot):
             return float(balance_info["unionTotalMargin"]) - float(balance_info["unrealizedPL"])
         return float(balance_info["available"])
 
-    # ═══════════════════ BITGET-SPECIFIC METHODS ═══════════════════
+    # ═══════════════════ BITGET 特定方法 ═══════════════════
 
     async def fetch_pnls(self, start_time=None, end_time=None, limit=None):
         params = {"productType": "USDT-FUTURES"}
@@ -239,7 +239,7 @@ class BitgetBot(CCXTBot):
         return sorted(data_d.values(), key=lambda x: x["timestamp"])
 
     async def _throttled_order_detail(self, order_id: str, symbol: str):
-        """Rate limited wrapper for clientOid lookups."""
+        """clientOid 查询的限速包装器。"""
         if not hasattr(self, "_detail_fetch_timestamps"):
             self._detail_fetch_timestamps = []
         n_sec = 5
@@ -342,7 +342,7 @@ class BitgetBot(CCXTBot):
 
         self._prime_client_oid_cache()
 
-        # max limit is 100
+        # 最大限制为 100
         limit = 100 if limit is None else min(limit, 100)
         max_n_fetches = 200
         buffer_step_ms = int(1000 * 60 * 60 * 24)
@@ -484,7 +484,7 @@ class BitgetBot(CCXTBot):
                 "client_order_id": elm.get("clientOrderId"),
             }
 
-        # max limit is 100
+        # 最大限制为 100
         limit = min(limit, 100) if limit is not None else 100
         max_n_fetches = 200
         buffer_step_ms = int(1000 * 60 * 60 * 24)
@@ -604,9 +604,9 @@ class BitgetBot(CCXTBot):
                 logging.info(f"{symbol}: {to_print}")
 
     async def calc_ideal_orders(self):
-        # Bitget returns max 100 open orders per fetch_open_orders.
-        # Only create 100 open orders.
-        # Drop orders whose pprice diff is greatest.
+        # Bitget 每次 fetch_open_orders 最多返回 100 个未成交订单。
+        # 只创建 100 个未成交订单。
+        # 丢弃价格差异最大的订单。
         ideal_orders = await super().calc_ideal_orders()
         ideal_orders_tmp = []
         for s in ideal_orders:

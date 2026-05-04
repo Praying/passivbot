@@ -15,17 +15,16 @@ import base64
 calc_order_price_diff = pbr.calc_order_price_diff
 
 # ---------------------------------------------------------------------------
-# Broker mixin classes for injecting KC-BROKER-NAME on KuCoin futures requests.
+# 经纪人 mixin 类，用于在 KuCoin 期货请求中注入 KC-BROKER-NAME。
 #
-# When a broker configuration is provided via the ``options['partner']``
-# dictionary (see ``create_ccxt_sessions`` below), CCXT automatically adds
-# ``KC-API-PARTNER``, ``KC-API-PARTNER-SIGN`` and ``KC-API-PARTNER-VERIFY``
-# headers to private API calls.  However, the human friendly broker name
-# (``KC-BROKER-NAME``) is only attached on broker-specific endpoints.  To
-# ensure KuCoin attributes futures trades to the broker, we override the
-# ``sign`` method to append the broker name on private and futuresPrivate
-# requests.  These classes should be used instead of the vanilla CCXT
-# exchange classes when broker codes are defined.
+# 当通过 ``options['partner']`` 字典（见下方 ``create_ccxt_sessions``）
+# 提供经纪人配置时，CCXT 会自动向私有 API 调用添加 ``KC-API-PARTNER``、
+# ``KC-API-PARTNER-SIGN`` 和 ``KC-API-PARTNER-VERIFY`` 头部。
+# 然而，人类可读的经纪人名称（``KC-BROKER-NAME``）仅附加在
+# 经纪人专用端点上。为确保 KuCoin 将期货交易归因于经纪人，
+# 我们重写 ``sign`` 方法，在 private 和 futuresPrivate 请求上
+# 附加经纪人名称。当定义了经纪人代码时，应使用这些类
+# 代替原始的 CCXT 交易所类。
 
 
 def _add_kucoin_broker_name_header(signed: dict, options: dict) -> dict:
@@ -49,14 +48,14 @@ def _add_kucoin_broker_name_header(signed: dict, options: dict) -> dict:
 
 
 class AsyncKucoinBrokerFutures(ccxt_async.kucoinfutures):
-    """Asynchronous KuCoin futures exchange with broker tagging support."""
+    """支持经纪人标记的异步 KuCoin 期货交易所。"""
 
     def __init__(self, config=None):
         super().__init__(config)
 
     @property
     def checkConflictingProxies(self):
-        """Ensure camelCase version always points to snake_case"""
+        """确保 camelCase 版本始终指向 snake_case"""
         return self.check_conflicting_proxies
 
     def sign(self, path, api="public", method="GET", params=None, headers=None, body=None):
@@ -67,14 +66,14 @@ class AsyncKucoinBrokerFutures(ccxt_async.kucoinfutures):
 
 
 class ProKucoinBrokerFutures(ccxt_pro.kucoinfutures):
-    """Websocket-enabled KuCoin futures exchange with broker tagging support."""
+    """支持经纪人标记的 WebSocket KuCoin 期货交易所。"""
 
     def __init__(self, config=None):
         super().__init__(config)
 
     @property
     def checkConflictingProxies(self):
-        """Ensure camelCase version always points to snake_case"""
+        """确保 camelCase 版本始终指向 snake_case"""
         return self.check_conflicting_proxies
 
     def sign(self, path, api="public", method="GET", params=None, headers=None, body=None):
@@ -102,11 +101,11 @@ class KucoinBot(CCXTBot):
         return base64.b64encode(digest).decode()
 
     def create_ccxt_sessions(self) -> None:
-        """Initialise CCXT sessions for KuCoin futures with broker support.
+        """初始化支持经纪人的 KuCoin 期货 CCXT 会话。
 
-        If broker codes are defined under ``self.broker_code['futures']``, these
-        values are used to configure partner signing so that private/futures
-        requests include the correct broker metadata.
+        如果在 ``self.broker_code['futures']`` 下定义了经纪人代码，
+        则使用这些值配置合作伙伴签名，以便 private/futures
+        请求包含正确的经纪人元数据。
         """
         if not isinstance(self.broker_code, dict):
             raise TypeError("KuCoin broker code must be an object with a futures section")
@@ -155,22 +154,22 @@ class KucoinBot(CCXTBot):
             self.ccp.options["defaultType"] = "swap"
             self._apply_endpoint_override(self.ccp)
         elif self.endpoint_override:
-            logging.info("Skipping Kucoin websocket session due to custom endpoint override.")
+            logging.info("由于自定义端点覆盖，跳过 Kucoin websocket 会话。")
 
     async def watch_ohlcvs_1m(self):
-        """KuCoin: No-op - OHLCV websocket not used."""
+        """KuCoin：空操作 - 不使用 OHLCV websocket。"""
         return
 
     async def watch_ohlcv_1m_single(self, symbol):
-        """KuCoin: No-op - OHLCV websocket not used."""
+        """KuCoin：空操作 - 不使用 OHLCV websocket。"""
         return
 
     def _get_position_side_for_order(self, order: dict) -> str:
-        """KuCoin: Derive position_side from position state."""
+        """KuCoin：从持仓状态推导 position_side。"""
         return self.determine_pos_side(order)
 
     def determine_pos_side(self, order):
-        # non hedge mode
+        # 非双向持仓模式
         if self.has_position("long", order["symbol"]):
             return "long"
         elif self.has_position("short", order["symbol"]):
@@ -182,13 +181,13 @@ class KucoinBot(CCXTBot):
         raise Exception(f"unknown side {order['side']}")
 
     async def _do_fetch_open_orders(self, symbol: str = None) -> list:
-        """KuCoin: Fetch open orders with pagination.
+        """KuCoin：分页获取未成交订单。
 
         Returns:
-            list: Raw open orders across pages.
+            list: 跨页的原始未成交订单。
 
         Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+            Exception: API 错误时（调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         open_orders = []
         page_size = 100
@@ -222,11 +221,11 @@ class KucoinBot(CCXTBot):
         return self._normalize_open_orders(fetched)
 
     def _get_balance(self, fetched: dict) -> float:
-        """KuCoin uses marginBalance in info.data."""
+        """KuCoin 使用 info.data 中的 marginBalance。"""
         return float(fetched["info"]["data"]["marginBalance"])
 
     async def calc_ideal_orders(self):
-        # KuCoin enforces a 150 open-order cap; keep only the closest price targets.
+        # KuCoin 强制 150 个未成交订单上限；仅保留最接近价格目标的订单。
         ideal_orders = await super().calc_ideal_orders()
         flattened = []
         for symbol, orders in ideal_orders.items():
@@ -337,7 +336,7 @@ class KucoinBot(CCXTBot):
         return sorted(deduped.values(), key=lambda x: x["lastUpdateTimestamp"])
 
     async def fetch_pnls(self, start_time=None, end_time=None, limit=None):
-        # fetch fills...
+        # 获取成交记录...
         mt = await self.fetch_fills(start_time=start_time, end_time=end_time)
         closes = [
             x
@@ -347,12 +346,12 @@ class KucoinBot(CCXTBot):
         ]
         if not closes:
             return mt
-        # fetch pos history for pnls
+        # 获取持仓历史以计算 PnL
         ph = await self.fetch_positions_history(
             start_time=closes[0]["timestamp"] - 60000, end_time=closes[-1]["timestamp"] + 60000
         )
 
-        # match up...
+        # 匹配...
         cld, phd = defaultdict(list), defaultdict(list)
         for x in closes:
             cld[x["symbol"]].append(x)
@@ -384,7 +383,7 @@ class KucoinBot(CCXTBot):
                 logging.debug(
                     f"len mismatch between closes and positions_history for {symbol}: {len(cld[symbol])} {len(phd[symbol])}"
                 )
-        # add pnls, dedup and return
+        # 添加 PnL，去重并返回
         deduped = {}
         for p, c in matches:
             c["pnl"] = p["realizedPnl"]
@@ -399,13 +398,13 @@ class KucoinBot(CCXTBot):
         return sorted(deduped.values(), key=lambda x: x["timestamp"])
 
     async def gather_fill_events(self, start_time=None, end_time=None, limit=None):
-        """Return canonical fill events for KuCoin.
+        """返回 KuCoin 的标准成交事件。
 
         Returns:
-            list: Fill events with normalized fields.
+            list: 规范化字段的成交事件。
 
         Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+            Exception: API 错误时（调用者通过 restart_bot_on_too_many_errors 处理）。
         """
         fills = await self.fetch_pnls(start_time=start_time, end_time=end_time, limit=limit)
         events = []
@@ -447,9 +446,9 @@ class KucoinBot(CCXTBot):
             return False
 
     async def update_exchange_config(self):
-        """Ensure account-level settings (hedge mode) are applied."""
+        """确保账户级别设置（双向持仓模式）已应用。"""
         try:
-            # Hedge mode enabled so both long/short can coexist.
+            # 启用双向持仓模式，使多/空头寸可以共存。
             if hasattr(self.cca, "set_position_mode"):
                 res = await self.cca.set_position_mode(True)
                 logging.info(f"set_position_mode hedged=True {res}")

@@ -1,8 +1,8 @@
 """
-DefxBot: Defx-specific exchange connector.
+DefxBot：Defx 特定的交易所连接器。
 
-Extends CCXTBot with Defx-specific logic for one-way mode positions,
-custom balance fetching, and leverage configuration.
+扩展 CCXTBot，添加 Defx 特定的单向模式持仓逻辑、
+自定义余额获取和杠杆配置。
 """
 
 import asyncio
@@ -15,20 +15,20 @@ from utils import utc_ms
 
 
 class DefxBot(CCXTBot):
-    """Defx exchange bot with one-way mode position handling."""
+    """Defx 交易所机器人，处理单向模式持仓。"""
 
     def __init__(self, config: dict):
         super().__init__(config)
-        self.custom_id_max_length = 36  # adjust if needed
+        self.custom_id_max_length = 36  # 按需调整
         self.quote = "USDC"
         self.hedge_mode = False
 
     def _get_position_side_for_order(self, order: dict) -> str:
-        """Defx: Derive from position state (one-way mode)."""
+        """Defx：从持仓状态推导（单向模式）。"""
         return self.determine_pos_side(order)
 
     def determine_pos_side(self, order):
-        # non hedge mode
+        # 非对冲模式
         if self.has_position("long", order["symbol"]):
             return "long"
         elif self.has_position("short", order["symbol"]):
@@ -111,7 +111,7 @@ class DefxBot(CCXTBot):
         return sum([x["marginValue"] for x in fetched_balance])
 
     async def fetch_pnls(self, start_time=None, end_time=None, limit=None):
-        # TODO: impl start_time and end_time
+        # TODO：实现 start_time 和 end_time
         res = await self.cca.fetch_my_trades()
         for i in range(len(res)):
             res[i]["qty"] = res[i]["amount"]
@@ -125,7 +125,7 @@ class DefxBot(CCXTBot):
         return res
 
     async def gather_fill_events(self, start_time=None, end_time=None, limit=None):
-        """Return canonical fill events for dYdX/DeFX adapter (draft placeholder)."""
+        """返回 dYdX/DeFX 适配器的标准成交事件（草案占位）。"""
         events = []
         fills = await self.fetch_pnls(start_time=start_time, end_time=end_time, limit=limit)
         for fill in fills:

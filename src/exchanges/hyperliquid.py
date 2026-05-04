@@ -29,9 +29,9 @@ assert_correct_ccxt_version(ccxt=ccxt_async)
 
 
 class HyperliquidBot(CCXTBot):
-    # HIP-3 stock perps have a max leverage of 10x
+    # HIP-3 股票永续合约最大杠杆为 10x
     HIP3_MAX_LEVERAGE = 10
-    # HIP-3 symbols use "xyz:" prefix (TradeXYZ builder)
+    # HIP-3 品种使用 "xyz:" 前缀（TradeXYZ 构建器）
     HIP3_PREFIX = "xyz:"
     HIP3_ALT_PREFIXES = ("XYZ-", "XYZ:")
     HIP3_ISOLATED_SUPPORTED = False
@@ -45,7 +45,7 @@ class HyperliquidBot(CCXTBot):
         self._hl_live_margin_modes = {}
         if "is_vault" not in self.user_info or self.user_info["is_vault"] == "":
             logging.info(
-                f"parameter 'is_vault' missing from api-keys.json for user {self.user}. Setting to false"
+                f"用户 {self.user} 的 api-keys.json 中缺少参数 'is_vault'。设置为 false"
             )
             self.user_info["is_vault"] = False
         self.max_n_concurrent_ohlcvs_1m_updates = 2
@@ -56,13 +56,13 @@ class HyperliquidBot(CCXTBot):
         self._hl_unified_enabled = False
 
     def _hl_info_url(self) -> str:
-        """Derive the Hyperliquid /info endpoint from the CCXT session URL config."""
+        """从 CCXT 会话 URL 配置推导 Hyperliquid /info 端点。"""
         base = self.cca.urls.get("api", {}).get("public", "https://api.hyperliquid.xyz")
         hostname = getattr(self.cca, "hostname", "hyperliquid.xyz")
         return base.replace("{hostname}", hostname).rstrip("/") + "/info"
 
     def _normalize_hl_user_abstraction(self, raw) -> str:
-        """Normalize Hyperliquid userAbstraction response into a stable string."""
+        """将 Hyperliquid userAbstraction 响应规范化为稳定字符串。"""
         if raw is None:
             return "unknown"
         text = str(raw).strip()
@@ -71,10 +71,10 @@ class HyperliquidBot(CCXTBot):
         return text or "unknown"
 
     async def fetch_user_abstraction_state(self) -> str:
-        """Fetch and cache the Hyperliquid account abstraction mode."""
+        """获取并缓存 Hyperliquid 账户抽象模式。"""
         wallet_address = str(self.user_info.get("wallet_address") or "")
         if not wallet_address:
-            raise ValueError(f"user {self.user!r} missing wallet_address for Hyperliquid abstraction")
+            raise ValueError(f"用户 {self.user!r} 缺少用于 Hyperliquid 抽象的 wallet_address")
         raw = await self.cca.publicPostInfo({"type": "userAbstraction", "user": wallet_address})
         abstraction = self._normalize_hl_user_abstraction(raw)
         self._hl_user_abstraction = abstraction
@@ -86,7 +86,7 @@ class HyperliquidBot(CCXTBot):
         return abstraction
 
     async def refresh_and_log_user_abstraction_state(self) -> str:
-        """Refresh Hyperliquid account abstraction mode and log first sighting or changes."""
+        """刷新 Hyperliquid 账户抽象模式，记录首次发现或变更。"""
         abstraction = await self.fetch_user_abstraction_state()
         previous = getattr(self, "_hl_last_logged_user_abstraction", None)
         if previous is None:
@@ -110,11 +110,11 @@ class HyperliquidBot(CCXTBot):
             "walletAddress": self.user_info["wallet_address"],
             "privateKey": self.user_info["private_key"],
         }
-        # Configure fetchMarkets to include HIP-3 stock perps from TradeXYZ
+        # 配置 fetchMarkets 以包含来自 TradeXYZ 的 HIP-3 股票永续合约
         fetch_markets_config = {
-            "types": ["swap", "hip3"],  # Include HIP-3 markets
+            "types": ["swap", "hip3"],  # 包含 HIP-3 市场
             "hip3": {
-                "dex": ["xyz"],  # TradeXYZ DEX for stock perps (TSLA, NVDA, etc.)
+                "dex": ["xyz"],  # TradeXYZ DEX，用于股票永续合约（TSLA、NVDA 等）
             },
         }
         if self.ws_enabled:
@@ -124,7 +124,7 @@ class HyperliquidBot(CCXTBot):
             self.ccp.options["fetchMarkets"] = fetch_markets_config
             self._apply_endpoint_override(self.ccp)
         elif self.endpoint_override:
-            logging.info("Skipping Hyperliquid websocket session due to custom endpoint override.")
+            logging.info("由于自定义端点覆盖，跳过 Hyperliquid websocket 会话。")
         self.cca = getattr(ccxt_async, self.exchange)(creds)
         self.cca.options.update(self._build_ccxt_options())
         self.cca.options["defaultType"] = "swap"
@@ -150,7 +150,7 @@ class HyperliquidBot(CCXTBot):
             self.price_steps[symbol] = elm["precision"]["price"]
             self.c_mults[symbol] = elm["contractSize"]
 
-            # For isolated-only markets (HIP-3), cap at 10x leverage
+            # 对于仅限逐仓的市场（HIP-3），杠杆上限为 10x
             if self._requires_isolated_margin(symbol):
                 isolated_count += 1
                 self.max_leverage[symbol] = min(
@@ -169,7 +169,7 @@ class HyperliquidBot(CCXTBot):
         self.n_significant_figures = 5
         if isolated_count:
             logging.debug(
-                f"Detected {isolated_count} isolated-margin-only symbols (HIP-3/stock perps)"
+                f"检测到 {isolated_count} 个仅限逐仓的品种（HIP-3/股票永续合约）"
             )
 
     def _hip3_margin_metadata(self, symbol: str) -> dict:
@@ -188,17 +188,17 @@ class HyperliquidBot(CCXTBot):
         }
 
     def _requires_isolated_margin(self, symbol: str) -> bool:
-        """Check if a symbol requires isolated margin mode.
+        """检查品种是否需要逐仓模式。
 
-        On Hyperliquid, this includes:
-        1. HIP-3 markets that are actually isolated-only by metadata
-        2. Other markets with onlyIsolated=True flag
+        在 Hyperliquid 上，这包括：
+        1. 根据元数据实际为仅限逐仓的 HIP-3 市场
+        2. 带有 onlyIsolated=True 标志的其他市场
 
         Args:
-            symbol: CCXT-style symbol (e.g., "xyz:TSLA/USDC:USDC")
+            symbol: CCXT 格式的品种名（例如 "xyz:TSLA/USDC:USDC"）
 
         Returns:
-            True if this symbol requires isolated margin mode
+            如果该品种需要逐仓模式则返回 True
         """
         prefixes = (self.HIP3_PREFIX,) + tuple(self.HIP3_ALT_PREFIXES)
         base = symbol.split("/")[0] if "/" in symbol else symbol
@@ -209,7 +209,7 @@ class HyperliquidBot(CCXTBot):
         ):
             return not self._hip3_margin_metadata(symbol)["cross_capable"]
 
-        # Fall back to base class check (onlyIsolated flag, etc.)
+        # 回退到基类检查（onlyIsolated 标志等）
         return super()._requires_isolated_margin(symbol)
 
     def _record_hl_live_margin_mode(self, symbol: str, margin_mode: str | None) -> None:
@@ -220,7 +220,7 @@ class HyperliquidBot(CCXTBot):
             self._hl_live_margin_modes[symbol] = normalized
 
     def _get_hl_dex_for_symbol(self, symbol: str) -> str | None:
-        """Return HIP-3 dex name for a symbol if available."""
+        """返回品种对应的 HIP-3 dex 名称（如可用）。"""
         market = getattr(self, "markets_dict", {}).get(symbol, {})
         base_name = market.get("baseName") or market.get("info", {}).get("baseName", "")
         if isinstance(base_name, str) and ":" in base_name:
@@ -230,7 +230,7 @@ class HyperliquidBot(CCXTBot):
         return None
 
     def _get_hl_hip3_state_symbols(self) -> list[str]:
-        """Return tracked HIP-3 symbols that need dex-scoped state queries."""
+        """返回需要 dex 作用域状态查询的已跟踪 HIP-3 品种。"""
         tracked = set(getattr(self, "active_symbols", []) or [])
         tracked.update(getattr(self, "open_orders", {}).keys())
         tracked.update(getattr(self, "positions", {}).keys())
@@ -278,7 +278,7 @@ class HyperliquidBot(CCXTBot):
         }
 
     async def _fetch_hip3_positions(self, *, include_raw: bool = False):
-        """Fetch HIP-3 positions via dex-scoped CCXT routes."""
+        """通过 dex 作用域的 CCXT 路由获取 HIP-3 持仓。"""
         positions_by_key = {}
         raw_payloads = []
         fetch_specs = [{"params": {"dex": dex_name}} for dex_name in self._get_hl_hip3_dex_names()]
@@ -366,7 +366,7 @@ class HyperliquidBot(CCXTBot):
                 if self.stop_websocket:
                     break
                 res = await self.ccp.watch_orders()
-                _ws_consecutive_rate_limits = 0  # reset on success
+                _ws_consecutive_rate_limits = 0  # 成功时重置
                 for i in range(len(res)):
                     res[i]["position_side"] = self.determine_pos_side(res[i])
                     res[i]["qty"] = res[i]["amount"]
@@ -399,7 +399,7 @@ class HyperliquidBot(CCXTBot):
                 logging.info("[ws] %s: reconnecting...", self.exchange)
 
     def determine_pos_side(self, order):
-        # hyperliquid is not hedge mode
+        # hyperliquid 不是双向持仓模式
         if order["symbol"] in self.positions:
             if self.positions[order["symbol"]]["long"]["size"] != 0.0:
                 return "long"
@@ -416,7 +416,7 @@ class HyperliquidBot(CCXTBot):
             return "long" if order["side"] == "buy" else "short"
 
     def _get_position_side_for_order(self, order: dict) -> str:
-        """Hook: Derive position_side from order data for Hyperliquid (one-way mode)."""
+        """钩子：为 Hyperliquid（单向模式）从订单数据推导 position_side。"""
         return self.determine_pos_side(order)
 
     async def _do_fetch_open_orders(self, symbol: str = None):
@@ -425,7 +425,7 @@ class HyperliquidBot(CCXTBot):
         query_symbols = [symbol] if symbol is not None else []
         query_dexes = self._get_hl_hip3_dex_names() if symbol is None else []
 
-        # Default route covers core perps; HIP-3 symbols need dex-scoped queries.
+        # 默认路由覆盖核心永续合约；HIP-3 品种需要 dex 作用域的查询。
         if symbol is None or not self._get_hl_dex_for_symbol(symbol):
             for order in await self.cca.fetch_open_orders(symbol=symbol):
                 if order["id"] in seen_ids:
@@ -501,12 +501,11 @@ class HyperliquidBot(CCXTBot):
         return raw_snapshot, list(positions.values()), balance
 
     async def _get_positions_and_balance_cached(self, my_gen: int = 0):
-        """Fetch positions+balance with dedup: concurrent callers share one API call.
+        """获取持仓+余额，带去重：并发调用者共享一次 API 调用。
 
-        my_gen is the caller's snapshot of _hl_cache_generation taken *before*
-        acquiring the lock.  If another caller completed a fetch in the
-        meantime (cache_generation advanced), we return the cached result
-        (or re-raise the cached exception if the fetch failed).
+        my_gen 是调用者在获取锁*之前*拍摄的 _hl_cache_generation 快照。
+        如果其他调用者在此期间完成了获取（cache_generation 已推进），
+        则返回缓存结果（或如果获取失败则重新引发缓存的异常）。
         """
         async with self._hl_fetch_lock:
             cached_gen = self._hl_cache_generation
@@ -525,7 +524,7 @@ class HyperliquidBot(CCXTBot):
             return result
 
     async def fetch_positions(self):
-        # Snapshot generation *before* lock so each caller tracks its own view.
+        # 在锁定*之前*快照生成，以便每个调用者跟踪自己的视图。
         my_gen = self._hl_cache_generation
         _, positions, balance = await self._get_positions_and_balance_cached(my_gen)
         self._last_hl_balance = balance
@@ -540,13 +539,13 @@ class HyperliquidBot(CCXTBot):
         return deepcopy(raw_snapshot["positions"]), deepcopy(positions)
 
     async def fetch_balance(self):
-        # Check if fetch_positions already got us a fresh balance
+        # 检查 fetch_positions 是否已经获取了新的余额
         if getattr(self, "_last_hl_balance", None) is not None and not getattr(
             self, "_hl_balance_consumed", True
         ):
             self._hl_balance_consumed = True
             return self._last_hl_balance
-        # Snapshot generation *before* lock so each caller tracks its own view.
+        # 在锁定*之前*快照生成，以便每个调用者跟踪自己的视图。
         my_gen = self._hl_cache_generation
         _, positions, balance = await self._get_positions_and_balance_cached(my_gen)
         return balance
@@ -630,9 +629,9 @@ class HyperliquidBot(CCXTBot):
         )
         reserve = self._position_margin_to_restore()
         if include_open_orders:
-            # Do not feed bot-managed resting-order reserve back into published balance.
-            # That reserve changes as the bot cancels/recreates entries and can create
-            # self-referential REST/REST+open_orders balance churn.
+            # 不要将机器人管理的挂单保证金储备反馈到已发布的余额中。
+            # 该储备会随着机器人取消/重建入场单而变化，
+            # 可能导致自引用的 REST/REST+open_orders 余额波动。
             pass
         corrected_raw = exchange_reported + reserve
         current_raw = self.get_raw_balance()
@@ -675,8 +674,8 @@ class HyperliquidBot(CCXTBot):
         }
 
     async def fetch_ohlcv(self, symbol: str, timeframe="1m"):
-        # intervals: 1,3,5,15,30,60,120,240,360,720,D,M,W
-        # fetches latest ohlcvs
+        # 时间间隔：1,3,5,15,30,60,120,240,360,720,D,M,W
+        # 获取最新的 OHLCV
         str2int = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 60 * 4}
         n_candles = 480
         since = int(utc_ms() - 1000 * 60 * str2int[timeframe] * n_candles)
@@ -698,11 +697,11 @@ class HyperliquidBot(CCXTBot):
         end_time: int = None,
         limit=None,
     ):
-        # hyperliquid fetches from past to future
+        # hyperliquid 从过去到未来获取
         if limit is None:
             limit = 2000
         if start_time is None:
-            # hyperliquid returns latest trades if no time frame is passed
+            # 如果未传入时间范围，hyperliquid 返回最新交易
             return await self.fetch_pnl(limit=limit)
         all_fetched = {}
         prev_hash = ""
@@ -729,7 +728,7 @@ class HyperliquidBot(CCXTBot):
         return sorted(all_fetched.values(), key=lambda x: x["timestamp"])
 
     async def gather_fill_events(self, start_time=None, end_time=None, limit=None):
-        """Return canonical fill events for Hyperliquid (draft placeholder)."""
+        """返回 Hyperliquid 的标准成交事件（草稿占位符）。"""
         events = []
         fills = await self.fetch_pnls(start_time=start_time, end_time=end_time, limit=limit)
         for fill in fills:
@@ -764,7 +763,7 @@ class HyperliquidBot(CCXTBot):
         return sorted(fetched, key=lambda x: x["timestamp"])
 
     async def execute_cancellation(self, order: dict) -> dict:
-        """Hyperliquid: Cancel order with vault support."""
+        """Hyperliquid：取消订单，支持 vault。"""
         params = (
             {"vaultAddress": self.user_info["wallet_address"]} if self.user_info["is_vault"] else {}
         )
@@ -785,14 +784,14 @@ class HyperliquidBot(CCXTBot):
 
         try:
             res = await self.cca.cancel_order(order["id"], symbol=order["symbol"], params=params)
-            # Sometimes hyperliquid returns an "ok" wrapper with an embedded error; treat as non-fatal.
+            # 有时 hyperliquid 返回带有嵌入错误的 "ok" 包装器；视为非致命错误。
             if _is_already_gone(res):
                 logging.info("Order already canceled/filled on exchange; treating as success.")
                 return {"status": "success"}
             return res
         except Exception as e:
             if _is_already_gone(e):
-                logging.info("Order already canceled/filled on exchange; treating as success.")
+                logging.info("订单已在交易所取消/成交；视为成功。")
                 return {"status": "success"}
             raise
 
@@ -817,18 +816,18 @@ class HyperliquidBot(CCXTBot):
         return params
 
     async def execute_order(self, order: dict) -> dict:
-        """Hyperliquid: Execute order with min_cost auto-adjustment on specific errors."""
+        """Hyperliquid：执行订单，在特定错误时自动调整 min_cost。"""
         try:
             return await super().execute_order(order)
         except Exception as e:
-            # Try to recover from Hyperliquid's "$10 minimum" errors by adjusting min_cost
+            # 尝试通过调整 min_cost 从 Hyperliquid 的 "$10 最低" 错误中恢复
             try:
                 if self.adjust_min_cost_on_error(e, order):
                     logging.info(f"Adjusted min_cost for order, will retry: {order['symbol']}")
                     return {}
             except Exception as e0:
                 logging.error(f"error with adjust_min_cost_on_error {e0}")
-            # Could not recover - re-raise to trigger restart_bot_on_too_many_errors
+            # 无法恢复 - 重新引发以触发 restart_bot_on_too_many_errors
             raise
 
     async def execute_orders(self, orders: [dict]) -> [dict]:
@@ -880,15 +879,15 @@ class HyperliquidBot(CCXTBot):
         return any_adjusted
 
     def symbol_is_eligible(self, symbol):
-        """Check if a symbol is eligible for trading.
+        """检查品种是否有资格进行交易。
 
-        HIP-3 stock perps remain discoverable, but isolated-only live trading is
-        currently disabled elsewhere via symbol filtering/startup validation.
+        HIP-3 股票永续合约仍可被发现，但仅限逐仓的实盘交易
+        目前通过品种过滤/启动验证在其他地方被禁用。
         """
         try:
             market_info = self.markets_dict[symbol]["info"]
 
-            # Zero open interest means market is inactive
+            # 零持仓量表示市场不活跃
             if float(market_info.get("openInterest", 0)) == 0.0:
                 return False
         except Exception as e:
@@ -897,11 +896,11 @@ class HyperliquidBot(CCXTBot):
         return True
 
     async def update_exchange_config_by_symbols(self, symbols):
-        """Set leverage and margin mode for Hyperliquid symbols.
+        """设置 Hyperliquid 品种的杠杆和保证金模式。
 
-        Uses base class methods for isolated margin detection and leverage calculation.
-        Adds Hyperliquid-specific vault address handling.
-        Calls are made sequentially with a small delay to avoid rate-limit bursts.
+        使用基类方法进行逐仓检测和杠杆计算。
+        添加 Hyperliquid 专用的 vault 地址处理。
+        顺序执行调用，间隔小延迟以避免速率限制突发。
         """
         for symbol in symbols:
             to_print = ""
@@ -929,14 +928,14 @@ class HyperliquidBot(CCXTBot):
                 logging.error(f"{symbol}: error setting margin mode and leverage {e}")
             if to_print:
                 logging.debug(f"{symbol}: {to_print}")
-            # Small delay between margin-mode API calls to avoid rate-limit bursts
+            # 保证金模式 API 调用之间的小延迟，以避免速率限制突发
             await asyncio.sleep(0.2)
 
     async def update_exchange_config(self):
         pass
 
     async def calc_ideal_orders(self):
-        # hyperliquid needs custom price rounding
+        # hyperliquid 需要自定义价格舍入
         ideal_orders = await super().calc_ideal_orders()
         for sym in ideal_orders:
             for i in range(len(ideal_orders[sym])):
