@@ -189,7 +189,7 @@ def calc_pnl(side, entry_price, close_price, qty, fee_rate):
 
 # 翻译后：
 def calc_pnl(side, entry_price, close_price, qty, fee_rate):
-    """通过调用相应的 Rust 辅助函数计算交易 PnL。"`
+    """通过调用相应的 Rust 辅助函数计算交易 PnL。"""
 ```
 
 ## 成功标准
