@@ -1,19 +1,19 @@
 """
-TradFi Data Provider
+TradFi 数据提供商
 
-Fetches traditional finance OHLCV data from external APIs (Finnhub, Alpha Vantage).
-Used for historical backtesting of stock perpetuals when native perp data is unavailable.
+从外部 API（Finnhub、Alpha Vantage）获取传统金融 OHLCV 数据。
+当原生永续合约数据不可用时，用于股票永续合约的历史回测。
 
-Symbol Mapping:
+符号映射：
 - xyz:TSLA (Hyperliquid HIP-3) -> TSLA (TradFi)
 - xyz:NVDA (Hyperliquid HIP-3) -> NVDA (TradFi)
 
-Note: TradFi data represents actual stock prices without:
-- Perpetual funding rates
-- Oracle-driven pricing during market closure
-- Weekend/after-hours trading
+注意：TradFi 数据代表实际股票价格，不包含：
+- 永续合约资金费率
+- 市场关闭期间的预言机驱动定价
+- 周末/盘后交易
 
-Use this data for pre-HIP3 historical backtesting only.
+仅将此数据用于 HIP-3 之前的历史回测。
 """
 
 from __future__ import annotations
@@ -29,15 +29,15 @@ from typing import Any, Dict, List, Optional, Tuple
 import aiohttp
 import numpy as np
 
-# OHLCV dtype matching CandlestickManager
+# 与 CandlestickManager 匹配的 OHLCV dtype
 CANDLE_DTYPE = np.dtype(
     [
-        ("ts", "int64"),  # UTC milliseconds
-        ("o", "float32"),  # open
-        ("h", "float32"),  # high
-        ("l", "float32"),  # low
-        ("c", "float32"),  # close
-        ("bv", "float32"),  # base volume
+        ("ts", "int64"),  # UTC 毫秒
+        ("o", "float32"),  # 开盘价
+        ("h", "float32"),  # 最高价
+        ("l", "float32"),  # 最低价
+        ("c", "float32"),  # 收盘价
+        ("bv", "float32"),  # 基础成交量
     ]
 )
 
@@ -49,24 +49,24 @@ logger = logging.getLogger(__name__)
 
 
 def hip3_to_tradfi_symbol(hip3_symbol: str) -> str:
-    """Convert HIP-3 symbol to TradFi ticker.
+    """将 HIP-3 符号转换为 TradFi 代号。
 
     Args:
-        hip3_symbol: HIP-3 symbol like "xyz:TSLA", "XYZ-TSLA/USDC:USDC", etc.
+        hip3_symbol: HIP-3 符号，如 "xyz:TSLA"、"XYZ-TSLA/USDC:USDC" 等。
 
     Returns:
-        TradFi ticker like "TSLA"
+        TradFi 代号，如 "TSLA"
     """
-    # Extract base from CCXT-style symbol
+    # 从 CCXT 格式符号中提取基础部分
     if "/" in hip3_symbol:
         base = hip3_symbol.split("/")[0]
     else:
         base = hip3_symbol
 
-    # Handle various HIP-3 prefixes:
-    # - xyz:TSLA (lowercase prefix with colon)
-    # - XYZ-TSLA (CCXT format with hyphen)
-    # - XYZ:TSLA (uppercase with colon)
+    # 处理各种 HIP-3 前缀：
+    # - xyz:TSLA（小写前缀加冒号）
+    # - XYZ-TSLA（CCXT 格式加连字符）
+    # - XYZ:TSLA（大写加冒号）
     if base.startswith("xyz:"):
         return base[4:]
     if base.startswith("XYZ-"):
@@ -78,21 +78,21 @@ def hip3_to_tradfi_symbol(hip3_symbol: str) -> str:
 
 
 def tradfi_to_hip3_symbol(tradfi_symbol: str, quote: str = "USDC") -> str:
-    """Convert TradFi ticker to HIP-3 symbol.
+    """将 TradFi 代号转换为 HIP-3 符号。
 
     Args:
-        tradfi_symbol: TradFi ticker like "TSLA"
-        quote: Quote currency (default: USDC)
+        tradfi_symbol: TradFi 代号，如 "TSLA"
+        quote: 报价货币（默认：USDC）
 
     Returns:
-        HIP-3 symbol like "xyz:TSLA/USDC:USDC"
+        HIP-3 符号，如 "xyz:TSLA/USDC:USDC"
     """
     return f"xyz:{tradfi_symbol}/{quote}:{quote}"
 
 
 @dataclass
 class TradFiCandle:
-    """Single OHLCV candle from TradFi source."""
+    """来自 TradFi 来源的单根 OHLCV K 线。"""
 
     timestamp_ms: int
     open: float
@@ -103,7 +103,7 @@ class TradFiCandle:
 
 
 class TradFiProvider(ABC):
-    """Abstract base class for TradFi data providers."""
+    """TradFi 数据提供商的抽象基类。"""
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key
@@ -126,36 +126,36 @@ class TradFiProvider(ABC):
         start_ts: int,
         end_ts: int,
     ) -> List[TradFiCandle]:
-        """Fetch 1-minute candles for a symbol.
+        """获取指定符号的 1 分钟 K 线。
 
         Args:
-            symbol: TradFi ticker (e.g., "TSLA")
-            start_ts: Start timestamp (ms)
-            end_ts: End timestamp (ms)
+            symbol: TradFi 代号（如 "TSLA"）
+            start_ts: 开始时间戳（毫秒）
+            end_ts: 结束时间戳（毫秒）
 
         Returns:
-            List of TradFiCandle objects
+            TradFiCandle 对象列表
         """
         pass
 
     @property
     @abstractmethod
     def name(self) -> str:
-        """Provider name for logging."""
+        """用于日志记录的提供商名称。"""
         pass
 
     @property
     @abstractmethod
     def rate_limit_delay(self) -> float:
-        """Minimum delay between API calls (seconds)."""
+        """API 调用之间的最小延迟（秒）。"""
         pass
 
 
 class FinnhubProvider(TradFiProvider):
-    """Finnhub API provider for TradFi data.
+    """Finnhub API TradFi 数据提供商。
 
-    Free tier: 60 API calls/minute
-    Docs: https://finnhub.io/docs/api/stock-candles
+    免费层：60 次 API 调用/分钟
+    文档：https://finnhub.io/docs/api/stock-candles
     """
 
     BASE_URL = "https://finnhub.io/api/v1"
@@ -166,7 +166,7 @@ class FinnhubProvider(TradFiProvider):
 
     @property
     def rate_limit_delay(self) -> float:
-        return 1.1  # ~54 calls/min to stay safe
+        return 1.1  # 约 54 次调用/分钟，留有安全余量
 
     async def fetch_1m_candles(
         self,
@@ -180,14 +180,14 @@ class FinnhubProvider(TradFiProvider):
             raise RuntimeError("Session not initialized. Use 'async with' context.")
 
         candles = []
-        # Finnhub uses seconds, not milliseconds
+        # Finnhub 使用秒而非毫秒
         from_ts = start_ts // 1000
         to_ts = end_ts // 1000
 
         url = f"{self.BASE_URL}/stock/candle"
         params = {
             "symbol": symbol,
-            "resolution": "1",  # 1 minute
+            "resolution": "1",  # 1 分钟
             "from": from_ts,
             "to": to_ts,
             "token": self.api_key,
@@ -240,10 +240,10 @@ class FinnhubProvider(TradFiProvider):
 
 
 class AlphaVantageProvider(TradFiProvider):
-    """Alpha Vantage API provider for TradFi data.
+    """Alpha Vantage API TradFi 数据提供商。
 
-    Free tier: 25 API calls/day (very limited)
-    Docs: https://www.alphavantage.co/documentation/
+    免费层：25 次 API 调用/天（非常有限）
+    文档：https://www.alphavantage.co/documentation/
     """
 
     BASE_URL = "https://www.alphavantage.co/query"
@@ -254,7 +254,7 @@ class AlphaVantageProvider(TradFiProvider):
 
     @property
     def rate_limit_delay(self) -> float:
-        return 12.0  # Very conservative for free tier
+        return 12.0  # 对免费层非常保守
 
     async def fetch_1m_candles(
         self,
@@ -268,7 +268,7 @@ class AlphaVantageProvider(TradFiProvider):
             raise RuntimeError("Session not initialized. Use 'async with' context.")
 
         candles = []
-        # Alpha Vantage returns data by month, request current month first
+        # Alpha Vantage 按月返回数据，先请求当前月份
         params = {
             "function": "TIME_SERIES_INTRADAY",
             "symbol": symbol,
@@ -285,7 +285,7 @@ class AlphaVantageProvider(TradFiProvider):
                 resp.raise_for_status()
                 data = await resp.json()
 
-            # Check for rate limit message
+            # 检查速率限制消息
             if "Note" in data or "Information" in data:
                 logger.warning(
                     "Alpha Vantage rate limit: %s",
@@ -299,10 +299,10 @@ class AlphaVantageProvider(TradFiProvider):
                 return []
 
             for timestamp_str, values in time_series.items():
-                # Parse timestamp (format: "2025-01-15 16:00:00")
+                # 解析时间戳（格式："2025-01-15 16:00:00"）
                 dt = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-                # Alpha Vantage returns US Eastern time, convert to UTC
-                # This is a simplification - proper timezone handling would need pytz
+                # Alpha Vantage 返回美国东部时间，转换为 UTC
+                # 这是简化处理 - 正确的时区处理需要 pytz
                 ts_ms = int(dt.timestamp() * 1000)
 
                 if start_ts <= ts_ms <= end_ts:
@@ -326,13 +326,13 @@ class AlphaVantageProvider(TradFiProvider):
 
 
 class PolygonProvider(TradFiProvider):
-    """Polygon.io (Massive) API provider for TradFi data.
+    """Polygon.io (Massive) API TradFi 数据提供商。
 
-    Free tier: 2 years of 1m historical data
-    Rate limit: 5 API calls/minute
-    Max 50,000 results per query (~35 days of 1m bars)
+    免费层：2 年 1 分钟历史数据
+    速率限制：5 次 API 调用/分钟
+    每次查询最多 50,000 条结果（约 35 天的 1 分钟 K 线）
 
-    Docs: https://polygon.readthedocs.io/en/latest/Stocks.html
+    文档：https://polygon.readthedocs.io/en/latest/Stocks.html
     """
 
     BASE_URL = "https://api.polygon.io/v2/aggs/ticker"
@@ -343,7 +343,7 @@ class PolygonProvider(TradFiProvider):
 
     @property
     def rate_limit_delay(self) -> float:
-        return 12.5  # 5 calls/min = 1 per 12 seconds, add buffer
+        return 12.5  # 5 次调用/分钟 = 每 12 秒 1 次，加缓冲
 
     async def fetch_1m_candles(
         self,
@@ -358,13 +358,13 @@ class PolygonProvider(TradFiProvider):
 
         candles = []
 
-        # Polygon API uses timestamps in milliseconds
-        # Build URL for aggregates endpoint
+        # Polygon API 使用毫秒时间戳
+        # 构建聚合端点的 URL
         url = f"{self.BASE_URL}/{symbol}/range/1/minute/{start_ts}/{end_ts}"
         params = {
             "adjusted": "true",
             "sort": "asc",
-            "limit": 50000,  # Max allowed
+            "limit": 50000,  # 最大允许值
             "apiKey": self.api_key,
         }
 
@@ -390,7 +390,7 @@ class PolygonProvider(TradFiProvider):
                 return []
 
             for bar in results:
-                # Polygon returns: t (timestamp ms), o, h, l, c, v
+                # Polygon 返回：t（时间戳毫秒）、o、h、l、c、v
                 candles.append(
                     TradFiCandle(
                         timestamp_ms=bar["t"],
@@ -417,16 +417,16 @@ class PolygonProvider(TradFiProvider):
 
 
 class AlpacaProvider(TradFiProvider):
-    """Alpaca Markets API provider for TradFi data.
+    """Alpaca Markets API TradFi 数据提供商。
 
-    FREE - No payment required, just free API keys!
-    - 5+ years of historical 1m data
-    - Free tier uses IEX data feed
-    - 15-minute delay (doesn't matter for backtesting)
-    - Rate limit: 200 requests/minute
+    免费 - 无需付费，只需免费 API 密钥！
+    - 5 年以上 1 分钟历史数据
+    - 免费层使用 IEX 数据源
+    - 15 分钟延迟（对回测无影响）
+    - 速率限制：200 次请求/分钟
 
-    Docs: https://docs.alpaca.markets/docs/about-market-data-api
-    Sign up: https://alpaca.markets/
+    文档：https://docs.alpaca.markets/docs/about-market-data-api
+    注册：https://alpaca.markets/
     """
 
     BASE_URL = "https://data.alpaca.markets/v2/stocks"
@@ -441,7 +441,7 @@ class AlpacaProvider(TradFiProvider):
 
     @property
     def rate_limit_delay(self) -> float:
-        return 0.5  # 200 req/min = 3.3 req/sec, be conservative
+        return 0.5  # 200 次请求/分钟 = 3.3 次请求/秒，保守处理
 
     async def fetch_1m_candles(
         self,
@@ -456,7 +456,7 @@ class AlpacaProvider(TradFiProvider):
 
         candles = []
 
-        # Alpaca uses RFC3339 timestamps
+        # Alpaca 使用 RFC3339 时间戳
         start_dt = datetime.fromtimestamp(start_ts / 1000, tz=UTC)
         end_dt = datetime.fromtimestamp(end_ts / 1000, tz=UTC)
 
@@ -465,9 +465,9 @@ class AlpacaProvider(TradFiProvider):
             "timeframe": "1Min",
             "start": start_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "end": end_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "limit": 10000,  # Max per request
+            "limit": 10000,  # 每次请求最大数量
             "adjustment": "split",
-            "feed": "iex",  # Free tier uses IEX
+            "feed": "iex",  # 免费层使用 IEX
         }
         headers = {
             "APCA-API-KEY-ID": self.api_key,
@@ -489,7 +489,7 @@ class AlpacaProvider(TradFiProvider):
                         logger.warning("Alpaca API key invalid or unauthorized")
                         return []
                     if resp.status == 422:
-                        # Unprocessable entity - often means no data for range
+                        # 不可处理的实体 - 通常意味着该范围没有数据
                         logger.debug("Alpaca no data for %s in range", symbol)
                         return []
                     resp.raise_for_status()
@@ -500,7 +500,7 @@ class AlpacaProvider(TradFiProvider):
                     break
 
                 for bar in bars:
-                    # Parse ISO timestamp to milliseconds
+                    # 解析 ISO 时间戳为毫秒
                     ts_str = bar["t"]
                     dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                     ts_ms = int(dt.timestamp() * 1000)
@@ -516,7 +516,7 @@ class AlpacaProvider(TradFiProvider):
                         )
                     )
 
-                # Check for pagination
+                # 检查分页
                 next_page_token = data.get("next_page_token")
                 if not next_page_token:
                     break
@@ -536,16 +536,16 @@ class AlpacaProvider(TradFiProvider):
 
 
 class YFinanceProvider(TradFiProvider):
-    """Yahoo Finance provider for TradFi data.
+    """Yahoo Finance TradFi 数据提供商。
 
-    FREE - No API key required!
-    Limitations:
-    - 1m data: last 7 days only
-    - 5m data: last 60 days
-    - 1h data: last 730 days (2 years)
-    - 1d data: full history
+    免费 - 无需 API 密钥！
+    限制：
+    - 1 分钟数据：仅最近 7 天
+    - 5 分钟数据：最近 60 天
+    - 1 小时数据：最近 730 天（2 年）
+    - 1 天数据：完整历史
 
-    Docs: https://github.com/ranaroussi/yfinance
+    文档：https://github.com/ranaroussi/yfinance
     """
 
     @property
@@ -554,7 +554,7 @@ class YFinanceProvider(TradFiProvider):
 
     @property
     def rate_limit_delay(self) -> float:
-        return 0.5  # Be nice to Yahoo
+        return 0.5  # 对 Yahoo 友好
 
     async def fetch_1m_candles(
         self,
@@ -562,9 +562,9 @@ class YFinanceProvider(TradFiProvider):
         start_ts: int,
         end_ts: int,
     ) -> List[TradFiCandle]:
-        """Fetch 1m candles from Yahoo Finance.
+        """从 Yahoo Finance 获取 1 分钟 K 线。
 
-        Note: yfinance only provides 1m data for the last 7 days.
+        注意：yfinance 仅提供最近 7 天的 1 分钟数据。
         """
         try:
             import yfinance as yf
@@ -575,18 +575,18 @@ class YFinanceProvider(TradFiProvider):
         candles = []
 
         try:
-            # yfinance uses synchronous API, run in executor
+            # yfinance 使用同步 API，在执行器中运行
             import asyncio
 
             loop = asyncio.get_event_loop()
 
             def fetch_sync():
                 ticker = yf.Ticker(symbol)
-                # Convert timestamps to datetime
+                # 将时间戳转换为日期时间
                 start_dt = datetime.fromtimestamp(start_ts / 1000, tz=UTC)
                 end_dt = datetime.fromtimestamp(end_ts / 1000, tz=UTC)
 
-                # yfinance 1m data is limited to last 7 days
+                # yfinance 1 分钟数据限制为最近 7 天
                 seven_days_ago = datetime.now(UTC) - timedelta(days=7)
                 if start_dt < seven_days_ago:
                     start_dt = seven_days_ago

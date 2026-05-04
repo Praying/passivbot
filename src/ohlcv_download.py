@@ -48,10 +48,10 @@ async def warm_ohlcv_caches(config: dict, *, force_refetch_gaps: bool = False) -
 
 async def main() -> None:
     parser = argparse.ArgumentParser(
-        prog=get_cli_prog("download"), description="download ohlcv data"
+        prog=get_cli_prog("download"), description="下载 OHLCV 数据"
     )
     parser.add_argument(
-        "config_path", type=str, default=None, nargs="?", help="path to json passivbot config"
+        "config_path", type=str, default=None, nargs="?", help="Passivbot JSON 配置文件路径"
     )
     parser.add_argument(
         "--symbols",
@@ -61,9 +61,9 @@ async def main() -> None:
         default=None,
         metavar="CSV_OR_PATH",
         help=(
-            "Approved coins. Use CSV like BTC,ETH,XRP, the literal 'all', a path to a JSON "
-            "coin list file, or a JSON/HJSON per-side object like "
-            '{"long":["BTC"],"short":"all"}. Use coin tickers, not exchange symbols.'
+            "已批准的币种。使用逗号分隔如 BTC,ETH,XRP，或使用字面值 'all'，或指向 JSON "
+            "币种列表文件的路径，或按方向指定的 JSON/HJSON 对象如 "
+            '{"long":["BTC"],"short":"all"}。使用币种代号，非交易所符号。'
         ),
     )
     parser.add_argument(
@@ -73,7 +73,7 @@ async def main() -> None:
         type=str,
         default=None,
         metavar="CSV_OR_PATH",
-        help="Ignored coins. Comma-separated coins or path to a JSON coin list file.",
+        help="忽略的币种。逗号分隔的币种或指向 JSON 币种列表文件的路径。",
     )
     parser.add_argument(
         "--minimum-coin-age-days",
@@ -82,7 +82,7 @@ async def main() -> None:
         type=float,
         default=None,
         metavar="FLOAT",
-        help="Minimum coin age in days required before a coin is eligible to trade.",
+        help="币种可交易前所需的最小上架天数。",
     )
     parser.add_argument(
         "--exchanges",
@@ -91,7 +91,7 @@ async def main() -> None:
         type=comma_separated_values,
         default=None,
         metavar="CSV",
-        help="Backtest exchanges to use, for example bybit or binance,bybit.",
+        help="回测使用的交易所，例如 bybit 或 binance,bybit。",
     )
     parser.add_argument(
         "--start-date",
@@ -100,7 +100,7 @@ async def main() -> None:
         type=str,
         default=None,
         metavar="DATE",
-        help="Backtest start date. Examples: 2025, 2025-01, 2025-01-15.",
+        help="回测开始日期。示例：2025、2025-01、2025-01-15。",
     )
     parser.add_argument(
         "--end-date",
@@ -109,7 +109,7 @@ async def main() -> None:
         type=str,
         default=None,
         metavar="DATE",
-        help='Backtest end date. Use "-ed now" for the latest available candles.',
+        help='回测结束日期。使用 "-ed now" 获取最新可用 K 线。',
     )
     args = parser.parse_args()
     source_config, base_config_path, raw_snapshot = load_input_config(args.config_path)

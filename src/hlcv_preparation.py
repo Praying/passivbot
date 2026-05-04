@@ -25,14 +25,14 @@ from ohlcv_store import OhlcvStore
 
 
 def _pct_log(level: str, pct: int, msg: str, *args, **kwargs) -> None:
-    """Log with percentage prefix: '12% | message here'."""
+    """带百分比前缀的日志：'12% | message here'。"""
     pct_str = f"{pct:3d}%" if pct < 100 else "100%"
     full_msg = f"{pct_str} | {msg}"
     getattr(logging, level)(full_msg, *args, **kwargs)
 
 
 class ProgressTracker:
-    """Track progress and emit percentage-prefixed logs periodically."""
+    """跟踪进度并定期输出带百分比前缀的日志。"""
 
     def __init__(self, total: int, context: str, log_interval_seconds: float = 10.0):
         self.total = max(1, total)
@@ -128,7 +128,7 @@ def _has_tradfi_provider_config() -> bool:
 
 
 class HLCVManager:
-    """Backtest-oriented OHLCV manager using CandlestickManager for fetching/caching."""
+    """面向回测的 OHLCV 管理器，使用 CandlestickManager 进行数据获取和缓存。"""
 
     def __init__(
         self,
@@ -139,7 +139,7 @@ class HLCVManager:
         gap_tolerance_ohlcvs_minutes: float = 120.0,
         verbose: bool = True,
         cm_debug_level: int = 0,
-        cm_progress_log_interval_seconds: float = 10.0,  # Log progress every 10s by default
+        cm_progress_log_interval_seconds: float = 10.0,  # 默认每10秒记录一次进度
         force_refetch_gaps: bool = False,
         ohlcv_source_dir: Optional[str] = None,
     ):
@@ -150,7 +150,7 @@ class HLCVManager:
         self.start_ts = int(date_to_ts(self.start_date))
         self.end_ts = int(date_to_ts(self.end_date))
         self.cc = cc
-        # Use standard exchange name for cache paths (e.g., "binance" not "binanceusdm")
+        # 使用标准交易所名称作为缓存路径（例如 "binance" 而非 "binanceusdm"）
         cache_exchange = to_standard_exchange_name(self.exchange)
         self.cache_filepaths = {
             "markets": os.path.join("caches", cache_exchange, "markets.json"),
@@ -198,10 +198,10 @@ class HLCVManager:
         if self.cc is None:
             self.cc = load_ccxt_instance(self.exchange, enable_rate_limit=True)
         if self.cm is None:
-            # Limit concurrent ccxt requests per exchange to reduce timeouts under heavy parallelism.
-            # Bybit tends to be more sensitive.
+            # 限制每个交易所的并发 ccxt 请求数，以减少高并发下的超时问题。
+            # Bybit 对此更敏感。
             max_concurrent_requests = 3 if self.exchange == "bybit" else 5
-            # Use standard name for cache paths (e.g., "binance" not "binanceusdm")
+            # 使用标准名称作为缓存路径（例如 "binance" 而非 "binanceusdm"）
             self.cm = CandlestickManager(
                 exchange=self.cc,
                 exchange_name=to_standard_exchange_name(self.exchange),
@@ -209,13 +209,13 @@ class HLCVManager:
                 progress_log_interval_seconds=float(self.cm_progress_log_interval_seconds),
                 max_concurrent_requests=max_concurrent_requests,
                 remote_fetch_callback=self._remote_fetch_log,
-                # Backtest HLCV preparation may share the same cache directory as live trading.
-                # Force-disable disk retention here to avoid deleting shards created/needed by other processes.
+                # 回测 HLCV 准备可能与实盘交易共享同一缓存目录。
+                # 在此强制禁用磁盘保留，以避免删除其他进程创建/需要的分片。
                 max_disk_candles_per_symbol_per_tf=0,
             )
 
     async def aclose(self) -> None:
-        """Close CandlestickManager resources (not the ccxt exchange)."""
+        """关闭 CandlestickManager 资源（不关闭 ccxt 交易所连接）。"""
         if self.cm is None:
             return
         try:
@@ -225,7 +225,7 @@ class HLCVManager:
         self.cm = None
 
     def close(self) -> None:
-        """Best-effort sync close for CandlestickManager resources."""
+        """尽力同步关闭 CandlestickManager 资源。"""
         if self.cm is None:
             return
         try:
@@ -235,14 +235,14 @@ class HLCVManager:
         self.cm = None
 
     def _remote_fetch_log(self, payload: dict) -> None:
-        """Log a concise view of download progress (CCXT + archive).
+        """记录下载进度的简洁视图（CCXT + 归档）。
 
-        CandlestickManager uses its own logger which is often set to WARNING when
-        cm_debug_level=0. This callback lets hlcv_preparation surface progress at
-        INFO level without changing CandlestickManager verbosity globally.
+        CandlestickManager 使用自己的 logger，当 cm_debug_level=0 时通常设置为 WARNING。
+        此回调允许 hlcv_preparation 在 INFO 级别显示进度，
+        而无需全局更改 CandlestickManager 的详细程度。
         """
 
-        # Throttle per (kind, symbol, tf/stage) to avoid log spam.
+        # 按（类型, 交易对, 时间框架/阶段）进行节流，避免日志泛滥。
         if not hasattr(self, "_download_log_last"):
             self._download_log_last = {}
         now = time.monotonic()
@@ -255,7 +255,7 @@ class HLCVManager:
         if kind == "ccxt_fetch_ohlcv":
             attempt = int(payload.get("attempt", 1) or 1)
             if stage == "start":
-                # Only show attempt 1, and at most once per 10 seconds per symbol/tf.
+                # 仅显示第1次尝试，每个交易对/时间框架最多每10秒显示一次。
                 key = ("ccxt", symbol, tf, "start")
                 if (now - float(self._download_log_last.get(key, 0.0))) < 10.0:
                     return
@@ -284,7 +284,7 @@ class HLCVManager:
                 return
 
             if stage == "ok":
-                # Throttle OK logs to once per 10 seconds per symbol/tf.
+                # 将成功日志限制为每个交易对/时间框架每10秒一次。
                 key = ("ccxt", symbol, tf, "ok")
                 if (now - float(self._download_log_last.get(key, 0.0))) < 10.0:
                     return
@@ -320,7 +320,7 @@ class HLCVManager:
                 return
 
             if stage == "error":
-                # Let CandlestickManager warnings show the details; keep this concise.
+                # 让 CandlestickManager 警告显示详细信息；此处保持简洁。
                 if attempt == 1:
                     logging.warning(
                         "[%s] download ccxt error symbol=%s tf=%s error_type=%s error=%s",
@@ -419,7 +419,7 @@ class HLCVManager:
 
     def has_coin(self, coin: str) -> bool:
         symbol = self.get_symbol(coin)
-        # Also verify symbol exists in markets (fallback symbols won't be present)
+        # 同时验证交易对是否存在于市场中（回退交易对不会存在）
         return symbol and symbol in self.markets
 
     def get_market_specific_settings(self, coin: str) -> dict:
@@ -438,15 +438,15 @@ class HLCVManager:
         )
         mss["qty_step"] = mss.get("precision", {}).get("amount")
         if self.exchange == "bybit":
-            # ccxt reports incorrect fees for bybit perps
+            # ccxt 报告的 bybit 永续合约手续费不正确
             mss["maker"] = mss["maker_fee"] = 0.0002
             mss["taker"] = mss["taker_fee"] = 0.00055
         elif self.exchange in ("kucoin", "kucoinfutures"):
-            # ccxt reports incorrect fees for kucoin futures. Assume VIP0
+            # ccxt 报告的 kucoin 期货手续费不正确。假设 VIP0
             mss["maker"] = mss["maker_fee"] = 0.0002
             mss["taker"] = mss["taker_fee"] = 0.0006
         elif self.exchange == "gateio":
-            # ccxt reports incorrect fees for gateio perps. Assume VIP0
+            # ccxt 报告的 gateio 永续合约手续费不正确。假设 VIP0
             mss["maker"] = mss["maker_fee"] = 0.0002
             mss["taker"] = mss["taker_fee"] = 0.0005
         return mss
@@ -520,22 +520,22 @@ class HLCVManager:
         frames = []
         candidates: list[str] = []
 
-        # Mirror CandlestickManager's symbol sanitization for Windows compatibility
+        # 镜像 CandlestickManager 的交易对清理以兼容 Windows
         windows_compat = os.name == "nt" or os.getenv("WINDOWS_COMPATIBILITY") == "1"
 
         for name in (coin, symbol):
             if not name:
                 continue
-            # Original name
+            # 原始名称
             candidates.append(name)
-            # Variant with "/" replaced by "_"
+            # 将 "/" 替换为 "_" 的变体
             if "/" in name:
                 candidates.append(name.replace("/", "_"))
-            # In Windows compatibility mode, also mirror CandlestickManager's ":" -> "_"
+            # 在 Windows 兼容模式下，同时镜像 CandlestickManager 的 ":" -> "_"
             if windows_compat and ("/" in name or ":" in name):
                 candidates.append(name.replace("/", "_").replace(":", "_"))
 
-        # De-duplicate while preserving order
+        # 去重并保持顺序
         seen = set()
         candidates = [c for c in candidates if not (c in seen or seen.add(c))]
         for day in days:
@@ -672,7 +672,7 @@ class HLCVManager:
         self.load_cc()
         assert self.cm is not None
 
-        # Fetch strict (real) candles first to detect large gaps.
+        # 首先获取严格（真实）K线以检测大间隙。
         real = await self.cm.get_candles(
             symbol,
             start_ts=start_ts,
@@ -697,14 +697,14 @@ class HLCVManager:
             is_tradfi_stock_perp = coin.startswith("xyz:") and self.tradfi_for_stock_perps
             gap_tolerance_ms = int(self.gap_tolerance_ohlcvs_minutes * 60_000)
             if is_tradfi_stock_perp:
-                # Allow expected stock-market closures (weekends/holidays) for TradFi-backed data.
-                # Keep configured tolerance when it's already stricter.
+                        # 允许 TradFi 支持数据的预期股市闭市（周末/假日）。
+                # 当配置的容差已经更严格时保持不变。
                 gap_tolerance_ms = max(gap_tolerance_ms, 4 * 24 * 60 * 60_000)
 
             intervals = np.diff(ts)
             greatest_gap_ms = int(intervals.max(initial=60_000))
             if greatest_gap_ms > gap_tolerance_ms:
-                # Helpful diagnostics: locate the exact gap boundaries
+                # 有用的诊断：定位确切的间隙边界
                 gap_start_ts = None
                 gap_end_ts = None
                 try:
@@ -716,8 +716,8 @@ class HLCVManager:
                     gap_start_ts = None
                     gap_end_ts = None
 
-                # Give CandlestickManager one chance to self-heal (legacy merge / refetch gaps)
-                # before returning empty.
+                # 给 CandlestickManager 一次自愈机会（旧版合并 / 重新获取间隙）
+                # 然后再返回空值。
                 if not self.force_refetch_gaps:
                     real = await self.cm.get_candles(
                         symbol,
@@ -735,8 +735,8 @@ class HLCVManager:
                         intervals = np.diff(ts)
                         greatest_gap_ms = int(intervals.max(initial=60_000))
                     else:
-                        # Single or zero timestamp implies no measurable gaps;
-                        # don't reuse stale greatest_gap_ms from the initial fetch.
+                        # 单个或零个时间戳意味着没有可测量的间隙；
+                        # 不要复用初始获取的过时 greatest_gap_ms。
                         greatest_gap_ms = 0
                 if greatest_gap_ms > gap_tolerance_ms:
                     if self.verbose:
@@ -762,8 +762,8 @@ class HLCVManager:
                             )
                     return empty_df
 
-        # Fill to the full requested window (bfill/ffill inside CM).
-        # Data from get_candles is already sorted, so skip redundant sort
+        # 填充到完整的请求窗口（CM 内部的 bfill/ffill）。
+        # get_candles 返回的数据已排序，跳过冗余排序
         filled = self.cm.standardize_gaps(
             real, start_ts=start_ts, end_ts=end_ts, strict=False, assume_sorted=True
         )
@@ -1180,8 +1180,8 @@ async def _resolve_v2_store_range(
             ts_to_date(end_ts),
         )
     elif plan.blocked_by_persistent_gap and plan.legacy_inspection is not None:
-        # Even when legacy data doesn't fully cover the persistent gap,
-        # import whatever is available so the valid window starts earlier.
+        # 即使旧版数据未完全覆盖持久间隙，
+        # 也导入所有可用数据，以便有效窗口更早开始。
         imported_rows = import_legacy_range_into_store(
             store=store,
             legacy_root=legacy_root,
@@ -1325,9 +1325,8 @@ async def _resolve_v2_store_range(
         start_ts=start_ts,
         end_ts=end_ts,
     ):
-        # The legacy candlestick manager may populate daily legacy shards during
-        # the failed fetch path. Re-check once so those newly written shards can
-        # still repair the v2 store without waiting for a later run.
+        # 旧版 K 线管理器可能在获取失败路径中填充每日旧版分片。
+        # 重新检查一次，以便这些新写入的分片仍然可以修复 v2 存储，而无需等待后续运行。
         post_fetch_plan = plan_local_symbol_range(
             catalog=catalog,
             legacy_root=legacy_root,
@@ -1737,15 +1736,15 @@ async def prepare_hlcvs_internal(
     progress = ProgressTracker(len(coins), f"{exchange} fetching candles")
     progress.maybe_log(force=True)
 
-    # Async helper to fetch a single coin's data with all validation
+    # 异步辅助函数，获取单个币种的所有验证数据
     async def fetch_coin_data(coin: str, sem: asyncio.Semaphore):
-        """Fetch and validate data for a single coin. Returns (coin, data, data_bounds) or None."""
-        async with sem:  # Rate limiting
+        """获取并验证单个币种的数据。返回 (coin, data, data_bounds) 或 None。"""
+        async with sem:  # 速率限制
             try:
                 adjusted_start_ts = int(effective_start_ts)
                 is_stock_perp_coin = coin.startswith("xyz:")
 
-                # Validation: check if coin exists
+                # 验证：检查币种是否存在
                 if not om.has_coin(coin):
                     _pct_log("info", progress.pct(), f"{exchange} coin {coin} missing, skipping")
                     return None
@@ -1760,7 +1759,7 @@ async def prepare_hlcvs_internal(
                     )
                     return None
 
-                # Minimum coin age validation
+                # 最小币龄验证
                 if minimum_coin_age_days > 0.0 and not (
                     is_stock_perp_coin and tradfi_for_stock_perps
                 ):
@@ -1807,7 +1806,7 @@ async def prepare_hlcvs_internal(
                         )
                         adjusted_start_ts = int(new_adjusted_start_ts)
 
-                # Fetch OHLCV data
+                # 获取 OHLCV 数据
                 om.update_date_range(adjusted_start_ts)
                 df = await om.get_ohlcvs(coin)
                 data = df[["timestamp", "high", "low", "close", "volume"]].values
@@ -1815,7 +1814,7 @@ async def prepare_hlcvs_internal(
                 if len(data) == 0:
                     return None
 
-                # Validate no gaps
+                # 验证无间隙
                 assert (np.diff(data[:, 0]) == interval_ms).all(), f"gaps in hlcv data {coin}"
 
                 data_bounds = (data[0, 0], data[-1, 0])
@@ -1827,15 +1826,15 @@ async def prepare_hlcvs_internal(
                 traceback.print_exc()
                 return None
 
-    # Parallelize coin fetching with rate limiting.
-    # Bybit is more sensitive to bursts; keep concurrency lower to reduce timeouts.
+    # 使用速率限制并行获取币种数据。
+    # Bybit 对突发请求更敏感；保持较低并发以减少超时。
     COIN_CONCURRENCY = 3 if str(exchange).lower() == "bybit" else 6
     sem = asyncio.Semaphore(COIN_CONCURRENCY)
 
     tasks = [fetch_coin_data(coin, sem) for coin in coins]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Process results
+    # 处理结果
     for result in results:
         progress.maybe_log()
 
@@ -2119,15 +2118,15 @@ async def _prepare_hlcvs_combined_impl(
     chosen_data_per_coin = {}
     chosen_mss_per_coin = {}
 
-    # Preload markets
+    # 预加载市场
     await asyncio.gather(*[om.load_markets() for om in om_dict.values()])
     coins = _normalize_combined_coins(coins, forced_sources, om_dict, first_timestamps_unified)
 
     progress = ProgressTracker(len(coins), "combined fetching candles")
     progress.maybe_log(force=True)
 
-    # Parallelize coin processing with rate limiting
-    # Use semaphore of 6 to respect API rate limits across all exchanges
+    # 使用速率限制并行处理币种
+    # 使用信号量为6以尊重所有交易所的 API 速率限制
     COIN_CONCURRENCY = 6
     sem = asyncio.Semaphore(COIN_CONCURRENCY)
 
@@ -2156,7 +2155,7 @@ async def _prepare_hlcvs_combined_impl(
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Process results
+    # 处理结果
     for result in results:
         progress.maybe_log()
 
@@ -2188,7 +2187,7 @@ async def _prepare_hlcvs_combined_impl(
     )
     end_date_for_volume_ratios = ts_to_date(global_end_time)
 
-    # Use OHLCV sources for volume ratio calculation, not market settings sources
+    # 使用 OHLCV 数据源计算成交量比率，而非市场设置数据源
     exchanges_with_data = sorted(
         set(
             [
@@ -2202,12 +2201,12 @@ async def _prepare_hlcvs_combined_impl(
         valid_coins,
         start_date_for_volume_ratios,
         end_date_for_volume_ratios,
-        # om_dict keys are ccxt IDs (e.g. "binanceusdm"), but exchanges_with_data use standard names
+        # om_dict 的键是 ccxt ID（如 "binanceusdm"），但 exchanges_with_data 使用标准名称
         {ex: om_dict[to_ccxt_exchange_id(ex)] for ex in exchanges_with_data},
     )
     exchanges_counts = defaultdict(int)
     for coin in chosen_mss_per_coin:
-        # Use OHLCV source for volume normalization, not market settings source
+        # 使用 OHLCV 数据源进行成交量标准化，而非市场设置数据源
         ohlcv_exchange = chosen_mss_per_coin[coin].get(
             "ohlcv_source", chosen_mss_per_coin[coin]["exchange"]
         )
@@ -2223,7 +2222,7 @@ async def _prepare_hlcvs_combined_impl(
             exchange_volume_ratios_mapped[ex1][ex1] = 1.0
             exchange_volume_ratios_mapped[ex0][ex0] = 1.0
 
-    # Log volume normalization ratios (used to scale volumes when combining multi-exchange data)
+    # 记录取量标准化比率（用于合并多交易所数据时缩放成交量）
     if len(exchanges_counts) > 1:
         ratio_summary = ", ".join(
             f"{ex}={exchange_volume_ratios_mapped[ex][reference_exchange]:.3f}"
@@ -2237,11 +2236,11 @@ async def _prepare_hlcvs_combined_impl(
             ", ".join(f"{ex}={cnt}" for ex, cnt in sorted(exchanges_counts.items())),
         )
 
-    # Log exchange assignment summary (which exchange was chosen for which coins)
+    # 记录交易所分配摘要（哪个交易所被选为哪个币种）
     if len(exchanges_counts) > 1:
         coins_by_exchange = defaultdict(list)
         for coin in valid_coins:
-            # Use OHLCV source for grouping, not market settings source
+            # 使用 OHLCV 数据源进行分组，而非市场设置数据源
             ohlcv_ex = chosen_mss_per_coin[coin].get(
                 "ohlcv_source", chosen_mss_per_coin[coin]["exchange"]
             )
@@ -2260,7 +2259,7 @@ async def _prepare_hlcvs_combined_impl(
     for i, coin in enumerate(valid_coins):
         df = chosen_data_per_coin[coin].copy()
         df = df.set_index("timestamp").reindex(timestamps)
-        # Use OHLCV source for volume normalization, not market settings source
+        # 使用 OHLCV 数据源进行成交量标准化，而非市场设置数据源
         exchange_for_this_coin = chosen_mss_per_coin[coin].get(
             "ohlcv_source", chosen_mss_per_coin[coin]["exchange"]
         )
@@ -2676,10 +2675,10 @@ async def fetch_data_for_coin_and_exchange(
     use_v2_local: bool = False,
 ):
     t0 = time.monotonic()
-    # Calculate approximate number of days for better visibility
+    # 计算近似天数以获得更好的可见性
     days_approx = max(1, (end_ts - effective_start_ts) // (24 * 60 * 60 * 1000))
 
-    # Stock perps (xyz:*) are only available on Hyperliquid
+    # 股票永续合约 (xyz:*) 仅在 Hyperliquid 上可用
     if coin.startswith("xyz:") and ex != "hyperliquid":
         logging.debug(
             "%s candles fetch skip coin=%s reason=stock_perp_only_on_hyperliquid",

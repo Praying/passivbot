@@ -1,11 +1,10 @@
-"""Fill events management module.
+"""成交事件管理模块。
 
-Provides a reusable manager that keeps local cache of canonicalised fill events,
-fetches fresh data from the exchange when requested, and exposes convenient query
-APIs (PnL summaries, cumulative PnL, last fill timestamps, etc.).
+提供一个可复用的管理器，在本地缓存规范化的成交事件，
+按需从交易所获取新数据，并暴露便捷的查询 API
+（PnL 汇总、累计 PnL、最后成交时间戳等）。
 
-Currently implements a Bitget fetcher; the design is extensible to other
-exchanges.
+目前实现了 Bitget 获取器；设计可扩展到其他交易所。
 """
 
 from __future__ import annotations
@@ -40,19 +39,19 @@ from pure_funcs import ensure_millis
 
 logger = logging.getLogger(__name__)
 
-# Throttle state for spammy warnings
-_pnl_discrepancy_last_log: Dict[str, float] = {}  # exchange:user -> last log time
-_pnl_discrepancy_last_delta: Dict[str, float] = {}  # exchange:user -> last delta value
-_PNL_DISCREPANCY_THROTTLE_SECONDS = 3600.0  # Log at most once per hour if delta unchanged
-_PNL_DISCREPANCY_CHANGE_THRESHOLD = 0.10  # Consider delta "changed" if >10%
-_PNL_DISCREPANCY_MIN_SECONDS = 900.0  # Minimum seconds between logs even if delta changes
+# 频繁警告的节流状态
+_pnl_discrepancy_last_log: Dict[str, float] = {}  # exchange:user -> 上次日志时间
+_pnl_discrepancy_last_delta: Dict[str, float] = {}  # exchange:user -> 上次差值
+_PNL_DISCREPANCY_THROTTLE_SECONDS = 3600.0  # 如果差值未变，每小时最多记录一次
+_PNL_DISCREPANCY_CHANGE_THRESHOLD = 0.10  # 差值变化超过10%视为"已变化"
+_PNL_DISCREPANCY_MIN_SECONDS = 900.0  # 即使差值变化，日志之间的最小间隔秒数
 
 
 # ---------------------------------------------------------------------------
-# Rate Limit Coordination
+# 速率限制协调
 # ---------------------------------------------------------------------------
 
-# Default rate limits per exchange (calls per minute)
+# 每个交易所的默认速率限制（每分钟调用次数）
 _DEFAULT_RATE_LIMITS: Dict[str, Dict[str, int]] = {
     "binance": {"fetch_my_trades": 1200, "fetch_income_history": 120, "default": 1200},
     "bybit": {"fetch_my_trades": 120, "fetch_positions_history": 120, "default": 120},
@@ -65,23 +64,23 @@ _DEFAULT_RATE_LIMITS: Dict[str, Dict[str, int]] = {
         "fetch_order": 60,
         "default": 120,
     },
-    # OKX: /fills = 60 req/2s, /fills-history = 10 req/2s (conservative estimates)
+    # OKX: /fills = 60 req/2s, /fills-history = 10 req/2s（保守估计）
     "okx": {"fetch_my_trades": 1800, "fills_history": 300, "default": 300},
 }
 
-# Window for rate limit tracking (ms)
+# 速率限制跟踪窗口（毫秒）
 _RATE_LIMIT_WINDOW_MS = 60_000
 
-# Default jitter range for staggered startup (seconds)
+# 启动时交错抖动的默认范围（秒）
 _STARTUP_JITTER_MIN = 0.0
 _STARTUP_JITTER_MAX = 30.0
 
 
 class RateLimitCoordinator:
-    """Coordinates rate limiting across multiple bot instances via shared temp file.
+    """通过共享临时文件协调多个机器人实例的速率限制。
 
-    Each exchange has a temp file that logs recent API calls. Instances check this
-    file before making API calls and add jitter if approaching rate limits.
+    每个交易所都有一个临时文件记录最近的 API 调用。实例在发起 API 调用前检查此文件，
+    如果接近速率限制则添加抖动。
     """
 
     def __init__(
@@ -105,7 +104,7 @@ class RateLimitCoordinator:
         self.temp_file = self.temp_dir / f"{self.exchange}.json"
 
     def _load_calls(self) -> List[Dict[str, object]]:
-        """Load recent API calls from temp file."""
+        """从临时文件加载最近的 API 调用。"""
         if not self.temp_file.exists():
             return []
         try:
@@ -121,10 +120,10 @@ class RateLimitCoordinator:
             return []
 
     def _save_calls(self, calls: List[Dict[str, object]]) -> None:
-        """Save API calls to temp file atomically."""
+        """原子性地将 API 调用保存到临时文件。"""
         now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
 
-        # Prune old entries
+        # 修剪旧条目
         cutoff = now_ms - self.window_ms
         calls = [c for c in calls if c.get("timestamp_ms", 0) > cutoff]
 
@@ -148,7 +147,7 @@ class RateLimitCoordinator:
             logger.debug("RateLimitCoordinator: failed to save %s: %s", self.temp_file, exc)
 
     def get_current_usage(self, endpoint: str) -> int:
-        """Get current call count for an endpoint in the current window."""
+        """获取当前窗口内某个端点的调用次数。"""
         calls = self._load_calls()
         now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
         cutoff = now_ms - self.window_ms
@@ -157,11 +156,11 @@ class RateLimitCoordinator:
         )
 
     def get_limit(self, endpoint: str) -> int:
-        """Get rate limit for an endpoint."""
+        """获取某个端点的速率限制。"""
         return self.limits.get(endpoint, self.limits.get("default", 120))
 
     def record_call(self, endpoint: str) -> None:
-        """Record an API call."""
+        """记录一次 API 调用。"""
         calls = self._load_calls()
         calls.append(
             {
@@ -173,12 +172,12 @@ class RateLimitCoordinator:
         self._save_calls(calls)
 
     async def wait_if_needed(self, endpoint: str) -> float:
-        """Check rate limit and wait if needed. Returns time waited (seconds)."""
+        """检查速率限制，必要时等待。返回等待时间（秒）。"""
         current = self.get_current_usage(endpoint)
         limit = self.get_limit(endpoint)
 
         if current >= limit:
-            # At or over limit - wait for full window
+            # 达到或超过限制 - 等待完整窗口
             wait_time = self.window_ms / 1000.0
             logger.info(
                 "RateLimitCoordinator: %s:%s at limit (%d/%d), waiting %.1fs",
@@ -191,7 +190,7 @@ class RateLimitCoordinator:
             await asyncio.sleep(wait_time)
             return wait_time
         elif current >= limit * 0.8:
-            # Approaching limit - add jitter
+            # 接近限制 - 添加抖动
             jitter = random.uniform(0.1, 2.0)
             logger.debug(
                 "RateLimitCoordinator: %s:%s approaching limit (%d/%d), jitter %.2fs",
@@ -211,7 +210,7 @@ class RateLimitCoordinator:
         min_seconds: float = _STARTUP_JITTER_MIN,
         max_seconds: float = _STARTUP_JITTER_MAX,
     ) -> float:
-        """Apply random jitter at startup to stagger multiple bot launches."""
+        """在启动时应用随机抖动，以错开多个机器人启动。"""
         jitter = random.uniform(min_seconds, max_seconds)
         if jitter > 0:
             logger.info("RateLimitCoordinator: startup jitter %.2fs", jitter)
@@ -261,7 +260,7 @@ def _merge_fee_lists(
 
 
 def _fee_cost(fees: Optional[Sequence]) -> float:
-    """Sum fee costs defensively, tolerating missing/partial structures."""
+    """防御性地求和手续费成本，容忍缺失/不完整的结构。"""
     total = 0.0
     if not fees:
         return total
@@ -284,7 +283,7 @@ def _fee_cost(fees: Optional[Sequence]) -> float:
 
 
 def ensure_qty_signage(events: List[Dict[str, object]]) -> None:
-    """Normalize qty sign convention: buys positive, sells negative."""
+    """标准化数量符号约定：买入为正，卖出为负。"""
     for ev in events:
         side = str(ev.get("side") or "").lower()
         qty = float(ev.get("qty") or ev.get("amount") or 0.0)
@@ -297,21 +296,21 @@ def ensure_qty_signage(events: List[Dict[str, object]]) -> None:
 
 
 def _compute_add_reduce(pos_side: str, qty_signed: float) -> Tuple[float, float]:
-    """Compute add/reduce amounts based on position side and signed qty.
+    """根据持仓方向和有符号数量计算加仓/减仓量。
 
     Args:
-        pos_side: "long" or "short"
-        qty_signed: Signed quantity (buy +, sell -)
+        pos_side: "long" 或 "short"
+        qty_signed: 有符号数量（买入 +，卖出 -）
 
     Returns:
-        (add_amt, reduce_amt) tuple
+        (add_amt, reduce_amt) 元组
     """
     if pos_side == "short":
-        add_amt = max(-qty_signed, 0.0)  # sells are negative -> add
-        reduce_amt = max(qty_signed, 0.0)  # buys positive -> reduce short
+        add_amt = max(-qty_signed, 0.0)  # 卖出为负 -> 加仓
+        reduce_amt = max(qty_signed, 0.0)  # 买入为正 -> 减空仓
     else:
-        add_amt = max(qty_signed, 0.0)  # buys add to long
-        reduce_amt = max(-qty_signed, 0.0)  # sells reduce long
+        add_amt = max(qty_signed, 0.0)  # 买入加多仓
+        reduce_amt = max(-qty_signed, 0.0)  # 卖出减多仓
     return add_amt, reduce_amt
 
 
@@ -320,27 +319,25 @@ def compute_psize_pprice(
     initial_state: Optional[Dict[Tuple[str, str], Tuple[float, float]]] = None,
 ) -> Dict[Tuple[str, str], Tuple[float, float]]:
     """
-    Compute psize/pprice for each fill event using two-phase algorithm.
+    使用两阶段算法计算每个成交事件的 psize/pprice。
 
-    Phase 1: Forward iteration to compute final position state, storing
-             the state before each fill for use in phase 2.
-    Phase 2: Backward iteration to annotate each event with the "after" state.
+    阶段1：正向迭代计算最终持仓状态，存储每次成交前的状态供阶段2使用。
+    阶段2：反向迭代为每个事件标注"成交后"状态。
 
-    This approach is cleaner than multi-pass reconciliation because working
-    backwards from a known final state is deterministic - no reconciliation needed.
+    此方法比多遍对账更简洁，因为从已知最终状态反向工作是确定性的——无需对账。
 
     Args:
-        events: List of fill event dicts (must have: symbol, position_side, side, qty, price)
-                Qty sign must be normalized (buy +, sell -).
-        initial_state: Optional starting positions {(symbol, pside): (size, price)}
+        events: 成交事件字典列表（必须包含: symbol, position_side, side, qty, price）
+                数量符号必须已标准化（买入 +，卖出 -）。
+        initial_state: 可选的起始持仓 {(symbol, pside): (size, price)}
 
     Returns:
-        Final position state after all fills: {(symbol, pside): (size, price)}
+        所有成交后的最终持仓状态: {(symbol, pside): (size, price)}
     """
     if not events:
         return {}
 
-    # Group events by (symbol, position_side)
+    # 按 (symbol, position_side) 分组事件
     grouped: Dict[Tuple[str, str], List[Dict[str, object]]] = defaultdict(list)
     for ev in events:
         key = (
@@ -354,11 +351,11 @@ def compute_psize_pprice(
     for key, evs in grouped.items():
         evs.sort(key=lambda x: x.get("timestamp", 0))
 
-        # Phase 1: Forward to compute final state, storing before-state for each fill
+        # 阶段1：正向计算最终状态，存储每次成交前的状态
         psize = initial_state.get(key, (0.0, 0.0))[0] if initial_state else 0.0
         pprice = initial_state.get(key, (0.0, 0.0))[1] if initial_state else 0.0
 
-        # Store (before_psize, before_pprice, after_psize, after_pprice) for each fill
+        # 为每次成交存储 (before_psize, before_pprice, after_psize, after_pprice)
         states: List[Tuple[float, float, float, float]] = []
 
         for ev in evs:
@@ -371,7 +368,7 @@ def compute_psize_pprice(
             before_psize = psize
             before_pprice = pprice
 
-            # Update position
+            # 更新持仓
             if add_amt > 0:
                 if psize <= 0:
                     pprice = price
@@ -388,8 +385,8 @@ def compute_psize_pprice(
 
         final_state[key] = (psize, pprice)
 
-        # Phase 2: Annotate each event with its after-state
-        # The states list already contains the after-state for each fill
+        # 阶段2：为每个事件标注成交后状态
+        # states 列表已包含每次成交的成交后状态
         for ev, (_, _, after_psize, after_pprice) in zip(evs, states):
             ev["psize"] = round(after_psize, 12)
             ev["pprice"] = after_pprice
@@ -404,10 +401,10 @@ def annotate_positions_inplace(
     recompute_pnl: bool = False,
 ) -> Dict[Tuple[str, str], Tuple[float, float]]:
     """
-    Legacy wrapper around compute_psize_pprice for backward compatibility.
+    compute_psize_pprice 的旧版包装器，用于向后兼容。
 
-    Note: recompute_pnl is no longer supported in the simplified algorithm.
-    Fetchers are responsible for computing correct PnL values during fetch.
+    注意：简化算法中不再支持 recompute_pnl。
+    获取器负责在获取期间计算正确的 PnL 值。
     """
     if recompute_pnl:
         logger.warning("annotate_positions_inplace: recompute_pnl=True is deprecated and ignored")
@@ -418,15 +415,14 @@ def compute_realized_pnls_from_trades(
     trades: List[Dict[str, object]],
 ) -> Tuple[Dict[str, float], Dict[Tuple[str, str], Tuple[float, float]]]:
     """
-    Compute realized PnL per trade by reconstructing positions from fills.
+    通过从成交重建持仓来计算每笔交易的已实现 PnL。
 
-    Tracks positions separately per (symbol, position_side) so hedged longs/shorts
-    do not interfere. Position_size is always kept as a positive magnitude for the
-    given side; reductions trigger realized PnL.
+    按 (symbol, position_side) 分别跟踪持仓，以便对冲的多/空头寸互不干扰。
+    Position_size 始终保持为给定方向的正数绝对值；减仓触发已实现 PnL。
 
     Returns:
-        per_trade_pnl: mapping trade_id -> realized pnl (gross, without fees)
-        final_positions: mapping (symbol, position_side) -> (pos_size, vwap)
+        per_trade_pnl: 映射 trade_id -> 已实现 pnl（总值，不含手续费）
+        final_positions: 映射 (symbol, position_side) -> (pos_size, vwap)
     """
     per_trade: Dict[str, float] = {}
     positions: Dict[Tuple[str, str], Tuple[float, float]] = {}
@@ -447,7 +443,7 @@ def compute_realized_pnls_from_trades(
         key = (symbol, pos_side)
         pos_size, vwap = positions.get(key, (0.0, 0.0))
 
-        # Determine whether this trade adds or reduces for this side
+        # 判断此交易对该方向是加仓还是减仓
         if pos_side == "short":
             adds = side == "sell"
         else:  # long or unknown
@@ -455,7 +451,7 @@ def compute_realized_pnls_from_trades(
 
         realized = 0.0
         if not adds:
-            # reducing position
+            # 减仓
             if pos_size > 0:
                 closing_qty = min(pos_size, qty)
                 if pos_side == "short":
@@ -468,11 +464,11 @@ def compute_realized_pnls_from_trades(
                     vwap = 0.0
                 leftover = qty - closing_qty
                 if leftover > 0:
-                    # trade overshoots and becomes a new position in trade direction
+                    # 交易超出并成为交易方向的新持仓
                     pos_size = leftover
                     vwap = price
         else:
-            # adding to position
+            # 加仓
             new_size = pos_size + qty
             if pos_size == 0.0:
                 vwap = price
@@ -487,7 +483,7 @@ def compute_realized_pnls_from_trades(
 
 
 def _coalesce_events(events: List[Dict[str, object]]) -> List[Dict[str, object]]:
-    """Group events sharing timestamp/symbol/pb_type/side/position."""
+    """将共享 timestamp/symbol/pb_type/side/position 的事件合并分组。"""
     aggregated: Dict[Tuple, Dict[str, object]] = {}
     order: List[Tuple] = []
 
@@ -571,35 +567,35 @@ def _check_pagination_progress(
 
 
 # ---------------------------------------------------------------------------
-# Data model
+# 数据模型
 # ---------------------------------------------------------------------------
 
 
 def _normalize_raw_field(raw: object) -> List[Dict[str, object]]:
-    """Normalize raw field to List[Dict] format.
+    """将 raw 字段标准化为 List[Dict] 格式。
 
-    Handles migration from old Dict format to new List[Dict] format.
+    处理从旧的 Dict 格式到新的 List[Dict] 格式的迁移。
     """
     if raw is None:
         return []
     if isinstance(raw, list):
-        # Already in new format - validate and return
+        # 已经是新格式 - 验证后返回
         return [dict(item) if isinstance(item, dict) else {"data": item} for item in raw]
     if isinstance(raw, dict):
-        # Old format: single dict -> wrap in list with "legacy" source
+        # 旧格式：单个字典 -> 包装为带 "legacy" 来源的列表
         return [{"source": "legacy", "data": raw}]
-    # Unknown format
+    # 未知格式
     return [{"source": "unknown", "data": str(raw)}]
 
 
 def _extract_source_ids(raw: object, fallback_id: Optional[object]) -> List[str]:
-    """Extract stable source IDs from raw payloads, with fallback to event id."""
+    """从原始载荷中提取稳定的来源 ID，回退到事件 id。"""
     ids: set[str] = set()
     raw_items = _normalize_raw_field(raw)
     for item in raw_items:
         data = item.get("data") if isinstance(item, dict) else item
         if isinstance(data, dict):
-            # Prefer canonical trade ids if present
+            # 优先使用规范交易 id（如果存在）
             for key in ("id", "tradeId", "trade_id", "execId"):
                 val = data.get(key)
                 if val:
@@ -616,13 +612,13 @@ def _extract_source_ids(raw: object, fallback_id: Optional[object]) -> List[str]
 
 
 def _bybit_trade_dedupe_key(trade: Dict[str, object]) -> Optional[Tuple[object, ...]]:
-    """Build a stable dedupe key for Bybit fetch_my_trades rows."""
+    """为 Bybit fetch_my_trades 行构建稳定的去重键。"""
     info = trade.get("info")
     info = info if isinstance(info, dict) else {}
     exec_id = trade.get("id") or info.get("execId")
     if exec_id:
         return ("exec_id", str(exec_id))
-    # Fallback for malformed rows missing explicit exec ids.
+    # 缺少显式 exec id 的畸形行的回退。
     timestamp = int(trade.get("timestamp") or info.get("execTime") or 0)
     symbol = str(trade.get("symbol") or info.get("symbol") or "")
     side = str(trade.get("side") or info.get("side") or "").lower()
@@ -662,7 +658,7 @@ def _bybit_event_group_key(event: FillEvent) -> Tuple[int, str, str, str, str]:
 
 @dataclass(frozen=True)
 class FillEvent:
-    """Canonical representation of a single fill event."""
+    """单个成交事件的规范表示。"""
 
     id: str
     timestamp: int
@@ -679,7 +675,7 @@ class FillEvent:
     source_ids: List[str] = field(default_factory=list)
     psize: float = 0.0
     pprice: float = 0.0
-    raw: List[Dict[str, object]] = None  # List of raw payloads from multiple sources
+    raw: List[Dict[str, object]] = None  # 来自多个来源的原始载荷列表
 
     @property
     def key(self) -> str:
@@ -747,19 +743,19 @@ class FillEvent:
 
 
 # ---------------------------------------------------------------------------
-# Cache
+# 缓存
 # ---------------------------------------------------------------------------
 
-# Maximum retry attempts before marking gap as persistent
+# 将间隙标记为持久之前的最大重试次数
 _GAP_MAX_RETRIES = 3
 
-# Gap confidence levels
+# 间隙置信度级别
 GAP_CONFIDENCE_UNKNOWN = 0.0
 GAP_CONFIDENCE_SUSPICIOUS = 0.3
 GAP_CONFIDENCE_LIKELY_LEGITIMATE = 0.7
 GAP_CONFIDENCE_CONFIRMED = 1.0
 
-# Gap reasons
+# 间隙原因
 GAP_REASON_AUTO = "auto_detected"
 GAP_REASON_FETCH_FAILED = "fetch_failed"
 GAP_REASON_CONFIRMED = "confirmed_legitimate"
@@ -767,29 +763,29 @@ GAP_REASON_MANUAL = "manual"
 
 
 class KnownGap(TypedDict, total=False):
-    """Gap metadata stored in metadata.json known_gaps."""
+    """存储在 metadata.json known_gaps 中的间隙元数据。"""
 
-    start_ts: int  # Gap start timestamp (ms)
-    end_ts: int  # Gap end timestamp (ms)
-    retry_count: int  # Number of fetch attempts (max 3)
+    start_ts: int  # 间隙开始时间戳（毫秒）
+    end_ts: int  # 间隙结束时间戳（毫秒）
+    retry_count: int  # 获取尝试次数（最多3次）
     reason: str  # auto_detected, fetch_failed, confirmed_legitimate, manual
-    added_at: int  # Timestamp when gap was first detected
-    confidence: float  # 0.0=unknown, 0.3=suspicious, 0.7=likely_ok, 1.0=confirmed
+    added_at: int  # 间隙首次检测到的时间戳
+    confidence: float  # 0.0=未知, 0.3=可疑, 0.7=可能正常, 1.0=已确认
 
 
 class CacheMetadata(TypedDict, total=False):
-    """Cache metadata stored in metadata.json."""
+    """存储在 metadata.json 中的缓存元数据。"""
 
-    last_refresh_ms: int  # Timestamp of last successful refresh
-    oldest_event_ts: int  # Oldest event timestamp in cache
-    newest_event_ts: int  # Newest event timestamp in cache
-    covered_start_ms: int  # Earliest open-ended lookback start confirmed against exchange
-    known_gaps: List[KnownGap]  # List of known gaps
+    last_refresh_ms: int  # 上次成功刷新的时间戳
+    oldest_event_ts: int  # 缓存中最旧事件的时间戳
+    newest_event_ts: int  # 缓存中最新事件的时间戳
+    covered_start_ms: int  # 已确认的最早开放式回溯起始时间
+    known_gaps: List[KnownGap]  # 已知间隙列表
     history_scope: str  # unknown, window, all
 
 
 class FillEventCache:
-    """JSON cache storing fills split by UTC day."""
+    """按 UTC 日期分割存储成交的 JSON 缓存。"""
 
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -856,7 +852,7 @@ class FillEventCache:
         return self.root / "metadata.json"
 
     def load_metadata(self) -> CacheMetadata:
-        """Load cache metadata from disk."""
+        """从磁盘加载缓存元数据。"""
         if self._metadata is not None:
             return self._metadata
 
@@ -878,7 +874,7 @@ class FillEventCache:
                 data = json.load(fh)
             if not isinstance(data, dict):
                 data = default
-            # Ensure all keys exist
+            # 确保所有键存在
             for key in default:
                 data.setdefault(key, default[key])
             self._metadata = data
@@ -889,7 +885,7 @@ class FillEventCache:
         return self._metadata
 
     def save_metadata(self, metadata: Optional[CacheMetadata] = None) -> None:
-        """Save cache metadata to disk atomically."""
+        """原子性地将缓存元数据保存到磁盘。"""
         if metadata is not None:
             self._metadata = metadata
 
@@ -908,7 +904,7 @@ class FillEventCache:
             )
 
     def update_metadata_from_events(self, events: Sequence[FillEvent]) -> None:
-        """Update metadata timestamps based on events."""
+        """根据事件更新元数据时间戳。"""
         if not events:
             return
 
@@ -929,16 +925,16 @@ class FillEventCache:
         self.save_metadata(metadata)
 
     def get_known_gaps(self) -> List[KnownGap]:
-        """Return list of known gaps."""
+        """返回已知间隙列表。"""
         return self.load_metadata().get("known_gaps", [])
 
     def get_covered_start_ms(self) -> int:
-        """Return earliest open-ended lookback start confirmed against exchange."""
+        """返回已确认的最早开放式回溯起始时间。"""
         metadata = self.load_metadata()
         return int(metadata.get("covered_start_ms", 0) or 0)
 
     def mark_covered_start(self, start_ts: int) -> None:
-        """Persist earliest open-ended lookback start confirmed against exchange."""
+        """持久化已确认的最早开放式回溯起始时间。"""
         metadata = self.load_metadata()
         start_ts = int(start_ts)
         current = int(metadata.get("covered_start_ms", 0) or 0)
@@ -948,12 +944,12 @@ class FillEventCache:
         self.save_metadata(metadata)
 
     def get_history_scope(self) -> str:
-        """Return the cached history coverage contract."""
+        """返回缓存的历史覆盖范围约定。"""
         scope = str(self.load_metadata().get("history_scope", "unknown") or "unknown").lower()
         return scope if scope in {"unknown", "window", "all"} else "unknown"
 
     def set_history_scope(self, scope: str) -> None:
-        """Persist the cache history coverage contract."""
+        """持久化缓存历史覆盖范围约定。"""
         normalized = str(scope or "unknown").lower()
         if normalized not in {"unknown", "window", "all"}:
             raise ValueError(f"invalid history scope {scope!r}")
@@ -971,15 +967,15 @@ class FillEventCache:
         reason: str = GAP_REASON_AUTO,
         confidence: float = GAP_CONFIDENCE_UNKNOWN,
     ) -> None:
-        """Add or update a known gap."""
+        """添加或更新已知间隙。"""
         metadata = self.load_metadata()
         gaps = metadata.get("known_gaps", [])
         now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
 
-        # Check for overlapping gap to update
+        # 检查重叠间隙以更新
         for gap in gaps:
             if gap["start_ts"] <= end_ts and gap["end_ts"] >= start_ts:
-                # Overlapping - merge
+                # 重叠 - 合并
                 gap["start_ts"] = min(gap["start_ts"], start_ts)
                 gap["end_ts"] = max(gap["end_ts"], end_ts)
                 gap["retry_count"] = gap.get("retry_count", 0) + 1
@@ -996,7 +992,7 @@ class FillEventCache:
                 self.save_metadata(metadata)
                 return
 
-        # New gap
+        # 新间隙
         new_gap: KnownGap = {
             "start_ts": start_ts,
             "end_ts": end_ts,
@@ -1016,12 +1012,12 @@ class FillEventCache:
         self.save_metadata(metadata)
 
     def clear_gap(self, start_ts: int, end_ts: int) -> bool:
-        """Remove a gap that has been filled. Returns True if a gap was removed."""
+        """移除已填充的间隙。如果移除了间隙则返回 True。"""
         metadata = self.load_metadata()
         gaps = metadata.get("known_gaps", [])
         original_count = len(gaps)
 
-        # Remove gaps that are fully contained in the filled range
+        # 移除完全包含在已填充范围内的间隙
         remaining = []
         for gap in gaps:
             if gap["start_ts"] >= start_ts and gap["end_ts"] <= end_ts:
@@ -1031,7 +1027,7 @@ class FillEventCache:
                     _format_ms(gap["end_ts"]),
                 )
                 continue
-            # Partial overlap - trim the gap
+            # 部分重叠 - 裁剪间隙
             if gap["start_ts"] < start_ts < gap["end_ts"]:
                 gap["end_ts"] = start_ts
             if gap["start_ts"] < end_ts < gap["end_ts"]:
@@ -1046,11 +1042,11 @@ class FillEventCache:
         return False
 
     def should_retry_gap(self, gap: KnownGap) -> bool:
-        """Check if a gap should be retried (retry_count < max)."""
+        """检查间隙是否应重试（retry_count < max）。"""
         return gap.get("retry_count", 0) < _GAP_MAX_RETRIES
 
     def get_coverage_summary(self) -> Dict[str, object]:
-        """Return a summary of cache coverage for debugging."""
+        """返回缓存覆盖摘要用于调试。"""
         metadata = self.load_metadata()
         gaps = metadata.get("known_gaps", [])
 
@@ -1083,12 +1079,12 @@ class FillEventCache:
 
 
 # ---------------------------------------------------------------------------
-# Fetcher infrastructure
+# 获取器基础设施
 # ---------------------------------------------------------------------------
 
 
 class BaseFetcher:
-    """Abstract interface for exchange-specific fill fetchers."""
+    """交易所特定成交获取器的抽象接口。"""
 
     async def fetch(
         self,
@@ -1101,7 +1097,7 @@ class BaseFetcher:
 
 
 class FakeFetcher(BaseFetcher):
-    """Fetch canonical fill events from the fake exchange ledger."""
+    """从模拟交易所账本获取规范成交事件。"""
 
     def __init__(self, api) -> None:
         self.api = api
@@ -1128,7 +1124,7 @@ class FakeFetcher(BaseFetcher):
 
 
 class BitgetFetcher(BaseFetcher):
-    """Fetches and enriches fill events from Bitget."""
+    """从 Bitget 获取并丰富成交事件。"""
 
     def __init__(
         self,
@@ -1403,6 +1399,7 @@ class BitgetFetcher(BaseFetcher):
         }
 
     def _resolve_symbol(self, market_symbol: Optional[str]) -> str:
+        """解析交易对名称。"""
         if not market_symbol:
             return ""
         try:
@@ -1424,7 +1421,7 @@ class BitgetFetcher(BaseFetcher):
 
 
 class BinanceFetcher(BaseFetcher):
-    """Fetch realised PnL events for Binance by combining income and trade history."""
+    """通过合并收入和交易历史为 Binance 获取已实现 PnL 事件。"""
 
     def __init__(
         self,
@@ -1443,7 +1440,7 @@ class BinanceFetcher(BaseFetcher):
         self._symbol_resolver = symbol_resolver
         self._positions_provider = positions_provider or (lambda: ())
         self._open_orders_provider = open_orders_provider or (lambda: ())
-        self.income_limit = min(1000, max(1, income_limit))  # cap to max 1000
+        self.income_limit = min(1000, max(1, income_limit))  # 上限为 1000
         self._now_func = now_func or (lambda: int(datetime.now(tz=timezone.utc).timestamp() * 1000))
         self.trade_limit = max(1, trade_limit)
         self._unsupported_symbols: set[str] = set()
@@ -1514,7 +1511,7 @@ class BinanceFetcher(BaseFetcher):
         for symbol, task in trade_tasks.items():
             try:
                 trades = await task
-            except RateLimitExceeded as exc:  # pragma: no cover - depends on live API
+            except RateLimitExceeded as exc:  # pragma: no cover - 依赖实盘 API
                 logger.warning(
                     "BinanceFetcher.fetch: rate-limited fetching trades for %s (%s)", symbol, exc
                 )
@@ -1677,7 +1674,7 @@ class BinanceFetcher(BaseFetcher):
             return None
         try:
             detail = await self.api.fetch_order(order_id, symbol)
-        except Exception as exc:  # pragma: no cover - live API dependent
+        except Exception as exc:  # pragma: no cover - 依赖实盘 API
             logger.debug(
                 "BinanceFetcher._enrich_with_order_details: fetch_order failed for %s (%s)",
                 order_id,
@@ -1726,7 +1723,7 @@ class BinanceFetcher(BaseFetcher):
             payload = await self.api.fapiprivate_get_income(params=params)
             if fetch_count > 1:
                 payload_size = len(payload) if payload else 0
-                # Only log at INFO when there's actual data; DEBUG otherwise
+                # 仅在有实际数据时记录 INFO；否则记录 DEBUG
                 log_fn = logger.info if payload_size > 0 else logger.debug
                 log_fn(
                     "BinanceFetcher._fetch_income: fetch #%d startTime=%s endTime=%s size=%d",
@@ -1790,7 +1787,7 @@ class BinanceFetcher(BaseFetcher):
                 )
                 if fetch_count > 1:
                     batch_size = len(batch) if batch else 0
-                    # Only log at INFO when there's actual data; DEBUG otherwise
+                    # 仅在有实际数据时记录 INFO；否则记录 DEBUG
                     log_fn = logger.info if batch_size > 0 else logger.debug
                     log_fn(
                         "BinanceFetcher._fetch_symbol_trades: fetch #%d symbol=%s start=%s end=%s size=%d",
@@ -1827,7 +1824,7 @@ class BinanceFetcher(BaseFetcher):
                 key=lambda tr: int(tr.get("timestamp") or (tr.get("info") or {}).get("time") or 0),
             )
             return ordered
-        except Exception as exc:  # pragma: no cover - depends on live API
+        except Exception as exc:  # pragma: no cover - 依赖实盘 API
             msg = str(exc).lower() if exc else ""
             if "does not have market symbol" in msg or "market symbol" in msg:
                 self._note_unsupported_symbol(ccxt_symbol)
@@ -1926,12 +1923,12 @@ class BinanceFetcher(BaseFetcher):
 
 
 # ---------------------------------------------------------------------------
-# Manager
+# 管理器
 # ---------------------------------------------------------------------------
 
 
 class FillEventsManager:
-    """High-level interface around cached/fetched fill events."""
+    """围绕缓存/获取的成交事件的高级接口。"""
 
     def __init__(
         self,
@@ -1967,7 +1964,7 @@ class FillEventsManager:
                 filtered.append(ev)
             self._events = sorted(filtered, key=lambda ev: ev.timestamp)
 
-            # Annotate psize/pprice for legacy caches that may lack these values
+            # 为可能缺少这些值的旧版缓存标注 psize/pprice
             if self._events:
                 payload = [ev.to_dict() for ev in self._events]
                 ensure_qty_signage(payload)
@@ -2007,6 +2004,7 @@ class FillEventsManager:
 
     @staticmethod
     def _bybit_group_stats(events: Sequence[FillEvent]) -> Dict[str, object]:
+        """计算 Bybit 事件组的统计信息。"""
         unique_rows: Dict[Tuple[object, ...], Dict[str, object]] = {}
         fallback_idx = 0
         duplicate_rows = 0
@@ -2035,6 +2033,7 @@ class FillEventsManager:
 
     @staticmethod
     def _scan_bybit_qty_inflation(events: Sequence[FillEvent]) -> List[Dict[str, object]]:
+        """扫描 Bybit 数量膨胀异常。"""
         anomalies: List[Dict[str, object]] = []
         tolerance = 1e-9
 
@@ -2127,7 +2126,7 @@ class FillEventsManager:
 
     @staticmethod
     def _build_consolidated_bybit_event(group: Sequence[FillEvent]) -> FillEvent:
-        # Pick best baseline event (prefer internally deduped, then largest unique coverage).
+        # 选择最佳基线事件（优先内部去重的，然后是最大唯一覆盖的）。
         best_event = group[0]
         best_rank: Tuple[int, int, float] = (-1, -1, float("-inf"))
         mt_unique_by_key: Dict[Tuple[object, ...], Dict[str, object]] = {}
@@ -2195,7 +2194,7 @@ class FillEventsManager:
         source_ids_sorted = sorted(source_ids)
         event_id = "+".join(source_ids_sorted) if source_ids_sorted else best_event.id
 
-        # Recompute close PnL when possible from positions_history + unique fills.
+        # 尽可能从 positions_history + 唯一成交重新计算平仓 PnL。
         pnl: Optional[float] = None
         positions_items = [
             row
@@ -2264,7 +2263,7 @@ class FillEventsManager:
         )
 
     async def run_doctor(self, *, auto_repair: bool = False) -> Dict[str, object]:
-        """Detect and optionally auto-repair known fill-event cache anomalies."""
+        """检测并可选地自动修复已知的成交事件缓存异常。"""
         await self.ensure_loaded()
         report: Dict[str, object] = {
             "exchange": self.exchange,
@@ -2383,8 +2382,8 @@ class FillEventsManager:
         try:
             await self.fetcher.fetch(start_ms, end_ms, detail_cache, on_batch=handle_batch)
         except RateLimitExceeded:
-            # Preserve bounded-range failures as known gaps so retry logic can
-            # revisit them.  We still re-raise to fail loudly on critical input.
+            # 将有界范围的失败保留为已知间隙，以便重试逻辑可以重新访问。
+            # 我们仍然重新抛出以在关键输入时大声失败。
             if start_ms is not None and end_ms is not None:
                 self.cache.add_known_gap(
                     start_ms,
@@ -2396,28 +2395,28 @@ class FillEventsManager:
 
         self._events = sorted(updated_map.values(), key=lambda ev: ev.timestamp)
 
-        # Annotate psize/pprice for all events
+        # 为所有事件标注 psize/pprice
         if self._events:
             payload = [ev.to_dict() for ev in self._events]
             ensure_qty_signage(payload)
             compute_psize_pprice(payload)
             self._events = [FillEvent.from_dict(ev) for ev in payload]
 
-            # Re-persist touched days with annotated psize/pprice values
+            # 重新持久化受影响日期的 psize/pprice 标注值
             if all_days_persisted:
                 day_payload = self._events_for_days(self._events, all_days_persisted)
                 self.cache.save_days(day_payload)
 
-        # Update cache metadata with timestamps
+        # 用时间戳更新缓存元数据
         if self._events:
             self.cache.update_metadata_from_events(self._events)
 
-            # If we successfully fetched data for a gap range, clear it
+            # 如果成功获取了间隙范围的数据，清除它
             if start_ms is not None and end_ms is not None and added_ids:
                 self.cache.clear_gap(start_ms, end_ms)
 
-        # Consolidated refresh summary log
-        # Only log at INFO when there are actually new fills; routine refreshes go to DEBUG
+        # 合并的刷新摘要日志
+        # 仅在有新成交时记录 INFO；常规刷新记录到 DEBUG
         if added_ids:
             days_list = sorted(all_days_persisted)
             days_preview = ", ".join(days_list[:5])
@@ -2434,7 +2433,7 @@ class FillEventsManager:
             logger.debug("[fills] refresh: events=%d (no changes)", len(self._events))
 
     async def refresh_latest(self, *, overlap: int = 20) -> None:
-        """Fetch only the most recent fills, overlapping by `overlap` events."""
+        """仅获取最近的成交，重叠 `overlap` 个事件。"""
         await self.ensure_loaded()
         if not self._events:
             logger.debug("[fills] refresh_latest: cache empty, falling back to full refresh")
@@ -2453,11 +2452,10 @@ class FillEventsManager:
         gap_hours: float = 12.0,
         force_refetch_gaps: bool = False,
     ) -> None:
-        """Refresh fills for a requested lookback window using cache-derived coverage.
+        """使用缓存派生的覆盖范围刷新请求的回溯窗口的成交。
 
-        Open-ended lookbacks are tracked in cache metadata so bots can avoid
-        re-running the same expensive history bootstrap after restart when the
-        early portion of the lookback legitimately contains no fills.
+        开放式回溯在缓存元数据中跟踪，以便机器人在重启后可以避免
+        重新运行相同的历史引导，当回溯的早期部分确实没有成交时。
         """
         await self.ensure_loaded()
         start_ms = int(start_ms)
@@ -2536,23 +2534,23 @@ class FillEventsManager:
         overlap: int = 20,
         force_refetch_gaps: bool = False,
     ) -> None:
-        """Fill missing data between `start_ms` and `end_ms` using gap heuristics.
+        """使用间隙启发式方法填充 `start_ms` 和 `end_ms` 之间的缺失数据。
 
         Args:
-            start_ms: Start timestamp in milliseconds
-            end_ms: End timestamp in milliseconds (or None for now)
-            gap_hours: Threshold for detecting gaps (default 12 hours)
-            overlap: Number of events to overlap when fetching latest
-            force_refetch_gaps: If True, retry even persistent gaps
+            start_ms: 开始时间戳（毫秒）
+            end_ms: 结束时间戳（毫秒，或 None 表示当前时间）
+            gap_hours: 检测间隙的阈值（默认12小时）
+            overlap: 获取最新数据时重叠的事件数量
+            force_refetch_gaps: 如果为 True，即使持久间隙也重试
         """
         await self.ensure_loaded()
         intervals: List[Tuple[int, int]] = []
 
-        # Get known gaps from cache metadata
+        # 从缓存元数据获取已知间隙
         known_gaps = self.cache.get_known_gaps()
 
         def is_in_persistent_gap(ts_start: int, ts_end: int) -> bool:
-            """Check if interval is fully within a persistent (max retries) gap."""
+            """检查区间是否完全在持久（最大重试次数）间隙内。"""
             if force_refetch_gaps:
                 return False
             for gap in known_gaps:
@@ -2572,13 +2570,13 @@ class FillEventsManager:
         latest = events_sorted[-1].timestamp
         gap_ms = max(1, int(gap_hours * 60.0 * 60.0 * 1000.0))
 
-        # Fetch older data before earliest cached if requested
+        # 如果请求，获取最早缓存之前的旧数据
         if start_ms < earliest:
             upper = earliest if end_ms is None else min(earliest, end_ms)
             if start_ms < upper and not is_in_persistent_gap(start_ms, upper):
                 intervals.append((start_ms, upper))
 
-        # Detect large gaps in cached data
+        # 检测缓存数据中的大间隙
         prev_ts = earliest
         for ev in events_sorted[1:]:
             cur_ts = ev.timestamp
@@ -2596,7 +2594,7 @@ class FillEventsManager:
                         )
                     else:
                         intervals.append((gap_start, gap_end))
-                        # Record as potential gap for tracking
+                        # 记录为潜在间隙以供跟踪
                         self.cache.add_known_gap(
                             gap_start,
                             gap_end,
@@ -2605,7 +2603,7 @@ class FillEventsManager:
                         )
             prev_ts = cur_ts
 
-        # Fetch newer data after latest cached if requested (if not already covered)
+        # 如果请求，获取最新缓存之后的新数据（如果尚未覆盖）
         if end_ms is not None and end_ms > latest and (not intervals or intervals[-1][1] != end_ms):
             lower = max(latest, start_ms)
             if lower < end_ms and not is_in_persistent_gap(lower, end_ms):
@@ -2632,11 +2630,11 @@ class FillEventsManager:
         end_ms: Optional[int] = None,
         symbol: Optional[str] = None,
     ) -> List[FillEvent]:
-        """Get fill events with optional filtering.
+        """获取可选过滤的成交事件。
 
-        Events are returned with pre-computed psize/pprice values based on full
-        history (computed during ensure_loaded/refresh). The values reflect
-        position state after each fill in chronological order.
+        事件返回时带有基于完整历史的预计算 psize/pprice 值
+        （在 ensure_loaded/refresh 期间计算）。这些值反映
+        按时间顺序每次成交后的持仓状态。
         """
         events = self._events
         if start_ms is not None:
@@ -2696,7 +2694,7 @@ class FillEventsManager:
         return points
 
     def get_coverage_summary(self) -> Dict[str, object]:
-        """Return a summary of cache coverage and known gaps."""
+        """返回缓存覆盖范围和已知间隙的摘要。"""
         summary = self.cache.get_coverage_summary()
         summary["events_count"] = len(self._events)
         summary["exchange"] = self.exchange
@@ -2704,7 +2702,7 @@ class FillEventsManager:
         if self._events:
             summary["first_event"] = _format_ms(self._events[0].timestamp)
             summary["last_event"] = _format_ms(self._events[-1].timestamp)
-            # Count unique symbols
+            # 统计唯一交易对数量
             symbols = set(ev.symbol for ev in self._events)
             summary["symbols_count"] = len(symbols)
             summary["symbols"] = sorted(symbols)
@@ -2748,7 +2746,7 @@ class FillEventsManager:
 
 
 class BybitFetcher(BaseFetcher):
-    """Fetches fill events from Bybit using trades + positions history."""
+    """通过合并交易和持仓历史从 Bybit 获取成交事件。"""
 
     def __init__(
         self,
@@ -2877,21 +2875,21 @@ class BybitFetcher(BaseFetcher):
         return deduped
 
     async def _fetch_positions_history(self, start_ms: int, end_ms: int) -> List[Dict[str, object]]:
-        """Fetch closed-pnl records using Bybit's raw API with hybrid pagination.
+        """使用 Bybit 原始 API 和混合分页获取已平仓 PnL 记录。
 
-        Uses a two-phase approach:
-        1. Cursor pagination for recent records (more efficient, no missed records)
-        2. Time-based sliding window for older records (cursor doesn't go back far enough)
+        使用两阶段方法：
+        1. 游标分页用于最近记录（更高效，不会遗漏记录）
+        2. 基于时间的滑动窗口用于较旧记录（游标无法回溯足够远）
 
-        This is necessary because:
-        - CCXT's fetch_positions_history uses time-based pagination which can miss records
-        - Bybit's cursor pagination only covers ~7 days of recent data
+        这是必要的，因为：
+        - CCXT 的 fetch_positions_history 使用基于时间的分页，可能会遗漏记录
+        - Bybit 的游标分页仅覆盖最近约7天的数据
         """
-        results: Dict[str, Dict[str, object]] = {}  # Dedupe by orderId
+        results: Dict[str, Dict[str, object]] = {}  # 按 orderId 去重
         max_fetches = 500
         fetch_count = 0
 
-        # Phase 1: Use cursor pagination for recent records
+        # 阶段1：使用游标分页获取最近记录
         params: Dict[str, object] = {
             "category": "linear",
             "limit": self.position_limit,
@@ -2928,17 +2926,17 @@ class BybitFetcher(BaseFetcher):
 
             cursor = response.get("result", {}).get("nextPageCursor")
             if not cursor:
-                # Cursor exhausted - switch to time-based sliding window
+                # 游标耗尽 - 切换到基于时间的滑动窗口
                 break
             params["cursor"] = cursor
 
-        # Phase 2: Time-based sliding window for older records (if cursor didn't reach start)
+        # 阶段2：基于时间的滑动窗口用于较旧记录（如果游标未到达起始位置）
         if cursor_oldest_ts > start_ms:
             logger.debug(
                 "BybitFetcher._fetch_positions_history: cursor exhausted at %s, switching to time-based",
                 _format_ms(cursor_oldest_ts),
             )
-            # Remove cursor and continue with time-based pagination
+            # 移除游标并继续使用基于时间的分页
             current_end = cursor_oldest_ts
 
             while current_end > start_ms and fetch_count < max_fetches:
@@ -2957,7 +2955,7 @@ class BybitFetcher(BaseFetcher):
 
                 batch = response.get("result", {}).get("list", [])
                 if not batch:
-                    # No more records, slide window back
+                    # 没有更多记录，滑动窗口后移
                     current_end = max(start_ms, current_end - self._max_span_ms)
                     continue
 
@@ -2967,7 +2965,7 @@ class BybitFetcher(BaseFetcher):
                 if oldest_ts <= start_ms:
                     break
 
-                # Slide window: if batch was full, use oldest ts; otherwise jump back
+                # 滑动窗口：如果批次已满，使用最旧的时间戳；否则向后跳转
                 if len(batch) >= self.position_limit:
                     current_end = oldest_ts
                 else:
@@ -2986,17 +2984,17 @@ class BybitFetcher(BaseFetcher):
         start_ms: int,
         results: Dict[str, Dict[str, object]],
     ) -> None:
-        """Process a batch of closed-pnl records and add to results dict."""
+        """处理一批已平仓 PnL 记录并添加到结果字典。"""
         for record in batch:
             updated_ts = int(record.get("updatedTime", 0))
             created_ts = int(record.get("createdTime", 0))
             order_id = record.get("orderId", "")
 
-            # Skip records outside our time range or already processed
+            # 跳过超出时间范围或已处理的记录
             if updated_ts < start_ms or order_id in results:
                 continue
 
-            # Convert Bybit symbol to CCXT format
+            # 将 Bybit 交易对转换为 CCXT 格式
             raw_symbol = record.get("symbol", "")
             ccxt_symbol = raw_symbol
             if hasattr(self.api, "markets") and self.api.markets:
@@ -3025,19 +3023,18 @@ class BybitFetcher(BaseFetcher):
         positions: List[Dict[str, object]],
         detail_cache: Dict[str, Tuple[str, str]],
     ) -> List[Dict[str, object]]:
-        """Combine trades with positions_history to compute per-fill PnL.
+        """合并交易和持仓历史以计算每笔成交的 PnL。
 
-        Strategy: For each close fill, use avgEntryPrice from its closed-pnl record
-        to compute accurate PnL as: (exitPrice - avgEntryPrice) * closedSize * direction.
+        策略：对于每笔平仓成交，使用其已平仓 PnL 记录中的 avgEntryPrice
+        计算准确的 PnL：(exitPrice - avgEntryPrice) * closedSize * direction。
 
-        This ensures each fill gets its correct PnL rather than distributing the
-        total order PnL proportionally (which is incorrect when fills have different
-        exit prices).
+        这确保每笔成交获得正确的 PnL，而不是按比例分配
+        总订单 PnL（当成交有不同的退出价格时这是不正确的）。
         """
-        # Index closed-pnl records by orderId for fast lookup
-        # Each close fill has its own closed-pnl record with avgEntryPrice
+        # 按 orderId 索引已平仓 PnL 记录以快速查找
+        # 每笔平仓成交都有自己的已平仓 PnL 记录（包含 avgEntryPrice）
         pnl_by_order: Dict[str, Dict] = {}
-        raw_pnl_by_order: Dict[str, Dict] = {}  # Keep original data for raw field
+        raw_pnl_by_order: Dict[str, Dict] = {}  # 保留原始数据用于 raw 字段
         for entry in positions:
             info = entry.get("info", {})
             order_id = str(info.get("orderId", entry.get("orderId", "")))
@@ -3064,7 +3061,7 @@ class BybitFetcher(BaseFetcher):
             order_id = event.get("order_id")
             cache_entry = detail_cache.get(event["id"])
 
-            # Set pb_order_type from cache or client_order_id
+            # 从缓存或 client_order_id 设置 pb_order_type
             if cache_entry:
                 event["client_order_id"], event["pb_order_type"] = cache_entry
                 if not event["pb_order_type"]:
@@ -3075,7 +3072,7 @@ class BybitFetcher(BaseFetcher):
             else:
                 event["pb_order_type"] = "unknown"
 
-            # Compute PnL for close fills using avgEntryPrice
+            # 使用 avgEntryPrice 计算平仓成交的 PnL
             closed_size = float(event.get("closed_size", 0))
             if closed_size > 0 and order_id and order_id in pnl_by_order:
                 pnl_record = pnl_by_order[order_id]
@@ -3084,15 +3081,15 @@ class BybitFetcher(BaseFetcher):
                 position_side = event["position_side"]
 
                 if avg_entry > 0 and exit_price > 0:
-                    # Compute gross PnL based on position direction
-                    # Long close (sell): profit if exit > entry
-                    # Short close (buy): profit if entry > exit
+                    # 根据持仓方向计算毛 PnL
+                    # 多头平仓（卖出）：退出价 > 入场价时盈利
+                    # 空头平仓（买入）：入场价 > 退出价时盈利
                     if position_side == "long":
                         gross_pnl = (exit_price - avg_entry) * closed_size
                     else:
                         gross_pnl = (avg_entry - exit_price) * closed_size
 
-                    # Distribute fees proportionally if this fill is part of larger close
+                    # 按比例分配手续费（当此成交属于更大的平仓订单时）
                     total_closed = pnl_record["closedSize"]
                     total_fees = pnl_record["closeFee"] + pnl_record["openFee"]
                     if total_closed > 0:
@@ -3103,12 +3100,12 @@ class BybitFetcher(BaseFetcher):
                     event["pnl"] = gross_pnl - fee_portion
                     computed_count += 1
                 else:
-                    # Fallback to closedPnl if avgEntryPrice unavailable
+                    # avgEntryPrice 不可用时回退到 closedPnl
                     event["pnl"] = pnl_record["closedPnl"]
 
                 matched_count += 1
 
-                # Append positions_history (closed-pnl) data to raw field
+                # 将 positions_history（已平仓 PnL）数据附加到 raw 字段
                 if order_id in raw_pnl_by_order:
                     event["raw"].append(
                         {
@@ -3158,7 +3155,7 @@ class BybitFetcher(BaseFetcher):
             "pb_order_type": "",
             "position_side": position_side,
             "client_order_id": client_order_id or "",
-            "closed_size": closed_size,  # For PnL computation
+            "closed_size": closed_size,  # 用于 PnL 计算
             "raw": [{"source": "fetch_my_trades", "data": dict(trade)}],
         }
 
@@ -3176,7 +3173,7 @@ class BybitFetcher(BaseFetcher):
 
 
 class HyperliquidFetcher(BaseFetcher):
-    """Fetches fill events via ccxt.fetch_my_trades for Hyperliquid."""
+    """通过 ccxt.fetch_my_trades 获取 Hyperliquid 的成交事件。"""
 
     def __init__(
         self,
@@ -3236,7 +3233,7 @@ class HyperliquidFetcher(BaseFetcher):
                     exc,
                 )
                 await asyncio.sleep(min(30.0, 2.0 ** rate_limit_retries))
-                # Reset prev_params so the retry is not flagged as repeated
+                # 重置 prev_params 以避免重试被标记为重复
                 prev_params = None
                 continue
             rate_limit_retries = 0
@@ -3288,7 +3285,7 @@ class HyperliquidFetcher(BaseFetcher):
 
         events = sorted(collected.values(), key=lambda ev: ev["timestamp"])
         events = _coalesce_events(events)
-        # Note: psize/pprice annotation is done centrally in FillEventsManager.refresh()
+        # 注意：psize/pprice 标注在 FillEventsManager.refresh() 中集中完成
 
         for event in events:
             cache_entry = detail_cache.get(event["id"])
@@ -3352,12 +3349,11 @@ class HyperliquidFetcher(BaseFetcher):
 
 
 class GateioFetcher(BaseFetcher):
-    """Fetches fill events for Gate.io using trades + order PnL.
+    """使用 trades + 订单 PnL 获取 Gate.io 的成交事件。
 
-    Uses the my_trades_timerange endpoint for fill-level data (fees, exact prices)
-    since the standard my_trades endpoint has a 7-day hard limit. Uses
-    fetch_closed_orders for PnL. Distributes order-level PnL proportionally
-    across fills when an order has multiple trades.
+    使用 my_trades_timerange 端点获取成交级别数据（手续费、精确价格），
+    因为标准 my_trades 端点有 7 天硬限制。使用 fetch_closed_orders 获取
+    PnL。当订单有多笔成交时，按比例分配订单级别 PnL。
     """
 
     def __init__(
@@ -3384,26 +3380,26 @@ class GateioFetcher(BaseFetcher):
             _format_ms(until_ms),
         )
 
-        # Step 1: Fetch trades (fill-level data with fees)
+        # 步骤 1：获取成交（包含手续费的成交级别数据）
         trades = await self._fetch_trades(since_ms, until_ms)
         if not trades:
             logger.debug("GateioFetcher.fetch: no trades found")
             return []
 
-        # Step 2: Collect unique order IDs
+        # 步骤 2：收集唯一订单 ID
         order_ids: set[str] = set()
         for t in trades:
             oid = str(t.get("order") or t.get("info", {}).get("order_id") or "")
             if oid:
                 order_ids.add(oid)
 
-        # Step 3: Fetch closed orders for PnL
+        # 步骤 3：获取已关闭订单以获取 PnL
         orders_by_id = await self._fetch_orders_for_pnl(order_ids)
 
-        # Step 4: Merge trades with order PnL
+        # 步骤 4：将成交与订单 PnL 合并
         events = self._merge_trades_with_orders(trades, orders_by_id, detail_cache)
 
-        # Filter by time bounds
+        # 按时间范围过滤
         if since_ms is not None:
             events = [ev for ev in events if ev["timestamp"] >= since_ms]
         if until_ms is not None:
@@ -3425,14 +3421,13 @@ class GateioFetcher(BaseFetcher):
     async def _fetch_trades(
         self, since_ms: Optional[int], until_ms: Optional[int]
     ) -> List[Dict[str, object]]:
-        """Fetch trades using the my_trades_timerange endpoint.
+        """使用 my_trades_timerange 端点获取成交。
 
-        The standard my_trades endpoint has a ~7 day hard limit, so we use
-        the timerange endpoint which allows fetching historical data by
-        specifying from/to timestamps.
+        标准 my_trades 端点有约 7 天硬限制，因此使用时间范围端点，
+        允许通过指定 from/to 时间戳获取历史数据。
         """
         now_ms = self._now_func()
-        # Default to 30 days if no since_ms provided
+        # 未提供 since_ms 时默认回溯 30 天
         default_lookback_ms = 30 * 24 * 60 * 60 * 1000
         from_s = int((since_ms or (now_ms - default_lookback_ms)) / 1000)
         to_s = int((until_ms or now_ms) / 1000)
@@ -3446,7 +3441,7 @@ class GateioFetcher(BaseFetcher):
         while fetch_count < max_fetches:
             fetch_count += 1
             try:
-                # Use the timerange endpoint directly via CCXT's private API
+                # 直接通过 CCXT 私有 API 使用时间范围端点
                 batch = await self.api.private_futures_get_settle_my_trades_timerange(
                     {
                         "settle": "usdt",
@@ -3466,7 +3461,7 @@ class GateioFetcher(BaseFetcher):
                 await asyncio.sleep(sleep_time)
                 continue
             except Exception as exc:
-                # Check if it's a rate limit error in disguise
+                # 检查是否为伪装的频率限制错误
                 if "TOO_MANY_REQUESTS" in str(exc):
                     consecutive_rate_limits += 1
                     sleep_time = min(2**consecutive_rate_limits, 30)
@@ -3491,10 +3486,10 @@ class GateioFetcher(BaseFetcher):
                 break
 
             for raw_trade in batch:
-                # Convert raw Gate.io response to CCXT-like format
+                # 将原始 Gate.io 响应转换为类 CCXT 格式
                 trade = self._normalize_raw_trade(raw_trade)
                 ts = trade.get("timestamp", 0)
-                # Skip trades outside time bounds (safety check)
+                # 跳过时间范围外的成交（安全检查）
                 if since_ms is not None and ts < since_ms:
                     continue
                 if until_ms is not None and ts > until_ms:
@@ -3507,7 +3502,7 @@ class GateioFetcher(BaseFetcher):
                 break
 
             offset += self.trade_limit
-            # Small delay to avoid rate limits
+            # 短暂延迟以避免频率限制
             await asyncio.sleep(0.15)
 
         if fetch_count >= max_fetches:
@@ -3516,28 +3511,28 @@ class GateioFetcher(BaseFetcher):
         return list(collected.values())
 
     def _normalize_raw_trade(self, raw: Dict[str, object]) -> Dict[str, object]:
-        """Convert raw Gate.io my_trades_timerange response to CCXT-like format.
+        """将原始 Gate.io my_trades_timerange 响应转换为类 CCXT 格式。
 
-        Raw format from my_trades_timerange:
-            price, text, fee, create_time (float seconds), point_fee,
+        my_trades_timerange 原始格式：
+            price, text, fee, create_time（浮点秒数）, point_fee,
             trade_id, contract, role, order_id, size, close_size, biz_info, amend_text
 
-        CCXT-like format expected by _normalize_trade:
+        _normalize_trade 期望的类 CCXT 格式：
             id, order, timestamp, symbol, side, amount, price, fee, info
         """
-        # Parse timestamp from float seconds to ms
+        # 将时间戳从浮点秒数解析为毫秒
         create_time = raw.get("create_time", 0)
         timestamp_ms = int(float(create_time) * 1000) if create_time else 0
 
-        # Get contract and convert to CCXT symbol format (e.g., BNB_USDT -> BNB/USDT:USDT)
+        # 获取合约并转换为 CCXT 交易对格式（例如 BNB_USDT -> BNB/USDT:USDT）
         contract = str(raw.get("contract") or "")
         symbol = contract.replace("_", "/") + ":USDT" if contract else ""
 
-        # Determine side from size sign (positive = buy, negative = sell)
+        # 根据 size 符号确定方向（正数 = 买入，负数 = 卖出）
         size = float(raw.get("size") or 0)
         side = "buy" if size >= 0 else "sell"
 
-        # Build fee structure
+        # 构建手续费结构
         fee_cost = float(raw.get("fee") or 0)
         fee = {"cost": fee_cost, "currency": "USDT"} if fee_cost else None
 
@@ -3550,11 +3545,11 @@ class GateioFetcher(BaseFetcher):
             "amount": abs(size),
             "price": float(raw.get("price") or 0),
             "fee": fee,
-            "info": raw,  # Keep raw data for _normalize_trade to access
+            "info": raw,  # 保留原始数据供 _normalize_trade 访问
         }
 
     async def _fetch_orders_for_pnl(self, order_ids: set[str]) -> Dict[str, Dict[str, object]]:
-        """Fetch closed orders to get PnL data."""
+        """获取已关闭订单以获取 PnL 数据。"""
         orders_by_id: Dict[str, Dict[str, object]] = {}
         max_fetches = 400
         fetch_count = 0
@@ -3577,7 +3572,7 @@ class GateioFetcher(BaseFetcher):
                 if oid:
                     orders_by_id[oid] = order
 
-            # Check if we've collected all needed orders
+            # 检查是否已收集所有需要的订单
             if order_ids and order_ids.issubset(orders_by_id.keys()):
                 break
 
@@ -3594,8 +3589,8 @@ class GateioFetcher(BaseFetcher):
         orders_by_id: Dict[str, Dict[str, object]],
         detail_cache: Dict[str, Tuple[str, str]],
     ) -> List[Dict[str, object]]:
-        """Merge trades with order-level PnL, distributing proportionally."""
-        # Group trades by order_id
+        """将成交与订单级别 PnL 合并，按比例分配。"""
+        # 按 order_id 分组成交
         trades_by_order: Dict[str, List[Dict[str, object]]] = defaultdict(list)
         for t in trades:
             oid = str(t.get("order") or t.get("info", {}).get("order_id") or "")
@@ -3606,10 +3601,10 @@ class GateioFetcher(BaseFetcher):
             order = orders_by_id.get(order_id, {})
             order_info = order.get("info", {}) if order else {}
 
-            # Get order-level PnL
+            # 获取订单级别 PnL
             order_pnl = float(order_info.get("pnl") or 0.0)
 
-            # Calculate total qty for proportional distribution
+            # 计算总数量用于按比例分配
             total_qty = sum(abs(float(t.get("amount", 0))) for t in order_trades)
 
             for t in order_trades:
@@ -3626,7 +3621,7 @@ class GateioFetcher(BaseFetcher):
         total_qty: float,
         detail_cache: Dict[str, Tuple[str, str]],
     ) -> Dict[str, object]:
-        """Normalize a trade to the canonical fill event format."""
+        """将成交标准化为规范的成交事件格式。"""
         info = trade.get("info", {}) or {}
         order_info = order.get("info", {}) if order else {}
 
@@ -3645,16 +3640,16 @@ class GateioFetcher(BaseFetcher):
         price = float(trade.get("price") or info.get("price") or 0.0)
         fee = trade.get("fee")
 
-        # Distribute PnL proportionally
+        # 按比例分配 PnL
         proportion = qty / total_qty if total_qty > 0 else 0
         pnl = order_pnl * proportion
 
-        # Get client order ID from trade or order
+        # 从成交或订单获取客户端订单 ID
         client_order_id = str(
             info.get("text") or order.get("clientOrderId") or order_info.get("text") or ""
         )
 
-        # Check detail cache first
+        # 首先检查详情缓存
         if trade_id and trade_id in detail_cache:
             client_order_id, pb_type = detail_cache[trade_id]
         else:
@@ -3662,7 +3657,7 @@ class GateioFetcher(BaseFetcher):
             if trade_id and client_order_id:
                 detail_cache[trade_id] = (client_order_id, pb_type)
 
-        # Determine position side
+        # 确定持仓方向
         close_size = float(info.get("close_size", 0))
         is_reduce_only = order.get("reduceOnly", False) or order_info.get("is_reduce_only", False)
         is_close = close_size > 0 or is_reduce_only or abs(order_pnl) > 0
@@ -3702,7 +3697,7 @@ class GateioFetcher(BaseFetcher):
 
 
 class KucoinFetcher(BaseFetcher):
-    """Fetches fill events for Kucoin by combining trade and position history."""
+    """通过组合成交和持仓历史获取 Kucoin 的成交事件。"""
 
     def __init__(
         self, api, *, trade_limit: int = 1000, now_func: Optional[Callable[[], int]] = None
@@ -3723,7 +3718,7 @@ class KucoinFetcher(BaseFetcher):
         if not trades:
             return []
 
-        # Compute local realized PnL from trades (gross), subtract fees when available
+        # 从成交计算本地已实现 PnL（毛值），可用时减去手续费
         local_pnls, _ = compute_realized_pnls_from_trades(trades)
 
         closes = [
@@ -3870,14 +3865,14 @@ class KucoinFetcher(BaseFetcher):
         positions: List[Dict[str, object]],
         events: Dict[str, Dict[str, object]],
     ) -> None:
-        """Match position close PnL from positions_history to trade fills.
+        """将 positions_history 中的持仓平仓 PnL 匹配到成交。
 
-        Uses a 5-minute window to find all fills that could be part of a position close.
-        When multiple fills match a single position close:
-        - The PnL is distributed proportionally by fill quantity
-        - This ensures the total PnL sums correctly regardless of how many fills closed the position
+        使用 5 分钟窗口查找可能属于同一持仓平仓的所有成交。
+        当多笔成交匹配到同一持仓平仓时：
+        - PnL 按成交数量按比例分配
+        - 这确保无论有多少笔成交关闭了持仓，总 PnL 都正确求和
         """
-        match_window_ms = 5 * 60 * 1000  # 5 minute window for matching
+        match_window_ms = 5 * 60 * 1000  # 5 分钟匹配窗口
 
         closes_by_symbol: Dict[str, List[Dict[str, object]]] = defaultdict(list)
         for c in closes:
@@ -3886,7 +3881,7 @@ class KucoinFetcher(BaseFetcher):
         for p in positions:
             positions_by_symbol[p.get("symbol", "")].append(p)
 
-        # Track which trades have been assigned PnL
+        # 跟踪哪些成交已被分配 PnL
         assigned_trade_ids: set[str] = set()
         unmatched_positions = []
 
@@ -3900,7 +3895,7 @@ class KucoinFetcher(BaseFetcher):
                 p_ts = p.get("lastUpdateTimestamp", 0)
                 p_pnl = float(p.get("realizedPnl", 0.0) or 0.0)
 
-                # Find all fills within the match window that haven't been assigned yet
+                # 查找匹配窗口内尚未分配的所有成交
                 matching_fills = [
                     c
                     for c in symbol_closes
@@ -3909,36 +3904,36 @@ class KucoinFetcher(BaseFetcher):
                 ]
 
                 if not matching_fills:
-                    # Try expanding window for this position
+                    # 尝试扩大此持仓的匹配窗口
                     unmatched_positions.append(p)
                     continue
 
-                # Compute total qty across matching fills
+                # 计算匹配成交的总数量
                 total_qty = sum(
                     abs(float(f.get("qty", 0) or f.get("amount", 0) or 0)) for f in matching_fills
                 )
 
                 if total_qty <= 0:
-                    # Fallback: assign all PnL to closest fill
+                    # 回退：将所有 PnL 分配给最近的成交
                     closest = min(matching_fills, key=lambda c: abs(c["timestamp"] - p_ts))
                     events[closest["id"]]["pnl"] = p_pnl
                     assigned_trade_ids.add(closest["id"])
                 else:
-                    # Distribute PnL proportionally by qty
+                    # 按数量按比例分配 PnL
                     for fill in matching_fills:
                         fill_qty = abs(float(fill.get("qty", 0) or fill.get("amount", 0) or 0))
                         proportion = fill_qty / total_qty if total_qty > 0 else 0
                         events[fill["id"]]["pnl"] = p_pnl * proportion
                         assigned_trade_ids.add(fill["id"])
 
-        # Set PnL to 0 for closes that weren't assigned any PnL from positions_history
+        # 为未从 positions_history 分配到 PnL 的平仓设置 PnL 为 0
         for c in closes:
             if c["id"] not in assigned_trade_ids:
-                # This close didn't match any position_history entry - set local_pnl to 0
-                # since we don't have reliable entry data to compute it
+                # 此平仓未匹配到任何 positions_history 条目 - 将 local_pnl 设为 0
+                # 因为没有可靠的入场数据来计算
                 events[c["id"]]["pnl"] = 0.0
 
-        # Log unmatched positions for debugging
+        # 记录未匹配的持仓用于调试
         if unmatched_positions:
             total_unmatched_pnl = sum(
                 float(p.get("realizedPnl", 0) or 0) for p in unmatched_positions
@@ -3955,7 +3950,7 @@ class KucoinFetcher(BaseFetcher):
     ) -> None:
         if not positions or not local_pnls:
             return
-        # Aggregate by symbol for a rough reconciliation
+        # 按交易对聚合用于粗略对账
         pos_sum: Dict[str, float] = defaultdict(float)
         for p in positions:
             sym = p.get("symbol") or p.get("info", {}).get("symbol") or ""
@@ -3967,17 +3962,17 @@ class KucoinFetcher(BaseFetcher):
                 continue
         if not pos_sum:
             return
-        # Local aggregate by symbol inferred from trade ids is not available here; report global sums
+        # 此处无法从成交 ID 推断按交易对的本地聚合；报告全局总和
         local_total = sum(local_pnls.values())
         remote_total = sum(pos_sum.values())
         if abs(local_total - remote_total) > max(1e-8, 0.05 * (abs(remote_total) + 1e-8)):
-            # Throttle: log once per hour, or immediately if delta changes significantly
+            # 节流：每小时记录一次，或在 delta 显著变化时立即记录
             now = time.time()
             throttle_key = f"kucoin:{id(self.api)}"
             last_log = _pnl_discrepancy_last_log.get(throttle_key, 0.0)
             last_delta = _pnl_discrepancy_last_delta.get(throttle_key)
             current_delta = local_total - remote_total
-            # Log if: (1) delta changed significantly, or (2) throttle window expired
+            # 记录条件：(1) delta 显著变化，或 (2) 节流窗口已过期
             delta_changed = last_delta is None or abs(
                 current_delta - last_delta
             ) > _PNL_DISCREPANCY_CHANGE_THRESHOLD * (abs(last_delta) + 1.0)
@@ -4052,35 +4047,35 @@ class KucoinFetcher(BaseFetcher):
     async def _enrich_with_order_details_bulk(
         self, events: List[Dict[str, object]], detail_cache: Dict[str, Tuple[str, str]]
     ) -> None:
-        """Enrich events with clientOid from order details.
+        """用订单详情中的 clientOid 富化事件。
 
-        Optimized to:
-        1. Check cache by both tradeId and orderId
-        2. Group events by orderId to avoid duplicate fetch_order calls
-        3. Share results across events with the same orderId
+        优化策略：
+        1. 通过 tradeId 和 orderId 检查缓存
+        2. 按 orderId 分组事件以避免重复 fetch_order 调用
+        3. 在相同 orderId 的事件间共享结果
         """
         if events is None:
             return
         detail_cache = detail_cache or {}
 
-        # Build an orderId -> clientOid lookup from cache (for events already enriched)
+        # 从缓存构建 orderId -> clientOid 查找表（用于已富化的事件）
         order_id_cache: Dict[str, Tuple[str, str]] = {}
 
-        # First pass: apply cached values and build orderId lookup
+        # 第一遍：应用缓存值并构建 orderId 查找表
         for ev in events:
             ev_id = ev.get("id")
             order_id = ev.get("order_id")
 
-            # Check cache by tradeId
+            # 通过 tradeId 检查缓存
             cached = detail_cache.get(ev_id) if ev_id else None
             if cached:
                 ev["client_order_id"], ev["pb_order_type"] = cached
-                # Also populate orderId cache for other events with same order
+                # 同时为相同订单的其他事件填充 orderId 缓存
                 if order_id:
                     order_id_cache[str(order_id)] = cached
                 continue
 
-            # Check if we already know this orderId's clientOid
+            # 检查是否已知此 orderId 的 clientOid
             if order_id and str(order_id) in order_id_cache:
                 client_oid, pb_type = order_id_cache[str(order_id)]
                 ev["client_order_id"] = client_oid
@@ -4088,7 +4083,7 @@ class KucoinFetcher(BaseFetcher):
                 if ev_id:
                     detail_cache[ev_id] = (client_oid, pb_type)
 
-        # Second pass: collect events that still need enrichment, grouped by orderId
+        # 第二遍：收集仍需富化的事件，按 orderId 分组
         events_by_order: Dict[str, List[Dict[str, object]]] = defaultdict(list)
         for ev in events:
             has_client = bool(ev.get("client_order_id"))
@@ -4099,7 +4094,7 @@ class KucoinFetcher(BaseFetcher):
             if not order_id:
                 ev.setdefault("pb_order_type", "unknown")
                 continue
-            # Skip if we already fetched this orderId
+            # 已获取此 orderId 则跳过
             if str(order_id) in order_id_cache:
                 client_oid, pb_type = order_id_cache[str(order_id)]
                 ev["client_order_id"] = client_oid
@@ -4112,10 +4107,10 @@ class KucoinFetcher(BaseFetcher):
 
         unique_orders = list(events_by_order.keys())
         if unique_orders:
-            # Get symbol for each orderId (use first event's symbol)
+            # 获取每个 orderId 的交易对（使用第一个事件的交易对）
             order_symbols = {oid: evs[0].get("symbol") for oid, evs in events_by_order.items()}
 
-            # Limit concurrency to avoid overwhelming the API
+            # 限制并发以避免 API 过载
             sem = asyncio.Semaphore(8)
             total = len(unique_orders)
             completed = 0
@@ -4156,13 +4151,13 @@ class KucoinFetcher(BaseFetcher):
                     "KucoinFetcher: enrichment complete (%d orders, %d events)", total, total_events
                 )
 
-            # Apply results to all events sharing the same orderId
+            # 将结果应用于共享相同 orderId 的所有事件
             for res in results:
                 if isinstance(res, Exception):
                     continue
                 order_id, detail = res
                 if detail is None:
-                    # Mark all events with this orderId as unknown
+                    # 将此 orderId 的所有事件标记为未知
                     for ev in events_by_order.get(order_id, []):
                         ev.setdefault("pb_order_type", "unknown")
                     continue
@@ -4170,7 +4165,7 @@ class KucoinFetcher(BaseFetcher):
                 client_oid, pb_type = detail
                 order_id_cache[order_id] = (client_oid, pb_type)
 
-                # Apply to all events with this orderId
+                # 应用于此 orderId 的所有事件
                 for ev in events_by_order.get(order_id, []):
                     ev["client_order_id"] = client_oid or ev.get("client_order_id") or ""
                     ev["pb_order_type"] = pb_type or "unknown"
@@ -4178,7 +4173,7 @@ class KucoinFetcher(BaseFetcher):
                     if ev_id:
                         detail_cache[ev_id] = (ev["client_order_id"], ev["pb_order_type"])
 
-        # Final pass: ensure all events have pb_order_type
+        # 最终遍历：确保所有事件都有 pb_order_type
         for ev in events:
             if not ev.get("pb_order_type"):
                 ev["pb_order_type"] = "unknown"
@@ -4190,7 +4185,7 @@ class KucoinFetcher(BaseFetcher):
             return None
         try:
             detail = await self.api.fetch_order(order_id, symbol)
-        except Exception as exc:  # pragma: no cover - live API dependent
+        except Exception as exc:  # pragma: no cover - 依赖实盘 API
             logger.debug(
                 "KucoinFetcher._enrich_with_order_details: fetch_order failed for %s (%s)",
                 order_id,
@@ -4213,29 +4208,29 @@ class KucoinFetcher(BaseFetcher):
 
 
 # ---------------------------------------------------------------------------
-# Utilities for Bitget integration
+# Bitget 集成工具
 # ---------------------------------------------------------------------------
 
 
 class OkxFetcher(BaseFetcher):
-    """Fetches fill events from OKX using fills and fills-history endpoints.
+    """使用 fills 和 fills-history 端点从 OKX 获取成交事件。
 
-    OKX provides all required fields in a single endpoint:
-    - tradeId: unique fill identifier
-    - fillPnl: realized PnL
-    - posSide: position side (long/short/net)
-    - clOrdId: client order ID (passivbot order type)
-    - fillSz: fill quantity
-    - fillPx: fill price
+    OKX 在单个端点中提供所有必需字段：
+    - tradeId：唯一成交标识
+    - fillPnl：已实现 PnL
+    - posSide：持仓方向（long/short/net）
+    - clOrdId：客户端订单 ID（passivbot 订单类型）
+    - fillSz：成交数量
+    - fillPx：成交价格
 
-    Endpoints:
-    - /api/v5/trade/fills: last 3 days (higher rate limit)
-    - /api/v5/trade/fills-history: last 3 months (lower rate limit)
+    端点：
+    - /api/v5/trade/fills：最近 3 天（较高频率限制）
+    - /api/v5/trade/fills-history：最近 3 个月（较低频率限制）
 
-    Pagination: Returns newest first; use 'after' param with billId for backward pagination.
+    分页：最新优先返回；使用 'after' 参数配合 billId 进行向后分页。
     """
 
-    # 3 days in ms - threshold for choosing between /fills and /fills-history
+    # 3 天的毫秒值 - 选择 /fills 和 /fills-history 的阈值
     _THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
 
     def __init__(
@@ -4246,7 +4241,7 @@ class OkxFetcher(BaseFetcher):
         inst_type: str = "SWAP",
     ) -> None:
         self.api = api
-        self.trade_limit = max(1, min(100, trade_limit))  # OKX max is 100
+        self.trade_limit = max(1, min(100, trade_limit))  # OKX 最大为 100
         self.inst_type = inst_type
 
     async def fetch(
@@ -4259,7 +4254,7 @@ class OkxFetcher(BaseFetcher):
         now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
         until_ms = until_ms or now_ms
 
-        # Determine which endpoint(s) to use based on time range
+        # 根据时间范围确定使用哪个端点
         three_days_ago = now_ms - self._THREE_DAYS_MS
 
         collected: Dict[str, Dict[str, object]] = {}
@@ -4272,9 +4267,9 @@ class OkxFetcher(BaseFetcher):
             _format_ms(until_ms),
         )
 
-        # If we need data older than 3 days, start with fills-history
+        # 如果需要 3 天前的数据，从 fills-history 开始
         if since_ms is not None and since_ms < three_days_ago:
-            # Use fills-history for older data
+            # 使用 fills-history 获取较早的数据
             fetch_count, collected = await self._fetch_from_endpoint(
                 endpoint="history",
                 since_ms=since_ms,
@@ -4286,7 +4281,7 @@ class OkxFetcher(BaseFetcher):
                 detail_cache=detail_cache,
             )
 
-        # Use /fills for recent data (last 3 days)
+        # 使用 /fills 获取最近数据（最近 3 天）
         recent_since = max(since_ms or 0, three_days_ago) if since_ms else three_days_ago
         if until_ms > three_days_ago:
             fetch_count, collected = await self._fetch_from_endpoint(
@@ -4300,20 +4295,20 @@ class OkxFetcher(BaseFetcher):
                 detail_cache=detail_cache,
             )
 
-        # Sort and filter results
+        # 排序和过滤结果
         events = sorted(collected.values(), key=lambda ev: ev["timestamp"])
 
-        # Apply time filters
+        # 应用时间过滤
         if since_ms is not None:
             events = [ev for ev in events if ev["timestamp"] >= since_ms]
         if until_ms is not None:
             events = [ev for ev in events if ev["timestamp"] <= until_ms]
 
-        # Coalesce duplicate events
+        # 合并重复事件
         events = _coalesce_events(events)
-        # Note: psize/pprice annotation is done centrally in FillEventsManager.refresh()
+        # 注意：psize/pprice 标注在 FillEventsManager.refresh() 中集中完成
 
-        # Apply pb_order_type from cache or derive from clOrdId
+        # 从缓存应用 pb_order_type 或从 clOrdId 推导
         for event in events:
             cache_entry = detail_cache.get(event["id"])
             if cache_entry:
@@ -4343,7 +4338,7 @@ class OkxFetcher(BaseFetcher):
         on_batch: Optional[Callable[[List[Dict[str, object]]], None]],
         detail_cache: Dict[str, Tuple[str, str]],
     ) -> Tuple[int, Dict[str, Dict[str, object]]]:
-        """Fetch fills from either /fills (recent) or /fills-history (history) endpoint."""
+        """从 /fills（最近）或 /fills-history（历史）端点获取成交。"""
         fetch_count = start_fetch_count
         after_cursor: Optional[str] = None
 
@@ -4361,13 +4356,13 @@ class OkxFetcher(BaseFetcher):
                 "limit": str(self.trade_limit),
             }
 
-            # Time windowing
+            # 时间窗口
             if since_ms is not None:
                 params["begin"] = str(since_ms)
             if until_ms is not None:
                 params["end"] = str(until_ms)
 
-            # Pagination cursor
+            # 分页游标
             if after_cursor:
                 params["after"] = after_cursor
 
@@ -4404,7 +4399,7 @@ class OkxFetcher(BaseFetcher):
                 if not event_id:
                     continue
 
-                # Ensure client_order_id/pb_order_type are populated before batch callbacks
+                # 确保在批量回调之前填充 client_order_id/pb_order_type
                 cached = detail_cache.get(event_id)
                 if cached:
                     cached_client, cached_pb = cached
@@ -4423,38 +4418,38 @@ class OkxFetcher(BaseFetcher):
                 if event_id and client_oid:
                     detail_cache[event_id] = (client_oid, pb_type)
 
-                # Check time bounds
+                # 检查时间范围
                 ts = event["timestamp"]
                 if since_ms is not None and ts < since_ms:
                     continue
                 if until_ms is not None and ts > until_ms:
                     continue
 
-                # Track oldest for boundary check
+                # 跟踪最早时间用于边界检查
                 if oldest_ts is None or ts < oldest_ts:
                     oldest_ts = ts
 
-                # Enrich from cache
+                # 从缓存富化
                 if event_id in detail_cache:
                     event["client_order_id"], event["pb_order_type"] = detail_cache[event_id]
 
                 collected[event_id] = event
                 batch_events.append(event)
 
-            # Callback for incremental processing
+            # 增量处理的回调
             if on_batch and batch_events:
                 on_batch(batch_events)
 
-            # Check if we've reached the start boundary
+            # 检查是否到达起始边界
             if since_ms is not None and oldest_ts is not None and oldest_ts <= since_ms:
                 logger.debug("OkxFetcher: reached since_ms boundary, stopping")
                 break
 
-            # Short batch means no more data
+            # 短批次表示无更多数据
             if len(fills) < self.trade_limit:
                 break
 
-            # Get pagination cursor for next batch (use billId from oldest fill)
+            # 获取下一批次的分页游标（使用最早成交的 billId）
             last_fill = fills[-1]
             after_cursor = last_fill.get("billId")
             if not after_cursor:
@@ -4464,13 +4459,13 @@ class OkxFetcher(BaseFetcher):
 
     @staticmethod
     def _normalize_fill(raw: Dict[str, object]) -> Dict[str, object]:
-        """Normalize a raw OKX fill to the canonical fill event format."""
+        """将原始 OKX 成交标准化为规范的成交事件格式。"""
         trade_id = str(raw.get("tradeId") or "")
         order_id = str(raw.get("ordId") or "")
         timestamp = int(raw.get("ts") or raw.get("fillTime") or 0)
         inst_id = str(raw.get("instId") or "")
 
-        # Convert instId (e.g., "BTC-USDT-SWAP") to CCXT symbol format
+        # 将 instId（例如 "BTC-USDT-SWAP"）转换为 CCXT 交易对格式
         symbol = inst_id
         if "-SWAP" in inst_id:
             parts = inst_id.replace("-SWAP", "").split("-")
@@ -4488,20 +4483,20 @@ class OkxFetcher(BaseFetcher):
         price = float(raw.get("fillPx") or 0.0)
         pnl = float(raw.get("fillPnl") or 0.0)
 
-        # Position side handling (supports both hedge and net modes)
+        # 持仓方向处理（支持对冲和净头寸模式）
         pos_side_raw = str(raw.get("posSide") or "").lower()
         if pos_side_raw == "net":
-            # Net mode: infer position side from side + pnl
-            # If closing (has PnL), opposite of trade side was the position
+            # 净头寸模式：从 side + pnl 推断持仓方向
+            # 如果平仓（有 PnL），交易方向的反向即为持仓方向
             if pnl != 0:
                 position_side = "short" if side == "buy" else "long"
             else:
-                # Opening: same as trade side
+                # 开仓：与交易方向相同
                 position_side = "long" if side == "buy" else "short"
         elif pos_side_raw in ("long", "short"):
             position_side = pos_side_raw
         else:
-            # Fallback
+            # 回退
             position_side = "long" if side == "buy" else "short"
 
         client_order_id = str(raw.get("clOrdId") or "")
@@ -4529,7 +4524,7 @@ class OkxFetcher(BaseFetcher):
 
 
 def custom_id_to_snake(client_oid: str) -> str:
-    """Placeholder import shim; real implementation lives in passivbot."""
+    """占位导入垫片；实际实现在 passivbot 中。"""
     try:
         from passivbot import custom_id_to_snake as _real
 
@@ -4539,7 +4534,7 @@ def custom_id_to_snake(client_oid: str) -> str:
 
 
 def deduce_side_pside(elm: dict) -> Tuple[str, str]:
-    """Import helper from exchanges.bitget when available."""
+    """可用时从 exchanges.bitget 导入辅助函数。"""
     try:
         from exchanges.bitget import deduce_side_pside as _real
 
@@ -4550,7 +4545,7 @@ def deduce_side_pside(elm: dict) -> Tuple[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# CLI helpers
+# CLI 辅助工具
 # ---------------------------------------------------------------------------
 
 
@@ -4631,7 +4626,7 @@ def _symbol_resolver(bot) -> Callable[[Optional[str]], str]:
         value = "" if raw is None else str(raw)
         if not value:
             return ""
-        # Prefer the bot's coin_to_symbol mapping which handles exchange quirks
+        # 优先使用 bot 的 coin_to_symbol 映射，它处理交易所的特殊规则
         try:
             mapped = bot.coin_to_symbol(value, verbose=False)
             if mapped:

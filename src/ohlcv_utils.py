@@ -10,19 +10,18 @@ from utils import date_to_ts, format_end_date
 
 def ensure_millis_df(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Normalize a DataFrame's 'timestamp' column to milliseconds.
+    将 DataFrame 的 'timestamp' 列标准化为毫秒。
 
-    Heuristic:
-    - If no valid (non-zero, finite) timestamps exist, assume timestamps are already ms.
-    - If there are multiple unique timestamps, use the median difference between unique timestamps:
-      if the median difference is a multiple of 1000 (within a small tolerance), treat timestamps as ms.
-      Otherwise treat them as seconds and multiply by 1000.
-    - If only one non-zero timestamp exists, fall back to magnitude-based detection using epoch-scale
-      thresholds:
-        - >= 1e15 -> microseconds
-        - >= 1e12 -> milliseconds
-        - >= 1e9  -> seconds
-        - <  1e9  -> assume milliseconds (likely small ms values)
+    启发式规则：
+    - 如果没有有效（非零、有限）的时间戳，假定时间戳已经是毫秒。
+    - 如果存在多个不同的时间戳，使用不同时间戳之间的中位差：
+      如果中位差是 1000 的倍数（在小容差内），则将时间戳视为毫秒；
+      否则将其视为秒并乘以 1000。
+    - 如果只有一个非零时间戳，使用基于数量级的检测（按纪元时间阈值）：
+        - >= 1e15 -> 微秒
+        - >= 1e12 -> 毫秒
+        - >= 1e9  -> 秒
+        - <  1e9  -> 假定为毫秒（可能是较小的毫秒值）
     """
     if "timestamp" not in df.columns:
         return df
@@ -61,10 +60,10 @@ def ensure_millis_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def canonicalize_daily_ohlcvs(data, start_ts: int, interval_ms: int = 60_000) -> pd.DataFrame:
     """
-    Return a 1-minute canonical OHLCV DataFrame for the given day.
+    返回指定日期的标准化 1 分钟 OHLCV DataFrame。
 
-    Missing minutes are forward/back filled for price columns and zero-filled for volume.
-    Duplicate timestamps keep the last observation.
+    缺失分钟的价格列使用前向/后向填充，成交量列填充为零。
+    重复时间戳保留最后一条记录。
     """
     columns = ["timestamp", "open", "high", "low", "close", "volume"]
     if isinstance(data, np.ndarray):
@@ -175,7 +174,7 @@ def load_ohlcv_data(filepath: str) -> pd.DataFrame:
     if len(arr) != len(arr_deduplicated):
         dump_ohlcv_data(arr_deduplicated, filepath)
         print(
-            f"Caught .npy file with duplicate rows: {filepath} Overwrote with deduplicated version."
+            f"检测到包含重复行的 .npy 文件：{filepath} 已使用去重后的版本覆盖。"
         )
     return ensure_millis_df(pd.DataFrame(arr_deduplicated, columns=columns))
 
@@ -229,22 +228,22 @@ def attempt_gap_fix_ohlcvs(
 
 def aggregate_hlcvs(candles_1m: np.ndarray, interval: int) -> np.ndarray:
     """
-    Aggregate 1m HLCV candles to coarser interval.
+    将 1 分钟 HLCV K 线聚合为更粗的时间间隔。
 
     Args:
-        candles_1m: Array of shape (n_timesteps, n_coins, 4) for HLCV or
-            (n_timesteps, n_coins, 5) for OHLCV (open, high, low, close, volume).
-        interval: Number of 1m candles to combine (e.g., 5 for 5m candles)
+        candles_1m: 形状为 (n_timesteps, n_coins, 4) 的 HLCV 数组，
+            或形状为 (n_timesteps, n_coins, 5) 的 OHLCV 数组（开盘、最高、最低、收盘、成交量）。
+        interval: 合并的 1 分钟 K 线数量（例如 5 表示 5 分钟 K 线）
 
     Returns:
-        Aggregated array of shape (n_timesteps // interval, n_coins, 4) in HLCV order.
+        聚合后的数组，形状为 (n_timesteps // interval, n_coins, 4)，按 HLCV 顺序排列。
     """
     if interval <= 1:
         return candles_1m
     if candles_1m.ndim != 3:
         raise ValueError(f"Expected 3D candle array, got ndim={candles_1m.ndim}")
     if candles_1m.shape[-1] == 5:
-        # Drop open; keep HLCV
+        # 去掉开盘价；保留 HLCV
         candles = candles_1m[:, :, 1:]
     elif candles_1m.shape[-1] == 4:
         candles = candles_1m
@@ -256,13 +255,13 @@ def aggregate_hlcvs(candles_1m: np.ndarray, interval: int) -> np.ndarray:
         raise ValueError(f"Not enough candles ({n_timesteps}) for interval {interval}")
     truncated = candles[: n_out * interval]
     reshaped = truncated.reshape(n_out, interval, *candles.shape[1:])
-    # HLCV indices: 0=high, 1=low, 2=close, 3=volume
+    # HLCV 索引：0=最高价, 1=最低价, 2=收盘价, 3=成交量
     aggregated = np.stack(
         [
-            reshaped[:, :, :, 0].max(axis=1),  # high: max across interval
-            reshaped[:, :, :, 1].min(axis=1),  # low: min across interval
-            reshaped[:, -1, :, 2],  # close: last candle's close
-            reshaped[:, :, :, 3].sum(axis=1),  # volume: sum across interval
+            reshaped[:, :, :, 0].max(axis=1),  # 最高价：区间内最大值
+            reshaped[:, :, :, 1].min(axis=1),  # 最低价：区间内最小值
+            reshaped[:, -1, :, 2],  # 收盘价：最后一根 K 线的收盘价
+            reshaped[:, :, :, 3].sum(axis=1),  # 成交量：区间内总和
         ],
         axis=-1,
     )
@@ -276,9 +275,9 @@ def align_and_aggregate_hlcvs(
     interval: int,
 ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None, int]:
     """
-    Align candles to interval boundaries (by trimming leading bars) and aggregate.
+    将 K 线对齐到间隔边界（通过裁剪前导 K 线）并聚合。
 
-    Returns aggregated HLCVs, timestamps, BTC/USD prices, and number of 1m bars trimmed.
+    返回聚合后的 HLCV、时间戳、BTC/USD 价格以及被裁剪的 1 分钟 K 线数量。
     """
     if interval <= 1:
         return hlcvs, timestamps, btc_usd_prices, 0

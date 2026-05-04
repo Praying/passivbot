@@ -1,13 +1,12 @@
 """
-Legacy data migration utilities.
+旧版数据迁移工具。
 
-This module provides functions to:
-1. Standardize cache directory names (e.g., binanceusdm -> binance)
-2. Migrate legacy data from historical_data/ to caches/ohlcv/
-3. Merge duplicate symbol directories caused by inconsistent path sanitization
+本模块提供以下功能：
+1. 标准化缓存目录名称（如 binanceusdm -> binance）
+2. 将旧版数据从 historical_data/ 迁移到 caches/ohlcv/
+3. 合并因路径清理不一致而产生的重复符号目录
 
-Migration is non-destructive: legacy data is copied (not moved) and the
-historical_data/ directory is left untouched for the user to delete manually.
+迁移是非破坏性的：旧版数据被复制（非移动），historical_data/ 目录保持不变，由用户手动删除。
 """
 
 from __future__ import annotations
@@ -23,8 +22,8 @@ from typing import Dict, List, Optional, Set, Tuple
 import numpy as np
 import sys
 
-# Windows compatibility check (same logic as candlestick_manager.py)
-# See: https://github.com/enarjord/passivbot/issues/547
+# Windows 兼容性检查（与 candlestick_manager.py 相同逻辑）
+# 参见：https://github.com/enarjord/passivbot/issues/547
 windows_compatibility = (
     sys.platform.startswith("win") or os.environ.get("WINDOWS_COMPATIBILITY") == "1"
 )
@@ -32,11 +31,11 @@ windows_compatibility = (
 
 def _sanitize_symbol(symbol: str) -> str:
     """
-    Convert symbol to filesystem-safe path component.
+    将符号转换为文件系统安全的路径组件。
 
-    Same logic as candlestick_manager._sanitize_symbol() to ensure consistency.
-    On non-Windows: LINK/USDT:USDT -> LINK_USDT:USDT (keeps colon)
-    On Windows: LINK/USDT:USDT -> LINK_USDT_USDT (replaces colon)
+    与 candlestick_manager._sanitize_symbol() 使用相同逻辑以确保一致性。
+    非 Windows：LINK/USDT:USDT -> LINK_USDT:USDT（保留冒号）
+    Windows：LINK/USDT:USDT -> LINK_USDT_USDT（替换冒号）
     """
     sanitized = symbol.replace("/", "_")
     if windows_compatibility:
@@ -44,21 +43,21 @@ def _sanitize_symbol(symbol: str) -> str:
     return sanitized
 
 
-# Mapping from ccxt exchange IDs to standard (short) names.
-# Only include entries where the ccxt ID differs from the standard name.
-# IMPORTANT: Never add identity mappings (e.g., "gateio": "gateio") as this
-# causes the merge logic to delete the directory after merging into itself!
+# ccxt 交易所 ID 到标准（简短）名称的映射。
+# 仅包含 ccxt ID 与标准名称不同的条目。
+# 重要：绝不要添加恒等映射（如 "gateio": "gateio"），否则会导致合并逻辑
+# 在合并到自身后删除该目录！
 CCXT_ID_TO_STANDARD = {
     "binanceusdm": "binance",
     "kucoinfutures": "kucoin",
     "krakenfutures": "kraken",
-    # gateio, bybit, okx, hyperliquid use the same name in ccxt and standard
+    # gateio、bybit、okx、hyperliquid 在 ccxt 和标准中使用相同名称
 }
 
-# Reverse mapping
+# 反向映射
 STANDARD_TO_CCXT_ID = {v: k for k, v in CCXT_ID_TO_STANDARD.items()}
 
-# Legacy directory name patterns to search for in historical_data/
+# 在 historical_data/ 中搜索的旧版目录名称模式
 LEGACY_DIR_PATTERNS = [
     "ohlcvs_binanceusdm",
     "ohlcvs_binance",
@@ -74,20 +73,20 @@ LEGACY_DIR_PATTERNS = [
 
 def standardize_cache_directories(cache_base: str = "caches/ohlcv", dry_run: bool = False) -> int:
     """
-    Rename cache directories from ccxt IDs to standard names.
+    将缓存目录从 ccxt ID 重命名为标准名称。
 
-    For example:
+    例如：
     - caches/ohlcv/binanceusdm/ -> caches/ohlcv/binance/
     - caches/ohlcv/kucoinfutures/ -> caches/ohlcv/kucoin/
 
-    Also removes any symlinks that were created as workarounds.
+    同时移除作为变通方案创建的符号链接。
 
     Args:
-        cache_base: Base directory for OHLCV cache (default: "caches/ohlcv")
-        dry_run: If True, only log what would be done without making changes
+        cache_base: OHLCV 缓存的基础目录（默认："caches/ohlcv"）
+        dry_run: 如果为 True，仅记录将执行的操作而不实际更改
 
     Returns:
-        Number of directories renamed/cleaned up
+        重命名/清理的目录数量
     """
     base_path = Path(cache_base)
     if not base_path.exists():
@@ -95,7 +94,7 @@ def standardize_cache_directories(cache_base: str = "caches/ohlcv", dry_run: boo
 
     changes = 0
 
-    # First, remove any symlinks
+    # 首先移除符号链接
     for item in base_path.iterdir():
         if item.is_symlink():
             target = os.readlink(str(item))
@@ -106,10 +105,10 @@ def standardize_cache_directories(cache_base: str = "caches/ohlcv", dry_run: boo
                 item.unlink()
             changes += 1
 
-    # Then, rename directories from ccxt IDs to standard names
+    # 然后将目录从 ccxt ID 重命名为标准名称
     for ccxt_id, standard_name in CCXT_ID_TO_STANDARD.items():
-        # Safety: skip identity mappings to avoid merging a directory into itself
-        # and then deleting it (catastrophic data loss)
+        # 安全检查：跳过恒等映射以避免将目录合并到自身
+        # 然后删除它（导致灾难性数据丢失）
         if ccxt_id == standard_name:
             continue
 
@@ -120,7 +119,7 @@ def standardize_cache_directories(cache_base: str = "caches/ohlcv", dry_run: boo
             continue
 
         if standard_path.exists() and not standard_path.is_symlink():
-            # Both exist - need to merge
+            # 两者都存在 - 需要合并
             if dry_run:
                 logging.info("[dry-run] Would merge %s into %s", ccxt_path, standard_path)
             else:
@@ -129,7 +128,7 @@ def standardize_cache_directories(cache_base: str = "caches/ohlcv", dry_run: boo
                 shutil.rmtree(ccxt_path)
             changes += 1
         else:
-            # Simple rename
+            # 简单重命名
             if dry_run:
                 logging.info("[dry-run] Would rename %s to %s", ccxt_path, standard_path)
             else:
@@ -142,9 +141,9 @@ def standardize_cache_directories(cache_base: str = "caches/ohlcv", dry_run: boo
 
 def _merge_cache_directories(source: Path, dest: Path) -> None:
     """
-    Merge source cache directory into dest, preserving newer files.
+    将源缓存目录合并到目标目录，保留较新的文件。
 
-    For conflicts (same file in both), keeps the file with the newer mtime.
+    冲突时（两边都有同一文件），保留修改时间较新的文件。
     """
     for item in source.rglob("*"):
         if not item.is_file():
@@ -154,7 +153,7 @@ def _merge_cache_directories(source: Path, dest: Path) -> None:
         dest_file = dest / rel_path
 
         if dest_file.exists():
-            # Keep newer file
+            # 保留较新的文件
             if item.stat().st_mtime > dest_file.stat().st_mtime:
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(item, dest_file)
@@ -168,19 +167,19 @@ def merge_duplicate_symbol_directories(
     dry_run: bool = False,
 ) -> int:
     """
-    Merge duplicate symbol directories caused by inconsistent path sanitization.
+    合并因路径清理不一致而产生的重复符号目录。
 
-    Problem: Legacy migrator used `symbol.replace("/", "_").replace(":", "_")`
-    but CandlestickManager uses `_sanitize_symbol()` which only replaces ":" on Windows.
+    问题：旧版迁移器使用 `symbol.replace("/", "_").replace(":", "_")`
+    但 CandlestickManager 使用 `_sanitize_symbol()`，后者仅在 Windows 上替换 ":"。
 
-    This results in duplicate directories like:
-    - LINK_USDT_USDT (wrong - from legacy migrator)
-    - LINK_USDT:USDT (correct - from CandlestickManager)
+    这导致了重复目录，如：
+    - LINK_USDT_USDT（错误 - 来自旧版迁移器）
+    - LINK_USDT:USDT（正确 - 来自 CandlestickManager）
 
-    This function finds and merges these duplicates.
+    此函数查找并合并这些重复目录。
 
     Returns:
-        Number of directories merged/removed
+        合并/移除的目录数量
     """
     base_path = Path(cache_base)
     if not base_path.exists():
@@ -188,21 +187,21 @@ def merge_duplicate_symbol_directories(
 
     merged_count = 0
 
-    # Iterate over exchange directories
+    # 遍历交易所目录
     for exchange_dir in base_path.iterdir():
         if not exchange_dir.is_dir():
             continue
 
-        # Iterate over timeframe directories (e.g., 1m, 5m)
+        # 遍历时间周期目录（如 1m、5m）
         for tf_dir in exchange_dir.iterdir():
             if not tf_dir.is_dir():
                 continue
 
-            # Find all symbol directories
+            # 查找所有符号目录
             symbol_dirs = [d for d in tf_dir.iterdir() if d.is_dir()]
 
-            # Group by canonical symbol (what _sanitize_symbol would produce)
-            # We need to detect directories that differ only by ":" vs "_"
+            # 按规范符号分组（即 _sanitize_symbol 的输出）
+            # 我们需要检测仅在 ":" 与 "_" 上有差异的目录
             groups: Dict[str, List[Path]] = {}
 
             for sym_dir in symbol_dirs:
@@ -216,51 +215,51 @@ def merge_duplicate_symbol_directories(
                 # On non-Windows: LINK_USDT:USDT
                 # On Windows: LINK_USDT_USDT
 
-                # Normalize to a key that groups both variants together
-                # Replace all : with _ for grouping purposes
+                # 规范化为将两种变体归为一组的键
+                # 将所有 : 替换为 _ 以用于分组
                 group_key = dir_name.replace(":", "_")
 
                 if group_key not in groups:
                     groups[group_key] = []
                 groups[group_key].append(sym_dir)
 
-            # Process groups with duplicates
+            # 处理含重复项的分组
             for group_key, dirs in groups.items():
                 if len(dirs) <= 1:
                     continue
 
-                # Determine the canonical directory name
-                # Reconstruct the symbol from the underscore-only form
-                # e.g., LINK_USDT_USDT -> LINK/USDT:USDT -> _sanitize_symbol -> canonical
+                # 确定规范目录名称
+                # 从纯下划线形式重建符号
+                # 例如 LINK_USDT_USDT -> LINK/USDT:USDT -> _sanitize_symbol -> 规范形式
 
-                # Find the "correct" directory (the one matching _sanitize_symbol output)
+                # 查找"正确"目录（匹配 _sanitize_symbol 输出的那个）
                 correct_dir = None
                 wrong_dirs = []
 
                 for d in dirs:
-                    # Check if this matches what _sanitize_symbol would produce
-                    # The correct one will have ":" if not windows_compatibility
+                    # 检查是否匹配 _sanitize_symbol 的输出
+                    # 正确的目录在非 windows_compatibility 时包含 ":"
                     if windows_compatibility:
-                        # On Windows, underscore-only is correct
+                        # 在 Windows 上，纯下划线形式是正确的
                         if ":" not in d.name:
                             correct_dir = d
                         else:
                             wrong_dirs.append(d)
                     else:
-                        # On non-Windows, colon version is correct
+                        # 在非 Windows 上，带冒号的版本是正确的
                         if ":" in d.name:
                             correct_dir = d
                         else:
                             wrong_dirs.append(d)
 
                 if correct_dir is None:
-                    # All directories use the wrong format - pick one as the target
-                    # and convert its name to the correct format
+                    # 所有目录都使用了错误格式 - 选择一个作为目标
+                    # 并将其名称转换为正确格式
                     source_dir = dirs[0]
                     wrong_dirs = dirs[1:]
 
-                    # Reconstruct correct name: replace the last _ before USDT/USDC with :
-                    # e.g., LINK_USDT_USDT -> LINK_USDT:USDT
+                    # 重建正确名称：将 USDT/USDC 前的最后一个 _ 替换为 :
+                    # 例如 LINK_USDT_USDT -> LINK_USDT:USDT
                     correct_name = _convert_to_canonical_symbol_path(source_dir.name)
                     correct_dir = source_dir.parent / correct_name
 
@@ -273,7 +272,7 @@ def merge_duplicate_symbol_directories(
                         source_dir.rename(correct_dir)
                     merged_count += 1
 
-                # Merge wrong directories into correct one
+                # 将错误目录合并到正确目录
                 for wrong_dir in wrong_dirs:
                     if not wrong_dir.exists():
                         continue
@@ -297,10 +296,10 @@ def merge_duplicate_symbol_directories(
 
 def normalize_ccxt_volume_to_base(exchange_id: str, close: float, volume: float) -> float:
     """
-    Normalize ccxt OHLCV volume to base volume.
+    将 ccxt OHLCV 成交量标准化为基础成交量。
 
-    Some exchanges (notably gateio swap) report quote-volume in the ccxt OHLCV
-    "volume" field. For those exchanges, divide by close to get base.
+    部分交易所（特别是 gateio swap）在 ccxt OHLCV 的 "volume" 字段中报告报价成交量。
+    对于这些交易所，需除以收盘价来获得基础成交量。
     """
     exid = str(exchange_id).lower()
     if exid == "gateio" and close > 0:
@@ -310,22 +309,22 @@ def normalize_ccxt_volume_to_base(exchange_id: str, close: float, volume: float)
 
 def _convert_to_canonical_symbol_path(dir_name: str) -> str:
     """
-    Convert a symbol directory name to canonical format.
+    将符号目录名称转换为规范格式。
 
-    On non-Windows: LINK_USDT_USDT -> LINK_USDT:USDT
-    On Windows: keeps as-is (underscore only)
+    非 Windows：LINK_USDT_USDT -> LINK_USDT:USDT
+    Windows：保持不变（仅下划线）
 
-    Handles patterns like:
-    - COIN_QUOTE_QUOTE (e.g., LINK_USDT_USDT)
-    - 1000COIN_QUOTE_QUOTE (e.g., 1000PEPE_USDT_USDT)
+    处理以下模式：
+    - COIN_QUOTE_QUOTE（如 LINK_USDT_USDT）
+    - 1000COIN_QUOTE_QUOTE（如 1000PEPE_USDT_USDT）
     """
     if windows_compatibility:
         return dir_name
 
-    # Pattern: everything up to the last occurrence of _USDT or _USDC,
-    # then replace the underscore before the final quote with :
-    # e.g., LINK_USDT_USDT -> LINK_USDT:USDT
-    #       BTC_USDC_USDC -> BTC_USDC:USDC
+    # 模式：取到最后一个 _USDT 或 _USDC 为止的所有内容，
+    # 然后将最终报价货币前的下划线替换为 :
+    # 例如 LINK_USDT_USDT -> LINK_USDT:USDT
+    #     BTC_USDC_USDC -> BTC_USDC:USDC
 
     for quote in ["USDT", "USDC"]:
         suffix = f"_{quote}_{quote}"
@@ -333,29 +332,29 @@ def _convert_to_canonical_symbol_path(dir_name: str) -> str:
             base = dir_name[: -len(suffix)]
             return f"{base}_{quote}:{quote}"
 
-    # Fallback: no change if pattern doesn't match
+    # 回退：如果模式不匹配则不做更改
     return dir_name
 
 
 def get_legacy_exchange_name(dir_name: str) -> Optional[str]:
     """
-    Extract exchange name from legacy directory name.
+    从旧版目录名称中提取交易所名称。
 
-    Examples:
+    示例：
     - "ohlcvs_binanceusdm" -> "binance"
     - "ohlcvs_bybit" -> "bybit"
-    - "ohlcvs_futures" -> "binance" (old Binance futures path)
+    - "ohlcvs_futures" -> "binance"（旧版 Binance 合约路径）
     """
     if not dir_name.startswith("ohlcvs_"):
         return None
 
-    suffix = dir_name[7:]  # Remove "ohlcvs_" prefix
+    suffix = dir_name[7:]  # 去掉 "ohlcvs_" 前缀
 
-    # Special case for old Binance futures path
+    # 旧版 Binance 合约路径的特殊情况
     if suffix == "futures":
         return "binance"
 
-    # Check if it's a ccxt ID that needs standardization
+    # 检查是否是需要标准化的 ccxt ID
     if suffix in CCXT_ID_TO_STANDARD:
         return CCXT_ID_TO_STANDARD[suffix]
 
@@ -366,10 +365,10 @@ def scan_legacy_data(
     historical_data_path: str = "historical_data",
 ) -> Dict[str, Dict[str, List[str]]]:
     """
-    Scan historical_data/ for legacy OHLCV shards.
+    扫描 historical_data/ 中的旧版 OHLCV 分片。
 
     Returns:
-        Dict mapping exchange -> coin -> list of date strings (YYYY-MM-DD)
+        字典映射 exchange -> coin -> 日期字符串列表（YYYY-MM-DD）
     """
     result: Dict[str, Dict[str, List[str]]] = {}
     base = Path(historical_data_path)
@@ -388,7 +387,7 @@ def scan_legacy_data(
         if exchange not in result:
             result[exchange] = {}
 
-        # Scan for coin directories
+        # 扫描币种目录
         for coin_dir in legacy_dir.iterdir():
             if not coin_dir.is_dir():
                 continue
@@ -396,9 +395,9 @@ def scan_legacy_data(
             coin = coin_dir.name
             dates = []
 
-            # Find all .npy shard files
+            # 查找所有 .npy 分片文件
             for shard_file in coin_dir.glob("*.npy"):
-                # Extract date from filename (YYYY-MM-DD.npy)
+                # 从文件名提取日期（YYYY-MM-DD.npy）
                 date_str = shard_file.stem
                 if len(date_str) == 10 and date_str[4] == "-" and date_str[7] == "-":
                     dates.append(date_str)
@@ -417,19 +416,19 @@ def migrate_legacy_data_for_exchange(
     quote: str = "USDT",
 ) -> Tuple[int, int]:
     """
-    Migrate legacy data for a specific exchange.
+    迁移特定交易所的旧版数据。
 
     Args:
-        exchange: Standard exchange name (e.g., "binance")
-        cache_base: Base directory for OHLCV cache
-        historical_data_path: Path to legacy historical_data directory
-        dry_run: If True, only log what would be done
-        quote: Quote currency for building symbol paths
+        exchange: 标准交易所名称（如 "binance"）
+        cache_base: OHLCV 缓存的基础目录
+        historical_data_path: 旧版 historical_data 目录路径
+        dry_run: 如果为 True，仅记录将执行的操作
+        quote: 用于构建符号路径的报价货币
 
     Returns:
-        Tuple of (files_migrated, files_skipped)
+        (已迁移文件数, 已跳过文件数) 元组
     """
-    # Import CANDLE_DTYPE here to avoid circular imports
+    # 在此处导入 CANDLE_DTYPE 以避免循环导入
     from candlestick_manager import CANDLE_DTYPE
     import time
 
@@ -441,11 +440,11 @@ def migrate_legacy_data_for_exchange(
     if exchange not in legacy_data:
         return migrated, skipped
 
-    # Count total shards for progress reporting
+    # 统计总分片数用于进度报告
     total_shards = sum(len(dates) for dates in legacy_data[exchange].values())
     processed = 0
     last_log_time = time.monotonic()
-    log_interval_seconds = 10.0  # Log progress every 10 seconds
+    log_interval_seconds = 10.0  # 每 10 秒记录一次进度
 
     for coin, dates in legacy_data[exchange].items():
         symbol = f"{coin}/{quote}:{quote}"
@@ -454,7 +453,7 @@ def migrate_legacy_data_for_exchange(
         for date_str in dates:
             processed += 1
 
-            # Log progress periodically
+            # 定期记录进度
             now = time.monotonic()
             if now - last_log_time >= log_interval_seconds:
                 pct = int(100 * processed / total_shards) if total_shards > 0 else 0
@@ -468,20 +467,20 @@ def migrate_legacy_data_for_exchange(
                     skipped,
                 )
                 last_log_time = now
-            # Build target path
+            # 构建目标路径
             target_path = Path(cache_base) / exchange / "1m" / safe_symbol / f"{date_str}.npy"
 
             if target_path.exists():
                 skipped += 1
                 continue
 
-            # Find source file(s)
+            # 查找源文件
             source_paths = _find_legacy_source_paths(exchange, coin, date_str, historical_data_path)
 
             if not source_paths:
                 continue
 
-            # Use first valid source
+            # 使用第一个有效源
             source_data = None
             for source_path in source_paths:
                 if not os.path.exists(source_path):
@@ -507,8 +506,8 @@ def migrate_legacy_data_for_exchange(
                 )
             else:
                 target_path.parent.mkdir(parents=True, exist_ok=True)
-                # Atomic write: write to temp, then rename
-                # Use .tmp.npy suffix so numpy doesn't add another .npy extension
+                # 原子写入：先写入临时文件，然后重命名
+                # 使用 .tmp.npy 后缀以避免 numpy 再次添加 .npy 扩展名
                 tmp_path = target_path.with_suffix(".tmp.npy")
                 np.save(tmp_path, source_data)
                 tmp_path.rename(target_path)
@@ -525,20 +524,21 @@ def _find_legacy_source_paths(
     exchange: str, coin: str, date_str: str, historical_data_path: str
 ) -> List[str]:
     """
-    Find potential source paths for a legacy shard.
+    查找旧版分片的潜在源路径。
 
-    Returns list of candidate paths, ordered by preference.
+    Returns:
+        候选路径列表，按优先级排序。
     """
     paths = []
     base = Path(historical_data_path)
 
-    # Try various legacy path patterns
+    # 尝试各种旧版路径模式
     patterns = [
         f"ohlcvs_{exchange}",
         f"ohlcvs_{STANDARD_TO_CCXT_ID.get(exchange, exchange)}",
     ]
 
-    # Special case for Binance
+    # Binance 的特殊情况
     if exchange == "binance":
         patterns.extend(["ohlcvs_binanceusdm", "ohlcvs_futures"])
 
@@ -552,10 +552,10 @@ def _find_legacy_source_paths(
 
 def _load_and_convert_legacy_shard(path: str, candle_dtype) -> Optional[np.ndarray]:
     """
-    Load a legacy .npy shard and convert to CANDLE_DTYPE.
+    加载旧版 .npy 分片并转换为 CANDLE_DTYPE。
 
-    Legacy format: unstructured array with columns [ts, o, h, l, c, volume]
-    New format: structured array with CANDLE_DTYPE
+    旧版格式：非结构化数组，列为 [ts, o, h, l, c, volume]
+    新格式：使用 CANDLE_DTYPE 的结构化数组
     """
     try:
         arr = np.load(path, allow_pickle=False)
@@ -565,11 +565,11 @@ def _load_and_convert_legacy_shard(path: str, candle_dtype) -> Optional[np.ndarr
     if arr is None or arr.size == 0:
         return None
 
-    # Check if already in correct dtype
+    # 检查是否已经是正确的 dtype
     if arr.dtype == candle_dtype:
         return arr
 
-    # Convert from legacy format
+    # 从旧版格式转换
     if arr.ndim == 2 and arr.shape[1] >= 6:
         result = np.empty(arr.shape[0], dtype=candle_dtype)
         result["ts"] = arr[:, 0].astype(np.int64)
@@ -583,8 +583,8 @@ def _load_and_convert_legacy_shard(path: str, candle_dtype) -> Optional[np.ndarr
     return None
 
 
-# Track whether migration message has been logged this session
-# Include cache_base/historical_data_path so isolated caches can migrate independently.
+# 跟踪本次会话中是否已记录迁移消息
+# 包含 cache_base/historical_data_path 以便隔离的缓存可以独立迁移。
 _MIGRATION_LOGGED: Set[Tuple[str, str, str]] = set()
 
 
@@ -596,19 +596,19 @@ def migrate_legacy_data_all_on_init(
     audit_gateio_volume: bool = True,
 ) -> int:
     """
-    Migrate legacy data for all exchanges once per process.
+    每个进程仅迁移一次所有交易所的旧版数据。
 
-    This is intended to be called once globally (e.g., on first CandlestickManager init)
-    and will migrate all exchanges discovered under historical_data/.
+    设计为全局调用一次（如首次 CandlestickManager 初始化时），
+    将迁移在 historical_data/ 下发现的所有交易所。
 
     Args:
-        cache_base: Base directory for OHLCV cache
-        historical_data_path: Path to legacy historical_data directory
-        quote: Quote currency for building symbol paths
-        audit_gateio_volume: If True, skip gateio migration due to volume differences
+        cache_base: OHLCV 缓存的基础目录
+        historical_data_path: 旧版 historical_data 目录路径
+        quote: 用于构建符号路径的报价货币
+        audit_gateio_volume: 如果为 True，因成交量差异跳过 gateio 迁移
 
     Returns:
-        Total number of files migrated across all exchanges
+        所有交易所迁移的文件总数
     """
     legacy_data = scan_legacy_data(historical_data_path)
     if not legacy_data:
@@ -683,21 +683,21 @@ def migrate_legacy_data_on_init(
     audit_gateio_volume: bool = True,
 ) -> int:
     """
-    Check for and migrate legacy data on CandlestickManager initialization.
+    在 CandlestickManager 初始化时检查并迁移旧版数据。
 
-    This is called once per exchange per session. It:
-    1. Logs a message if legacy data exists
-    2. Copies missing data to the new cache location
-    3. Leaves historical_data/ untouched
+    每个交易所每会话调用一次。功能：
+    1. 如果存在旧版数据则记录消息
+    2. 将缺失的数据复制到新缓存位置
+    3. 保持 historical_data/ 不变
 
     Args:
-        exchange: Standard exchange name
-        cache_base: Base directory for OHLCV cache
-        historical_data_path: Path to legacy historical_data directory
-        quote: Quote currency
+        exchange: 标准交易所名称
+        cache_base: OHLCV 缓存的基础目录
+        historical_data_path: 旧版 historical_data 目录路径
+        quote: 报价货币
 
     Returns:
-        Number of files migrated
+        迁移的文件数量
     """
     global _MIGRATION_LOGGED
 
@@ -716,7 +716,7 @@ def migrate_legacy_data_on_init(
     if total_shards == 0:
         return 0
 
-    # Log once per session
+    # 每会话仅记录一次
     _MIGRATION_LOGGED.add(key)
     logging.info(
         "[boot] Legacy data found in %s/ohlcvs_%s/ (%d coins, %d shards). "

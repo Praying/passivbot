@@ -32,7 +32,7 @@ def _iter_param_sets(config: dict) -> Iterator[Tuple[str, dict, dict]]:
 
 
 def compute_backtest_warmup_minutes(config: dict) -> int:
-    """Mirror Rust warmup span calculation (see calc_warmup_bars)."""
+    """镜像 Rust 的预热周期计算（参见 calc_warmup_bars）。"""
 
     def _extract_bound_max(bounds: dict, key: str) -> float:
         if key not in bounds:
