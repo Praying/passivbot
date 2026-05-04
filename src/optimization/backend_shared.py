@@ -85,7 +85,7 @@ def load_starting_individuals(
         )
         if starting_config_count:
             logging.info(
-                "Loaded %d starting configs before quantization (population size=%d)",
+                "量化前已加载 %d 个起始配置（种群大小=%d）",
                 starting_config_count,
                 population_size,
             )
@@ -94,7 +94,7 @@ def load_starting_individuals(
                 count=starting_config_count,
             )
         else:
-            logging.info("No starting configs provided; population will be random-initialized")
+            logging.info("未提供起始配置；种群将随机初始化")
         log_seed_memory(
             "starting_individuals_built",
             count=len(starting_individuals),
@@ -105,7 +105,7 @@ def load_starting_individuals(
     starting_configs = get_starting_configs(starting_configs_path)
     if starting_configs:
         logging.info(
-            "Loaded %d starting configs before quantization (population size=%d)",
+            "量化前已加载 %d 个起始配置（种群大小=%d）",
             len(starting_configs),
             population_size,
         )
@@ -115,7 +115,7 @@ def load_starting_individuals(
             approx_bytes=approx_object_size(starting_configs),
         )
     else:
-        logging.info("No starting configs provided; population will be random-initialized")
+        logging.info("未提供起始配置；种群将随机初始化")
     if optimization_shape is None:
         starting_individuals = configs_to_individuals(starting_configs, bounds, sig_digits)
     else:

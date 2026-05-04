@@ -1,8 +1,8 @@
 """
-Utilities for enforcing parameter bounds and step constraints.
+参数边界和步长约束的工具模块。
 
-This module provides reusable functions for quantizing parameter values
-to discrete steps and enforcing bounds on configuration dictionaries.
+本模块提供可复用的函数，用于将参数值量化到离散步长
+并对配置字典实施边界约束。
 """
 
 import logging
@@ -12,16 +12,16 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-# Epsilon for floating-point comparisons in step calculations
+# 步长计算中浮点数比较的 epsilon 值
 STEP_EPSILON = 1e-9
 
 
 def round_to_sig_digits(value: float, sig_digits: int) -> float:
     """
-    Pure-python significant-digit rounding.
+    纯 Python 有效数字舍入。
 
-    This intentionally avoids depending on passivbot_rust so unit tests can run
-    in environments where the native extension is stubbed or unavailable.
+    故意避免依赖 passivbot_rust，以便单元测试可以在
+    原生扩展被桩化或不可用的环境中运行。
     """
     if sig_digits is None:
         return value
@@ -37,15 +37,15 @@ def round_to_sig_digits(value: float, sig_digits: int) -> float:
 @dataclass(frozen=True, slots=True)
 class Bound:
     """
-    Represents parameter bounds for optimization.
+    表示优化的参数边界。
 
-    For continuous parameters, step is None.
-    For stepped (discrete) parameters, step defines the grid spacing.
+    对于连续参数，step 为 None。
+    对于阶梯（离散）参数，step 定义网格间距。
 
     Args:
-        low: Lower bound
-        high: Upper bound
-        step: Step size for discrete parameters (None for continuous)
+        low: 下界
+        high: 上界
+        step: 离散参数的步长（连续参数为 None）
     """
 
     low: float
@@ -54,16 +54,16 @@ class Bound:
 
     @property
     def is_stepped(self) -> bool:
-        """Check if this represents a stepped (discrete) parameter."""
+        """检查是否为阶梯（离散）参数。"""
         return self.step is not None and self.step > 0
 
     @property
     def max_index(self) -> int:
         """
-        Get the maximum valid index for a stepped parameter.
+        获取阶梯参数的最大有效索引。
 
-        Returns the largest n where low + n*step <= high.
-        Raises ValueError if parameter is not stepped.
+        返回满足 low + n*step <= high 的最大 n。
+        若参数非阶梯类型则抛出 ValueError。
         """
         if not self.is_stepped:
             raise ValueError("max_index only valid for stepped parameters")
@@ -71,49 +71,49 @@ class Bound:
 
     def quantize(self, value: float) -> float:
         """
-        Quantize a value to the nearest step within bounds.
+        将值量化到边界内最近的步长网格点。
 
-        For continuous parameters, just clamps to [low, high].
-        For stepped parameters, snaps to the nearest grid point.
+        对于连续参数，仅钳位到 [low, high]。
+        对于阶梯参数，对齐到最近的网格点。
 
         Args:
-            value: Value to quantize
+            value: 待量化的值
 
         Returns:
-            Quantized value clamped to valid bounds
+            钳位到有效边界内的量化值
         """
         if not self.is_stepped:
             return max(self.low, min(self.high, value))
 
-        # Clamp to bounds first
+        # 先钳位到边界
         clamped = max(self.low, min(self.high, value))
 
-        # Find nearest step (using int + 0.5 for proper rounding)
+        # 找到最近的步长（使用 int + 0.5 实现正确四舍五入）
         n_steps_from_low = int((clamped - self.low) / self.step + 0.5)
 
-        # Clamp index to valid range
+        # 将索引钳位到有效范围
         clamped_index = max(0, min(self.max_index, n_steps_from_low))
 
         quantized = self.low + clamped_index * self.step
 
-        # Clean up floating-point artifacts by rounding to step precision
-        # e.g., step=0.0002 -> 4 decimal places, step=0.01 -> 2 decimal places
+        # 按步长精度舍入以清除浮点误差
+        # 例如 step=0.0002 -> 4 位小数，step=0.01 -> 2 位小数
         if self.step < 1:
             decimal_places = -int(math.floor(math.log10(self.step)))
             quantized = round(quantized, decimal_places)
 
-        # Final safety clamp
+        # 最终安全钳位
         return max(self.low, min(self.high, quantized))
 
     def random_on_grid(self) -> float:
         """
-        Generate a random value respecting step constraints.
+        生成遵守步长约束的随机值。
 
-        For continuous parameters, returns uniform random in [low, high].
-        For stepped parameters, returns random value on the grid.
+        对于连续参数，返回 [low, high] 上的均匀随机值。
+        对于阶梯参数，返回网格上的随机值。
 
         Returns:
-            Random value
+            随机值
         """
         if not self.is_stepped:
             return np.random.uniform(self.low, self.high)
@@ -122,16 +122,16 @@ class Bound:
 
     def value_to_index(self, value: float) -> float:
         """
-        Convert a parameter value to index space.
+        将参数值转换为索引空间。
 
-        For continuous parameters, returns value unchanged.
-        For stepped parameters, returns the index (0-based).
+        对于连续参数，原样返回值。
+        对于阶梯参数，返回索引（从 0 开始）。
 
         Args:
-            value: Parameter value
+            value: 参数值
 
         Returns:
-            Index in step space, or original value if continuous
+            步长空间中的索引，连续参数则为原始值
         """
         if not self.is_stepped:
             return value
@@ -139,30 +139,30 @@ class Bound:
 
     def index_to_value(self, index: float) -> float:
         """
-        Convert an index back to a parameter value.
+        将索引转换回参数值。
 
-        For continuous parameters, returns index clamped to bounds.
-        For stepped parameters, converts index to grid value.
+        对于连续参数，返回钳位到边界的索引值。
+        对于阶梯参数，将索引转换为网格值。
 
         Args:
-            index: Index in step space (or value if continuous)
+            index: 步长空间中的索引（连续参数则为值）
 
         Returns:
-            Parameter value
+            参数值
         """
         if not self.is_stepped:
             return max(self.low, min(self.high, index))
-        # Round to nearest integer index and convert
+        # 四舍五入到最近的整数索引并转换
         rounded_index = int(index + 0.5)
         clamped_index = max(0, min(self.max_index, rounded_index))
         return self.low + clamped_index * self.step
 
     def get_index_bounds(self) -> Tuple[float, float]:
         """
-        Get the bounds in index space.
+        获取索引空间中的边界。
 
-        For continuous parameters, returns (low, high).
-        For stepped parameters, returns (0, max_index).
+        对于连续参数，返回 (low, high)。
+        对于阶梯参数，返回 (0, max_index)。
 
         Returns:
             (low_index, high_index)
@@ -174,23 +174,23 @@ class Bound:
     @classmethod
     def from_config(cls, key: str, val) -> "Bound":
         """
-        Extract and validate a Bound from config value.
+        从配置值中提取并验证 Bound。
 
-        Supported formats:
-        - Single value: fixed parameter (low=high)
-        - [low, high]: continuous optimization
-        - [low, high, step]: discrete optimization with step
-        - [low, high, 0] or [low, high, null]: continuous
+        支持的格式：
+        - 单个值：固定参数（low=high）
+        - [low, high]：连续优化
+        - [low, high, step]：带步长的离散优化
+        - [low, high, 0] 或 [low, high, null]：视为连续
 
         Args:
-            key: Parameter key (for error messages)
-            val: Config value (number, list, or tuple)
+            key: 参数键名（用于错误信息）
+            val: 配置值（数字、列表或元组）
 
         Returns:
-            Validated Bound instance
+            经过验证的 Bound 实例
 
         Raises:
-            Exception: If bound specification is malformed
+            Exception: 边界规格格式错误时抛出
         """
         if isinstance(val, (float, int)):
             return cls(float(val), float(val), None)
@@ -257,16 +257,16 @@ def enforce_bounds(
     values: Sequence[float], bounds: Sequence[Bound], sig_digits: int = None
 ) -> List[float]:
     """
-    Clamp each value to its corresponding [low, high] interval and quantize to step if defined.
-    Also round to significant digits (optional).
+    将每个值钳位到对应的 [low, high] 区间，若有步长则量化。
+    同时按有效数字舍入（可选）。
 
     Args:
-        values : iterable of floats (length == len(bounds))
-        bounds : iterable of Bound instances
-        sig_digits: int
+        values : 浮点数可迭代对象（长度 == len(bounds)）
+        bounds : Bound 实例的可迭代对象
+        sig_digits: 有效数字位数
 
-    Returns
-        List[float]  – clamped and quantized copy (original is *not* modified)
+    Returns:
+        List[float] – 钳位和量化后的副本（原值不被修改）
     """
     if len(values) != len(bounds):
         raise ValueError(

@@ -1,8 +1,8 @@
 """
-DEAP adapter functions for optimization.
+优化的 DEAP 适配器函数。
 
-This module contains wrappers and helpers to adapt the domain-specific Bound logic
-to the DEAP evolutionary algorithm library.
+本模块包含包装器和辅助函数，将领域特定的 Bound 逻辑
+适配到 DEAP 进化算法库。
 """
 
 from typing import List, Sequence, Tuple
@@ -15,11 +15,11 @@ except ImportError:  # pragma: no cover
 
 from optimization.bounds import Bound
 
-# Epsilon for temporarily adjusting equal bounds in DEAP operators
+# DEAP 算子中临时调整相等边界时使用的 epsilon
 DEAP_EQUAL_BOUNDS_EPSILON = 1e-6
 
 
-# === Index-space conversion helpers for genetic operators ==================
+# === 遗传算子的索引空间转换辅助函数 ==================
 
 
 def to_index_space(
@@ -27,17 +27,17 @@ def to_index_space(
     bounds: Sequence[Bound],
 ) -> Tuple[List[float], List[float], List[float]]:
     """
-    Convert values to index space for stepped parameters.
+    将值转换为阶梯参数的索引空间。
 
-    For stepped parameters, values are converted to their index in the discrete grid.
-    For continuous parameters, values and bounds are passed through unchanged.
+    对于阶梯参数，值被转换为离散网格中的索引。
+    对于连续参数，值和边界原样传递。
 
     Args:
-        values: Parameter values to convert
-        bounds: List of Bound instances
+        values: 待转换的参数值
+        bounds: Bound 实例列表
 
     Returns:
-        Tuple of (index_values, index_low, index_up)
+        (index_values, index_low, index_up) 元组
     """
     index_values = []
     index_low = []
@@ -63,18 +63,17 @@ def prepare_bounds_for_deap(
     index_up: List[float],
 ) -> Tuple[List[float], List[float], np.ndarray]:
     """
-    Prepare bounds for DEAP genetic operators, handling equal bounds.
+    为 DEAP 遗传算子准备边界，处理相等边界的情况。
 
-    DEAP operators fail when low == high, so we temporarily adjust such bounds
-    by a small epsilon. The equal_bounds_mask is returned so callers can reset
-    those values after the operation.
+    DEAP 算子在 low == high 时会失败，因此用一个小 epsilon 临时调整。
+    返回 equal_bounds_mask 以便调用者在操作后重置这些值。
 
     Args:
-        index_low: Lower bounds in index space
-        index_up: Upper bounds in index space
+        index_low: 索引空间的下界
+        index_up: 索引空间的上界
 
     Returns:
-        Tuple of (temp_low, temp_up, equal_bounds_mask)
+        (temp_low, temp_up, equal_bounds_mask) 元组
     """
     low_array = np.array(index_low)
     up_array = np.array(index_up)
@@ -90,19 +89,19 @@ def from_index_space(
     equal_mask: np.ndarray,
 ) -> List[float]:
     """
-    Convert index-space values back to parameter space.
+    将索引空间值转换回参数空间。
 
-    For stepped parameters, indices are converted back to values on the grid.
-    For continuous parameters, values are copied directly.
-    Parameters with equal bounds are reset to their low value.
+    对于阶梯参数，索引被转换回网格上的值。
+    对于连续参数，值直接复制。
+    边界相等的参数重置为其 low 值。
 
     Args:
-        index_values: Values in index space (modified by DEAP operator)
-        bounds: List of Bound instances
-        equal_mask: Boolean mask indicating which parameters have equal bounds
+        index_values: 索引空间中的值（被 DEAP 算子修改）
+        bounds: Bound 实例列表
+        equal_mask: 布尔掩码，指示哪些参数具有相等边界
 
     Returns:
-        List[float]: Values converted back to parameter space
+        List[float]: 转换回参数空间的值
     """
     result = []
     for i in range(len(index_values)):
@@ -116,25 +115,25 @@ def from_index_space(
     return result
 
 
-# === DEAP genetic operator wrappers =========================================
+# === DEAP 遗传算子包装器 =========================================
 
 
 def mutPolynomialBoundedWrapper(individual, eta, indpb, bounds: Sequence[Bound]):
     """
-    A wrapper around DEAP's mutPolynomialBounded function to pre-process
-    bounds and handle the case where lower and upper bounds may be equal.
+    DEAP mutPolynomialBounded 函数的包装器，预处理边界
+    并处理上下界相等的情况。
 
-    For stepped parameters, mutation is performed in index space to ensure
-    offspring values stay on the grid.
+    对于阶梯参数，变异在索引空间中执行以确保
+    后代值保持在网格上。
 
     Args:
-        individual: Sequence individual to be mutated.
-        eta: Crowding degree of the mutation.
-        indpb: Independent probability for each attribute to be mutated.
-        bounds: List of Bound instances defining parameter constraints.
+        individual: 待变异的序列个体。
+        eta: 变异的拥挤度。
+        indpb: 每个属性独立变异的概率。
+        bounds: 定义参数约束的 Bound 实例列表。
 
     Returns:
-        A tuple of one individual, mutated with consideration for equal lower and upper bounds.
+        包含一个个体的元组，已考虑相等上下界进行变异。
     """
     if deap_tools is None:  # pragma: no cover
         raise ModuleNotFoundError("deap is required for optimizer mutation operators")
@@ -150,20 +149,20 @@ def mutPolynomialBoundedWrapper(individual, eta, indpb, bounds: Sequence[Bound])
 
 def cxSimulatedBinaryBoundedWrapper(ind1, ind2, eta, bounds: Sequence[Bound]):
     """
-    A wrapper around DEAP's cxSimulatedBinaryBounded function to pre-process
-    bounds and handle the case where lower and upper bounds may be equal.
+    DEAP cxSimulatedBinaryBounded 函数的包装器，预处理边界
+    并处理上下界相等的情况。
 
-    For stepped parameters, crossover is performed in index space to ensure
-    offspring values stay on the grid.
+    对于阶梯参数，交叉在索引空间中执行以确保
+    后代值保持在网格上。
 
     Args:
-        ind1: The first individual participating in the crossover.
-        ind2: The second individual participating in the crossover.
-        eta: Crowding degree of the crossover.
-        bounds: List of Bound instances defining parameter constraints.
+        ind1: 参与交叉的第一个个体。
+        ind2: 参与交叉的第二个个体。
+        eta: 交叉的拥挤度。
+        bounds: 定义参数约束的 Bound 实例列表。
 
     Returns:
-        A tuple of two individuals after crossover operation.
+        交叉操作后的两个个体元组。
     """
     if deap_tools is None:  # pragma: no cover
         raise ModuleNotFoundError("deap is required for optimizer crossover operators")

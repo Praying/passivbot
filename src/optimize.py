@@ -4,11 +4,11 @@ import argparse
 from cli_utils import help_requested
 
 if sys.platform.startswith("win"):
-    # ==== BEGIN fcntl stub for Windows ====
+    # ==== Windows 平台 fcntl 桩模块 ====
     try:
         import fcntl
     except ImportError:
-        # create a fake module so later `import fcntl` works without error
+        # 创建一个伪模块，使后续 `import fcntl` 不会报错
         class _FcntlStub:
             LOCK_EX = None
             LOCK_SH = None
@@ -22,9 +22,9 @@ if sys.platform.startswith("win"):
 
         sys.modules["fcntl"] = _FcntlStub()
         fcntl = sys.modules["fcntl"]
-    # ==== END fcntl stub for Windows ====
+    # ==== Windows 平台 fcntl 桩模块结束 ====
 
-# Rust extension check before importing compiled module
+# 导入编译模块前的 Rust 扩展检查
 from rust_utils import check_and_maybe_compile, verify_loaded_runtime_extension
 
 _rust_parser = argparse.ArgumentParser(add_help=False)
@@ -115,7 +115,7 @@ import pprint
 
 try:
     from deap import base, creator, tools, algorithms
-except ImportError:  # pragma: no cover - allow import in minimal test envs
+except ImportError:  # pragma: no cover - 允许在最小化测试环境中导入
 
     class _DummyFitness:
         weights = ()
@@ -253,7 +253,7 @@ def _maybe_aggregate_backtest_data(hlcvs, timestamps, btc_usd_prices, mss, confi
         hlcvs, timestamps, btc_usd_prices, candle_interval
     )
     logging.debug(
-        "[optimize] aggregated %dm candles: %d bars -> %d bars (trimmed %d for alignment)",
+        "[optimize] 聚合 %dm K线: %d 根 -> %d 根（对齐裁剪 %d 根）",
         candle_interval,
         n_before,
         hlcvs.shape[0],
@@ -270,23 +270,19 @@ def _maybe_aggregate_backtest_data(hlcvs, timestamps, btc_usd_prices, mss, confi
 
 def _stamp_optimizer_warmup(config: dict, mss: dict, coins: list[str]) -> None:
     """
-    Overwrite ``mss[coin]["warmup_minutes"]`` and ``["trade_start_index"]``
-    with the worst-case warmup the optimizer's search space can actually
-    produce, computed from ``optimize.bounds`` rather than the template bot
-    values.
+    用优化器搜索空间实际能产生的最坏情况预热值覆盖
+    ``mss[coin]["warmup_minutes"]`` 和 ``["trade_start_index"]``，
+    从 ``optimize.bounds`` 计算，而非使用模板机器人的值。
 
-    ``prepare_hlcvs_mss`` stamps those fields from
-    ``compute_per_coin_warmup_minutes(config)``, which reads ``bot.*``
-    directly and knows nothing about bounds. When a user's template bot has
-    large decorative values (e.g. ``entry_volatility_ema_span_hours=1690``)
-    but the bounds pin those fields low, every optimizer backtest ends up
-    trading on a window sized for the template — not for the search space.
-    This helper corrects the stamping by synthesizing a max-bounds
-    individual, running it through ``individual_to_config``, and recomputing
-    warmup from the resulting config.
+    ``prepare_hlcvs_mss`` 从 ``compute_per_coin_warmup_minutes(config)``
+    写入这些字段，该函数直接读取 ``bot.*`` 且不了解边界。
+    当用户的模板机器人具有较大的装饰性值（例如 ``entry_volatility_ema_span_hours=1690``）
+    但边界将这些字段限制得很低时，每次优化器回测都会在模板大小的窗口上交易，
+    而非搜索空间大小的窗口。
+    此辅助函数通过合成一个最大边界个体，通过 ``individual_to_config`` 处理，
+    并从结果配置重新计算预热来纠正写入。
 
-    Must be called *after* ``prepare_hlcvs_mss`` and *before* the Evaluator
-    reads ``mss``.
+    必须在 ``prepare_hlcvs_mss`` 之后、Evaluator 读取 ``mss`` 之前调用。
     """
     warmup_map = compute_optimizer_per_coin_warmup_minutes(config)
     stamped = stamp_warmup_metadata(mss, coins, warmup_map)
@@ -295,7 +291,7 @@ def _stamp_optimizer_warmup(config: dict, mss: dict, coins: list[str]) -> None:
             f"{count}x(warmup={w},start={s})" for (w, s), count in stamped.items()
         )
         logging.info(
-            "Optimizer warmup stamped from bounds | %d coins | %s",
+            "优化器预热已从边界写入 | %d 个币种 | %s",
             sum(stamped.values()),
             summary,
         )
@@ -313,11 +309,9 @@ def _register_exchange_data(
     array_manager: SharedArrayManager,
 ) -> tuple[list[str], dict]:
     """
-    Register one exchange's prepared data into the optimizer's shared-memory
-    pools. Consolidates the previously-duplicated setup logic for the
-    combined and per-exchange branches. No behavioral change from the
-    original inline code; see commit history for the fix that later hooks
-    into this helper.
+    将一个交易所的准备数据注册到优化器的共享内存池中。
+    整合了之前组合模式和按交易所模式分支中重复的设置逻辑。
+    与原始内联代码无行为差异；修复详见提交历史。
     """
     coins, hlcvs, mss, _results_path, _cache_dir, btc_usd_prices, timestamps = prepare_result
     hlcvs, timestamps, btc_usd_prices = _maybe_aggregate_backtest_data(
@@ -388,13 +382,13 @@ class ResultRecorder:
                 self.results_file.write(self.packer.pack(output_data))
                 self.results_file.flush()
             except Exception as exc:
-                logging.error(f"Error writing results: {exc}")
+                logging.error(f"写入结果时出错: {exc}")
         metrics_block = data.get("metrics", {}) or {}
         violation = metrics_block.get("constraint_violation")
         try:
             updated = self.store.add_entry(data)
         except Exception as exc:
-            logging.error(f"ParetoStore error: {exc}")
+            logging.error(f"ParetoStore 错误: {exc}")
         else:
             if updated:
                 objectives_block = metrics_block.get("objectives", {})
@@ -404,7 +398,7 @@ class ResultRecorder:
                     else ""
                 )
                 logging.info(
-                    "Pareto update | eval=%d | front=%d | objectives=%s%s",
+                    "Pareto 更新 | 评估=%d | 前沿=%d | 目标=%s%s",
                     self.store.n_iters,
                     len(self.store._front),
                     _format_objectives(objectives_block, scoring_keys=self.scoring_keys),
@@ -557,7 +551,7 @@ def ea_mu_plus_lambda_stream(
         nonlocal total_evals, liquidation_total
         if not individuals:
             return 0
-        logging.debug("Evaluating %d candidates", len(individuals))
+        logging.debug("正在评估 %d 个候选个体", len(individuals))
         pending = {}
         for idx, ind in enumerate(individuals):
             pending[pool.apply_async(toolbox.evaluate, (ind,))] = idx
@@ -577,7 +571,7 @@ def ea_mu_plus_lambda_stream(
                 adg_entry = metric_map.get("adg_pnl", {}) or {}
                 prh_entry = metric_map.get("peak_recovery_hours_pnl", {}) or {}
                 logging.debug(
-                    "Eval metrics | idx=%d adg_pnl=%s peak_recovery_hours_pnl=%s",
+                    "评估指标 | 索引=%d adg_pnl=%s peak_recovery_hours_pnl=%s",
                     idx,
                     adg_entry.get("aggregated"),
                     prh_entry.get("aggregated"),
@@ -589,7 +583,7 @@ def ea_mu_plus_lambda_stream(
                     adg_val = (adg_entry.get("scenarios") or {}).get(label)
                     prh_val = (prh_entry.get("scenarios") or {}).get(label)
                     logging.debug(
-                        "Eval metrics scenario | idx=%d label=%s adg_pnl=%s peak_recovery_hours_pnl=%s",
+                        "评估指标场景 | 索引=%d 标签=%s adg_pnl=%s peak_recovery_hours_pnl=%s",
                         idx,
                         label,
                         adg_val,
@@ -605,10 +599,10 @@ def ea_mu_plus_lambda_stream(
             completed["count"] += 1
 
         def _on_interrupt(still_pending):
-            logging.info("Evaluation interrupted; terminating pending tasks...")
+            logging.info("评估中断；正在终止待处理任务...")
             cancel_pending_async_results(still_pending)
             if not pool_state["terminated"]:
-                logging.info("Terminating worker pool immediately due to interrupt...")
+                logging.info("由于中断，立即终止工作进程池...")
                 pool.terminate()
                 pool_state["terminated"] = True
         drain_async_results(
@@ -640,10 +634,10 @@ def ea_mu_plus_lambda_stream(
         liquidation_delta = liquidation_total - liquidation_prev_total
         logging.info(
             (
-                "Gen %d complete | evals=%d | total=%d | front=%d | best=%s | "
-                "dups=%d (resolved=%d reused=%d) | dup_delta=%d (res=%d reuse=%d) | "
-                "dup_ratio=%.2f%% | dup_gen=%.2f%% | "
-                "n_bankruptcies=%d (delta=%d) | elapsed=%.1fs"
+                "第 %d 代完成 | 评估=%d | 总计=%d | 前沿=%d | 最佳=%s | "
+                "重复=%d (已解决=%d 已重用=%d) | 重复增量=%d (解决=%d 重用=%d) | "
+                "重复率=%.2f%% | 本代重复=%.2f%% | "
+                "破产数=%d (增量=%d) | 耗时=%.1fs"
             ),
             gen,
             nevals,
@@ -667,11 +661,11 @@ def ea_mu_plus_lambda_stream(
         dup_prev_reused = dup_reuse
         liquidation_prev_total = liquidation_total
         if verbose and record:
-            logging.debug("Logbook: %s", " ".join(f"{k}={v}" for k, v in record.items()))
+            logging.debug("日志记录: %s", " ".join(f"{k}={v}" for k, v in record.items()))
 
     invalid_ind = [ind for ind in population if not ind.fitness.valid]
     if invalid_ind:
-        logging.info("Evaluating initial population (%d candidates)...", len(invalid_ind))
+        logging.info("正在评估初始种群（%d 个候选个体）...", len(invalid_ind))
     nevals = evaluate_and_record(invalid_ind)
 
     if halloffame is not None:
@@ -683,7 +677,7 @@ def ea_mu_plus_lambda_stream(
 
     if len(population) < 2:
         logging.warning(
-            "Population too small for crossover/mutation (size=%d); skipping evolution steps",
+            "种群太小，无法进行交叉/变异（大小=%d）；跳过进化步骤",
             len(population),
         )
         return population, logbook
@@ -703,7 +697,7 @@ def ea_mu_plus_lambda_stream(
         log_generation(gen, nevals, record)
 
     logging.info(
-        "Optimization summary | generations=%d | total_evals=%d | front=%d | duration=%.1fs",
+        "优化摘要 | 代数=%d | 总评估=%d | 前沿=%d | 耗时=%.1fs",
         ngen,
         total_evals,
         len(halloffame) if halloffame is not None else 0,
@@ -714,7 +708,7 @@ def ea_mu_plus_lambda_stream(
 
 def individual_to_config(individual, optimizer_overrides, overrides_list, template, key_paths=None):
     """
-    assume individual is already bound enforced (or will be after)
+    假设个体已经过边界约束处理（或即将处理）
     """
     return build_optimizer_vector_config(
         individual,
@@ -773,7 +767,7 @@ class Evaluator:
         timestamps=None,
         shared_array_manager: SharedArrayManager | None = None,
     ):
-        logging.debug("Initializing Evaluator...")
+        logging.debug("正在初始化 Evaluator...")
         self.hlcvs_specs = hlcvs_specs
         self.btc_usd_specs = btc_usd_specs
         self.msss = msss
@@ -785,7 +779,7 @@ class Evaluator:
         self._attachments = {"hlcvs": {}, "btc": {}}
 
         for exchange in self.exchanges:
-            logging.debug("Preparing cached parameters for %s...", exchange)
+            logging.debug("正在为 %s 准备缓存参数...", exchange)
             if self.shared_array_manager is not None:
                 self.shared_hlcvs_np[exchange] = self.shared_array_manager.view(
                     self.hlcvs_specs[exchange]
@@ -795,8 +789,8 @@ class Evaluator:
                     self.shared_btc_np[exchange] = self.shared_array_manager.view(btc_spec)
 
         self.config = config
-        logging.debug("Evaluator initialization complete.")
-        logging.info("Evaluator ready | exchanges=%d", len(self.exchanges))
+        logging.debug("Evaluator 初始化完成。")
+        logging.info("Evaluator 就绪 | 交易所=%d", len(self.exchanges))
         self.seen_hashes = seen_hashes if seen_hashes is not None else {}
         self.duplicate_counter = duplicate_counter if duplicate_counter is not None else {"count": 0}
         self.optimization_shape = build_optimization_shape(self.config)
@@ -825,7 +819,7 @@ class Evaluator:
     def perturb_step_digits(self, individual, change_chance=0.5):
         perturbed = []
         for i, val in enumerate(individual):
-            if np.random.random() < change_chance:  # x% chance of leaving unchanged
+            if np.random.random() < change_chance:  # x% 概率保持不变
                 perturbed.append(val)
                 continue
             bound = self.bounds[i]
@@ -833,7 +827,7 @@ class Evaluator:
                 perturbed.append(val)
                 continue
 
-            # For stepped parameters, move by the defined step
+            # 对于步进参数，按定义的步长移动
             if bound.is_stepped:
                 step = bound.step
             elif val != 0.0:
@@ -844,7 +838,7 @@ class Evaluator:
 
             direction = np.random.choice([-1.0, 1.0])
             new_val = val + step * direction
-            # For stepped params, don't round_dynamic; quantization will happen in enforce_bounds
+            # 对于步进参数，不进行 round_dynamic；量化将在 enforce_bounds 中进行
             if bound.is_stepped:
                 perturbed.append(new_val)
             else:
@@ -860,7 +854,7 @@ class Evaluator:
                 perturbed.append(val)
                 continue
             new_val = val * (1 + np.random.uniform(-magnitude, magnitude))
-            # For stepped params, don't round_dynamic; quantization will happen in enforce_bounds
+            # 对于步进参数，不进行 round_dynamic；量化将在 enforce_bounds 中进行
             if bound.is_stepped:
                 perturbed.append(new_val)
             else:
@@ -875,7 +869,7 @@ class Evaluator:
             bound = self.bounds[i]
             if bound.low != bound.high:
                 if bound.is_stepped:
-                    # For stepped params, move by +/- step
+                    # 对于步进参数，按 +/- 步长移动
                     direction = np.random.choice([-1.0, 1.0])
                     perturbed[i] = individual[i] + bound.step * direction
                 else:
@@ -901,7 +895,7 @@ class Evaluator:
                 perturbed.append(val)
                 continue
             if bound.is_stepped:
-                # For stepped params, generate gaussian number of steps to move
+                # 对于步进参数，生成高斯分布的步进数
                 max_steps = (bound.high - bound.low) / bound.step
                 n_steps = int(np.random.normal(0, scale * max_steps) + 0.5)
                 perturbed.append(val + n_steps * bound.step)
@@ -988,7 +982,7 @@ class Evaluator:
                     raise
                 error = f"{exc.__class__.__name__}: {exc}"
                 logging.debug(
-                    "Optimizer candidate invalid due to recoverable backtest failure | hash=%s | exchange=%s | error=%s",
+                    "优化器候选因可恢复回测失败而无效 | hash=%s | 交易所=%s | 错误=%s",
                     individual_hash[:12],
                     exchange,
                     error,
@@ -1005,7 +999,7 @@ class Evaluator:
             analyses[exchange] = analysis
             liquidated = liquidated or _analysis_indicates_liquidation(analysis, config)
 
-            # Explicitly drop large intermediate arrays to keep worker RSS low.
+            # 显式释放大型中间数组以保持工作进程 RSS 内存较低。
             del fills
             del equities_array
         scenario_metrics = build_scenario_metrics(analyses)
@@ -1107,12 +1101,12 @@ class SuiteEvaluator:
         self.contexts = scenario_contexts
         self.aggregate_cfg = aggregate_cfg
         self.base.build_limit_checks(self.aggregate_cfg)
-        # Cache for master dataset attachments (shared across scenarios)
+        # 主数据集附件缓存（场景间共享）
         self._master_attachments: Dict[str, Dict[str, Any]] = {"hlcvs": {}, "btc": {}}
         self._master_arrays: Dict[str, Dict[str, np.ndarray]] = {"hlcvs": {}, "btc": {}}
 
     def _ensure_master_attachment(self, spec, cache_key: str, array_type: str) -> np.ndarray:
-        """Attach to master SharedMemory if not already attached."""
+        """如果尚未附加，则附加到主 SharedMemory。"""
         if cache_key not in self._master_arrays[array_type]:
             attachment = attach_shared_array(spec)
             self._master_attachments[array_type][cache_key] = attachment
@@ -1123,11 +1117,11 @@ class SuiteEvaluator:
         self, ctx: ScenarioEvalContext, exchange: str
     ) -> tuple[np.ndarray, np.ndarray | None, list[int] | None]:
         """
-        Get data for lazy slicing mode.
-        Returns (hlcvs_view, btc_view, coin_indices).
+        获取惰性切片模式的数据。
+        返回 (hlcvs_view, btc_view, coin_indices)。
 
-        Only applies TIME slicing here (creates views, O(1) memory).
-        Coin subsetting is deferred to build_backtest_payload which does it efficiently.
+        此处仅应用时间切片（创建视图，O(1) 内存）。
+        币种子集化延迟到 build_backtest_payload 中高效处理。
         """
         master_spec = ctx.master_hlcvs_specs[exchange]
         master_array = self._ensure_master_attachment(master_spec, master_spec.name, "hlcvs")
@@ -1135,14 +1129,14 @@ class SuiteEvaluator:
         time_slice = ctx.time_slice.get(exchange) if ctx.time_slice else None
         coin_indices = ctx.coin_slice_indices.get(exchange) if ctx.coin_slice_indices else None
 
-        # Time slicing creates a VIEW (no copy, O(1) memory)
+        # 时间切片创建视图（无拷贝，O(1) 内存）
         if time_slice is not None:
             start_idx, end_idx = time_slice
             hlcvs_view = master_array[start_idx:end_idx]
         else:
             hlcvs_view = master_array
 
-        # BTC slice (time-only slicing creates a view)
+        # BTC 切片（仅时间切片创建视图）
         btc_view = None
         master_btc_spec = ctx.master_btc_specs.get(exchange) if ctx.master_btc_specs else None
         if master_btc_spec is not None:
@@ -1153,11 +1147,11 @@ class SuiteEvaluator:
             else:
                 btc_view = master_btc
 
-        # Return coin_indices to let build_backtest_payload handle subsetting in one step
+        # 返回 coin_indices 以便 build_backtest_payload 一步完成子集化
         return hlcvs_view, btc_view, coin_indices
 
     def _uses_lazy_slicing(self, ctx: ScenarioEvalContext, exchange: str) -> bool:
-        """Check if context uses lazy slicing for the given exchange."""
+        """检查上下文是否对给定交易所使用惰性切片。"""
         return (
             ctx.master_hlcvs_specs is not None
             and exchange in ctx.master_hlcvs_specs
@@ -1165,12 +1159,12 @@ class SuiteEvaluator:
         )
 
     def _ensure_context_attachment(self, ctx: ScenarioEvalContext, exchange: str) -> None:
-        """Attach to SharedMemory for non-lazy-slicing contexts only."""
-        # Skip if using lazy slicing - slices are computed on-demand in evaluate()
+        """仅为非惰性切片上下文附加到 SharedMemory。"""
+        # 如果使用惰性切片则跳过 - 切片在 evaluate() 中按需计算
         if self._uses_lazy_slicing(ctx, exchange):
             return
 
-        # Original flow: per-scenario SharedMemory
+        # 原始流程：按场景的 SharedMemory
         if exchange not in ctx.shared_hlcvs_np:
             if exchange in ctx.hlcvs_specs and ctx.hlcvs_specs[exchange] is not None:
                 attachment = attach_shared_array(ctx.hlcvs_specs[exchange])
@@ -1255,7 +1249,7 @@ class SuiteEvaluator:
                 ctx.config["live"].get("ignored_coins", {})
             )
             logging.debug(
-                "Optimizer scenario %s | start=%s end=%s coins=%s",
+                "优化器场景 %s | 开始=%s 结束=%s 币种=%s",
                 ctx.label,
                 scenario_config["backtest"].get("start_date"),
                 scenario_config["backtest"].get("end_date"),
@@ -1267,10 +1261,10 @@ class SuiteEvaluator:
 
             analyses = {}
             for exchange in ctx.exchanges:
-                # Get data arrays - either from lazy slicing or cached SharedMemory
+                # 获取数据数组 - 来自惰性切片或缓存的 SharedMemory
                 if self._uses_lazy_slicing(ctx, exchange):
-                    # Get time-sliced VIEW (O(1) memory) + coin indices
-                    # Coin subsetting happens inside build_backtest_payload (single copy)
+                    # 获取时间切片视图（O(1) 内存）+ 币种索引
+                    # 币种子集化在 build_backtest_payload 内部完成（单次拷贝）
                     hlcvs_data, btc_data, coin_indices = self._get_lazy_slice_data(ctx, exchange)
                 else:
                     self._ensure_context_attachment(ctx, exchange)
@@ -1295,7 +1289,7 @@ class SuiteEvaluator:
                         raise
                     error = f"{exc.__class__.__name__}: {exc}"
                     logging.debug(
-                        "Optimizer suite candidate invalid due to recoverable backtest failure | label=%s | exchange=%s | error=%s",
+                        "优化器 suite 候选因可恢复回测失败而无效 | 标签=%s | 交易所=%s | 错误=%s",
                         ctx.label,
                         exchange,
                         error,
@@ -1315,7 +1309,7 @@ class SuiteEvaluator:
                     analysis, scenario_config
                 )
 
-                # Free backtest results to allow memory reuse
+                # 释放回测结果以允许内存重用
                 del fills
                 del equities_array
                 del payload
@@ -1323,7 +1317,7 @@ class SuiteEvaluator:
             combined_metrics = combine(analyses)
             stats = combined_metrics.get("stats", {})
             logging.debug(
-                "Scenario metrics | label=%s adg_pnl=%s peak_recovery_hours_pnl=%s",
+                "场景指标 | 标签=%s adg_pnl=%s peak_recovery_hours_pnl=%s",
                 ctx.label,
                 (
                     stats.get("adg_pnl", {}).get("mean")
@@ -1357,8 +1351,8 @@ class SuiteEvaluator:
         aggregate_stats = aggregate_summary.get("stats", {})
 
         flat_stats = flatten_metric_stats(aggregate_stats)
-        # Override _mean with correctly aggregated values so calc_fitness
-        # respects the aggregate config (e.g. "max" instead of "mean").
+        # 用正确聚合的值覆盖 _mean，使 calc_fitness
+        # 遵循聚合配置（例如使用 "max" 而非 "mean"）。
         aggregated_values = aggregate_summary.get("aggregated", {})
         for metric, agg_value in aggregated_values.items():
             flat_stats[f"{metric}_mean"] = agg_value
@@ -1453,11 +1447,11 @@ def apply_fine_tune_bounds(
         )
         if not selectors_sorted:
             return resolved
-        logging.info("%s selectors:", label)
+        logging.info("%s 选择器:", label)
         for selector in selectors_sorted:
             matches = sorted(key for key in bounds if selector in key)
             if not matches:
-                logging.warning("%s selector matched no optimize bounds: %s", label, selector)
+                logging.warning("%s 选择器未匹配到优化边界: %s", label, selector)
                 continue
             logging.info("  %s ->", selector)
             for match in matches:
@@ -1467,7 +1461,7 @@ def apply_fine_tune_bounds(
 
     def _log_bound_set(header: str, keys: set[str]) -> None:
         if not keys:
-            logging.info("%s: none", header)
+            logging.info("%s: 无", header)
             return
         logging.info("%s:", header)
         for key in sorted(keys):
@@ -1487,7 +1481,7 @@ def apply_fine_tune_bounds(
     def _fix_bound_to_current_value(bound_key: str) -> bool:
         path = _resolve_bound_key_path(bound_key)
         if path is None:
-            logging.warning("fine-tune bounds: unable to resolve key '%s', skipping", bound_key)
+            logging.warning("微调边界: 无法解析键 '%s'，跳过", bound_key)
             return False
         target = config
         try:
@@ -1495,7 +1489,7 @@ def apply_fine_tune_bounds(
                 target = target[part]
         except (KeyError, TypeError):
             logging.warning(
-                "fine-tune bounds: missing current config value for '%s', leaving bounds unchanged",
+                "微调边界: 缺少 '%s' 的当前配置值，保持边界不变",
                 bound_key,
             )
             return False
@@ -1506,7 +1500,7 @@ def apply_fine_tune_bounds(
             bounds[bound_key] = [target, target]
         return True
 
-    # First, normalize any CLI overrides such that single values mean fixed bounds
+    # 首先，规范化所有 CLI 覆盖，使单值表示固定边界
     for key in cli_overridden_bounds:
         if key not in bounds:
             continue
@@ -1552,14 +1546,14 @@ def iter_extract_configs(path):
     if not os.path.exists(path):
         return
     if path.endswith("_all_results.bin"):
-        logging.info(f"Skipping {path}")
+        logging.info(f"跳过 {path}")
         return
     if path.endswith(".json"):
         try:
             raw = load_hjson_config(path, log_errors=False)
             yield _extract_starting_config(raw, source=path)
         except Exception as e:
-            logging.warning(f"failed to extract bot config from starting config {path}: {e}")
+            logging.warning(f"从起始配置 {path} 提取机器人配置失败: {e}")
         return
     if path.endswith("_pareto.txt"):
         with open(path) as f:
@@ -1568,7 +1562,7 @@ def iter_extract_configs(path):
                     cfg = json.loads(line)
                     yield _extract_starting_config(cfg, source=path)
                 except Exception as e:
-                    logging.warning(f"failed to extract bot config from starting config {path}: {e}")
+                    logging.warning(f"从起始配置 {path} 提取机器人配置失败: {e}")
 
 
 def _extract_starting_config(raw_config, *, source: str = "<memory>"):
@@ -1669,7 +1663,7 @@ def configs_to_individuals_streaming(
             )
             inds.add(tuple(individual))
         except Exception as e:
-            logging.warning(f"failed to use starting config as optimizer seed: {e}")
+            logging.warning(f"将起始配置用作优化器种子失败: {e}")
     return list(inds), raw_count
 
 
@@ -1804,7 +1798,7 @@ async def main():
     if effective_log_level != initial_log_level:
         configure_logging(debug=effective_log_level)
     logging.info(
-        "Config normalized for optimization | template=%s | scoring=%s",
+        "优化配置已规范化 | 模板=%s | 评分=%s",
         TEMPLATE_CONFIG_MODE,
         ",".join(objective_metric_names(config)),
     )
@@ -1821,31 +1815,31 @@ async def main():
     apply_fine_tune_bounds(config, fine_tune_params, cli_bounds_overrides)
     suite_override = None
     if args.suite_config:
-        logging.info("loading suite config %s", args.suite_config)
+        logging.info("正在加载 suite 配置 %s", args.suite_config)
         override_cfg = load_prepared_config(args.suite_config, verbose=False)
         override_backtest = override_cfg.get("backtest", {})
-        # Support both new (scenarios at top level) and legacy (suite wrapper) formats
+        # 支持新格式（场景在顶层）和旧格式（suite 包装器）
         if "scenarios" in override_backtest:
             suite_override = {
                 "scenarios": override_backtest.get("scenarios", []),
                 "aggregate": override_backtest.get("aggregate", {"default": "mean"}),
             }
         elif "suite" in override_backtest:
-            # Legacy format - extract from suite wrapper
+            # 旧格式 - 从 suite 包装器中提取
             suite_override = override_backtest["suite"]
         else:
             raise ValueError(f"Suite config {args.suite_config} must define backtest.scenarios.")
     suite_cfg = extract_suite_config(config, suite_override)
 
-    # Handle --scenarios filter (implies --suite y)
+    # 处理 --scenarios 过滤器（隐含 --suite y）
     scenario_filter = getattr(args, "scenarios", None)
     if scenario_filter:
         labels = [label.strip() for label in scenario_filter.split(",") if label.strip()]
         suite_cfg["scenarios"] = filter_scenarios_by_label(suite_cfg.get("scenarios", []), labels)
         suite_cfg["enabled"] = True  # --scenarios implies suite mode
-        logging.info("Filtered to %d scenario(s): %s", len(labels), ", ".join(labels))
+        logging.info("已过滤到 %d 个场景: %s", len(labels), ", ".join(labels))
 
-    # --suite CLI arg overrides config (applied after --scenarios so explicit --suite n wins)
+    # --suite CLI 参数覆盖配置（在 --scenarios 之后应用，因此显式 --suite n 优先）
     if args.suite is not None:
         recursive_config_update(config, "backtest.suite_enabled", bool(args.suite), verbose=True)
         suite_cfg["enabled"] = bool(args.suite)
@@ -1874,7 +1868,7 @@ async def main():
             )
             if not scenario_contexts:
                 raise ValueError("Suite configuration produced no scenarios.")
-            logging.info("Optimizer suite enabled with %d scenario(s)", len(scenario_contexts))
+            logging.info("优化器 suite 已启用，共 %d 个场景", len(scenario_contexts))
             first_ctx = scenario_contexts[0]
             hlcvs_specs = first_ctx.hlcvs_specs
             btc_usd_specs = first_ctx.btc_usd_specs
@@ -1883,7 +1877,7 @@ async def main():
             config["backtest"]["coins"] = deepcopy(first_ctx.config["backtest"]["coins"])
             backtest_exchanges = sorted({ex for ctx in scenario_contexts for ex in ctx.exchanges})
 
-            # Estimate memory usage (per-scenario SharedMemory, shared by all workers)
+            # 估算内存使用量（按场景 SharedMemory，所有工作进程共享）
             total_shm_bytes = 0
             seen_specs = set()
             for ctx in scenario_contexts:
@@ -1919,24 +1913,24 @@ async def main():
                     available_gb = None
                     shm_gb = None
                 logging.info(
-                    "Memory estimate | scenarios=%d | shared_memory=%.1fGB%s",
+                    "内存估算 | 场景=%d | 共享内存=%.1fGB%s",
                     len(scenario_contexts),
                     total_shm_gb,
-                    f" | system={available_gb:.1f}GB" if available_gb else "",
+                    f" | 系统={available_gb:.1f}GB" if available_gb else "",
                 )
                 if shm_gb is not None:
-                    logging.info("Shared memory filesystem size | /dev/shm=%.1fGB", shm_gb)
+                    logging.info("共享内存文件系统大小 | /dev/shm=%.1fGB", shm_gb)
                 if available_gb and total_shm_gb > available_gb * 0.7:
                     logging.warning(
-                        "Shared memory for scenarios (%.1fGB) is high relative to RAM (%.1fGB). "
-                        "Consider using fewer/smaller scenarios.",
+                        "场景共享内存 (%.1fGB) 相对于 RAM (%.1fGB) 较高。"
+                        "建议使用更少/更小的场景。",
                         total_shm_gb,
                         available_gb,
                     )
         else:
-            # New behavior: derive data strategy from exchange count
-            # - Single exchange = use that exchange's data only
-            # - Multiple exchanges = best-per-coin combination (combined)
+            # 新行为：从交易所数量推导数据策略
+            # - 单交易所 = 仅使用该交易所数据
+            # - 多交易所 = 按币种最佳组合（combined）
             use_combined = len(backtest_exchanges) > 1
 
             if use_combined:
@@ -1955,7 +1949,7 @@ async def main():
                 for coin in coins:
                     exchange_preference[mss[coin]["exchange"]].append(coin)
                 for ex in exchange_preference:
-                    logging.info(f"chose {ex} for {','.join(exchange_preference[ex])}")
+                    logging.info(f"为 {','.join(exchange_preference[ex])} 选择了 {ex}")
             else:
                 tasks = {
                     exchange: asyncio.create_task(prepare_hlcvs_mss(config, exchange))
@@ -2000,7 +1994,7 @@ async def main():
         config["results_filename"] = results_filename
         overrides_list = config.get("optimize", {}).get("enable_overrides", [])
 
-        # Shared state used by workers for duplicate detection
+        # 工作进程用于重复检测的共享状态
         manager = multiprocessing.Manager()
         seen_hashes = manager.dict()
         duplicate_counter = manager.dict()
@@ -2008,7 +2002,7 @@ async def main():
         duplicate_counter["resolved"] = 0
         duplicate_counter["reused"] = 0
 
-        # Initialize evaluator with shared memory references
+        # 使用共享内存引用初始化评估器
         evaluator = Evaluator(
             hlcvs_specs=hlcvs_specs,
             btc_usd_specs=btc_usd_specs,
@@ -2025,8 +2019,8 @@ async def main():
         else:
             evaluator_for_pool = evaluator
 
-        logging.info(f"Finished initializing evaluator...")
-        flush_interval = 60  # or read from your config
+        logging.info(f"评估器初始化完成...")
+        flush_interval = 60  # 或从配置中读取
         sig_digits = config["optimize"]["round_to_n_significant_digits"]
         pareto_max = config["optimize"].get("pareto_max_size", DEFAULT_PARETO_MAX_SIZE)
         recorder = ResultRecorder(
@@ -2040,7 +2034,7 @@ async def main():
             bounds=evaluator.bounds,
         )
         backend_name = config["optimize"]["backend"]
-        logging.info("Selected optimizer backend: %s", backend_name)
+        logging.info("已选择优化器后端: %s", backend_name)
         backend_runner = get_backend_runner(backend_name)
         backend_result = backend_runner(
             config=config,
@@ -2067,55 +2061,55 @@ async def main():
 
     except KeyboardInterrupt:
         interrupted = True
-        logging.info("SIGINT received; starting graceful shutdown")
+        logging.info("收到 SIGINT；开始优雅关闭")
         if "pool" in locals():
             already = pool_state["terminated"] if "pool_state" in locals() else pool_terminated
             if not already:
-                logging.info("Terminating worker pool...")
+                logging.info("正在终止工作进程池...")
                 pool.terminate()
                 pool_terminated = True
                 if "pool_state" in locals():
                     pool_state["terminated"] = True
     except Exception as e:
-        logging.error(f"An error occurred: {e}")
+        logging.error(f"发生错误: {e}")
         traceback.print_exc()
     finally:
         if "recorder" in locals():
-            logging.info("Flushing Pareto/results recorder...")
+            logging.info("正在刷新 Pareto/结果记录器...")
             try:
                 recorder.flush()
             except Exception:
-                logging.exception("Failed to flush recorder")
-            logging.info("Closing results recorder...")
+                logging.exception("刷新记录器失败")
+            logging.info("正在关闭结果记录器...")
             recorder.close()
         if "pool" in locals() and pool is not None:
             if interrupted and not pool_terminated:
-                logging.info("Terminating worker pool...")
+                logging.info("正在终止工作进程池...")
                 pool.terminate()
                 pool_terminated = True
             if pool_terminated or interrupted:
-                logging.info("Joining terminated worker pool...")
+                logging.info("正在等待已终止的工作进程池...")
             else:
-                logging.info("Closing worker pool...")
+                logging.info("正在关闭工作进程池...")
                 pool.close()
             try:
                 pool.join()
             except KeyboardInterrupt:
-                logging.info("Additional SIGINT received during pool join; continuing shutdown")
+                logging.info("在进程池等待期间收到额外 SIGINT；继续关闭")
         if manager is not None:
-            logging.info("Shutting down multiprocessing manager...")
+            logging.info("正在关闭多进程管理器...")
             try:
                 manager.shutdown()
             except Exception:
-                logging.exception("Failed to shut down multiprocessing manager")
+                logging.exception("关闭多进程管理器失败")
         if "array_manager" in locals():
-            logging.info("Releasing shared memory...")
+            logging.info("正在释放共享内存...")
             try:
                 array_manager.cleanup()
             except Exception:
-                logging.exception("Failed to release shared memory")
+                logging.exception("释放共享内存失败")
 
-        logging.info("Shutdown complete.")
+        logging.info("关闭完成。")
         sys.exit(130 if interrupted else 0)
 
 

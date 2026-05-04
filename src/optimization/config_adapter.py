@@ -1,8 +1,7 @@
 """
-Configuration adapter for optimization.
+优化的配置适配器。
 
-This module bridges the gap between the general configuration system and the
-optimization-specific bounds logic.
+本模块桥接通用配置系统与优化特定的边界逻辑之间的差异。
 """
 
 from typing import List, Tuple
@@ -134,14 +133,14 @@ def get_optimization_key_paths(config) -> List[Tuple[str, Tuple[str, ...]]]:
 
 def extract_bounds_tuple_list_from_config(config) -> List[Bound]:
     """
-    Extracts list of Bound instances for bot parameters.
-    Also sets all bounds to (low, low, step) if pside is not enabled.
+    提取机器人参数的 Bound 实例列表。
+    若仓位方向未启用，则将所有边界设为 (low, low, step)。
 
-    Supported formats:
-        - [low, high]: continuous optimization (step=None)
-        - [low, high, step]: discrete optimization with given step
-        - [low, high, 0] or [low, high, null]: treated as continuous
-        - single value: fixed parameter (low=high, step=None)
+    支持的格式：
+        - [low, high]：连续优化（step=None）
+        - [low, high, step]：带给定步长的离散优化
+        - [low, high, 0] 或 [low, high, null]：视为连续
+        - 单个值：固定参数（low=high, step=None）
     """
     bounds = []
     optimize_bounds = config["optimize"]["bounds"]

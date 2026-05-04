@@ -9,7 +9,7 @@ import numpy as np
 
 try:
     from deap import base, creator, tools
-except ImportError:  # pragma: no cover - allow import in minimal test envs
+except ImportError:  # pragma: no cover - 允许在最小化测试环境中导入
     base = creator = tools = None
 
 from optimization.bounds import enforce_bounds
@@ -33,7 +33,7 @@ def _resolve_deap_population_size(config: dict[str, Any]) -> int:
     raw = config["optimize"].get("population_size")
     if raw is None:
         logging.info(
-            "optimize.population_size=null is not supported by deap; using %d",
+            "deap 不支持 optimize.population_size=null；使用 %d",
             DEFAULT_DEAP_POPULATION_SIZE,
         )
         return DEFAULT_DEAP_POPULATION_SIZE
@@ -118,14 +118,14 @@ def run_backend(
         toolbox.register("select", tools.selNSGA2)
         toolbox.register("evaluate", evaluator_for_pool.evaluate, overrides_list=overrides_list)
 
-        logging.info("Initializing multiprocessing pool. N cpus: %s", config["optimize"]["n_cpus"])
+        logging.info("正在初始化多进程池。CPU 数量: %s", config["optimize"]["n_cpus"])
         pool = multiprocessing.Pool(
             processes=config["optimize"]["n_cpus"],
             initializer=ignore_sigint_in_worker,
         )
         toolbox.register("map", pool.map)
-        logging.info("Finished initializing multiprocessing pool.")
-        logging.info("Creating initial population...")
+        logging.info("多进程池初始化完成。")
+        logging.info("正在创建初始种群...")
 
         def _evaluate_initial(individuals):
             if not individuals:
@@ -155,13 +155,13 @@ def run_backend(
                 elif hasattr(ind, "evaluation_metrics"):
                     delattr(ind, "evaluation_metrics")
                 completed["count"] += 1
-                logging.info("Evaluated %d/%d starting configs", completed["count"], total)
+                logging.info("已评估 %d/%d 个起始配置", completed["count"], total)
 
             def _on_interrupt(still_pending):
-                logging.info("Evaluation interrupted; terminating pending starting configs...")
+                logging.info("评估中断；正在终止待处理的起始配置...")
                 cancel_pending_async_results(still_pending)
                 if not pool_state["terminated"]:
-                    logging.info("Terminating worker pool immediately due to interrupt...")
+                    logging.info("由于中断，立即终止工作进程池...")
                     pool.terminate()
                     pool_state["terminated"] = True
 
@@ -206,7 +206,7 @@ def run_backend(
                 approx_bytes=approx_object_size(evaluated_seeds),
             )
             eval_count = _evaluate_initial(evaluated_seeds)
-            logging.info("Evaluated %d starting configs", eval_count)
+            logging.info("已评估 %d 个起始配置", eval_count)
             log_seed_memory(
                 "deap_starting_eval_complete",
                 count=len(evaluated_seeds),
@@ -215,7 +215,7 @@ def run_backend(
             if len(evaluated_seeds) > population_size:
                 evaluated_seeds = tools.selNSGA2(evaluated_seeds, population_size)
                 logging.info(
-                    "Trimmed starting configs to population size via NSGA-II crowding (kept %d)",
+                    "通过 NSGA-II 拥挤度将起始配置裁剪至种群大小（保留 %d）",
                     len(evaluated_seeds),
                 )
                 log_seed_memory(
@@ -234,7 +234,7 @@ def run_backend(
         for i in range(len(population)):
             population[i][:] = enforce_bounds(population[i], bounds, sig_digits)
 
-        logging.info("Initial population size: %d", len(population))
+        logging.info("初始种群大小: %d", len(population))
 
         stats = tools.Statistics(lambda ind: ind.fitness.values)
         stats.register("min", np.min, axis=0)
@@ -244,7 +244,7 @@ def run_backend(
         logbook.header = "gen", "evals", "min", "max"
         hof = tools.ParetoFront()
 
-        logging.info("Starting optimize...")
+        logging.info("开始优化...")
         lambda_size = max(1, int(round(population_size * offspring_multiplier)))
         population, logbook = run_evolution(
             population,
@@ -264,7 +264,7 @@ def run_backend(
             duplicate_counter=duplicate_counter,
             pool_state=pool_state,
         )
-        logging.info("Optimization complete.")
+        logging.info("优化完成。")
         return {
             "population": population,
             "logbook": logbook,

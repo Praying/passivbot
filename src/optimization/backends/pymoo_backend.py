@@ -17,7 +17,7 @@ try:
     from pymoo.operators.mutation.pm import PM
     from pymoo.termination import get_termination
     from pymoo.util.ref_dirs import get_reference_directions
-except ImportError:  # pragma: no cover
+except ImportError:  # pragma: no cover - 允许在最小化测试环境中导入
     NSGA2 = None
     NSGA3 = None
     Population = None
@@ -113,7 +113,7 @@ def _reduce_starting_population(
         seed=1,
     )
     logging.info(
-        "Trimmed starting configs to population size via pymoo %s survival (kept %d)",
+        "通过 pymoo %s 存活选择将起始配置裁剪至种群大小（保留 %d）",
         algorithm.__class__.__name__.lower(),
         len(reduced),
     )
@@ -159,10 +159,10 @@ def _evaluate_starting_individuals(
             slim_payload["G"] = payload["G"]
         ordered_payloads[idx] = slim_payload
         completed["count"] += 1
-        logging.info("Evaluated %d/%d starting configs", completed["count"], len(starting_individuals))
+        logging.info("已评估 %d/%d 个起始配置", completed["count"], len(starting_individuals))
 
     def _on_interrupt(still_pending):
-        logging.info("Evaluation interrupted; terminating pending starting configs...")
+        logging.info("评估中断；正在终止待处理的起始配置...")
         cancel_pending_async_results(still_pending)
         runner.pool.terminate()
 
@@ -337,7 +337,7 @@ def _resolve_pymoo_population_plan(
 
     if algorithm_name == "nsga3" and n_obj < 2:
         logging.warning(
-            "optimize.pymoo.algorithm=nsga3 requested with %d objective; falling back to nsga2",
+            "optimize.pymoo.algorithm=nsga3 请求了 %d 个目标；回退到 nsga2",
             n_obj,
         )
         algorithm_name = "nsga2"
@@ -410,13 +410,13 @@ def _build_algorithm(
         actual_population_size = population_plan["actual_population_size"]
         if requested_population_size is None:
             logging.info(
-                "Using pymoo nsga3 auto population size=%d from %d reference directions",
+                "使用 pymoo nsga3 自动种群大小=%d，来自 %d 个参考方向",
                 actual_population_size,
                 len(ref_dirs),
             )
         elif actual_population_size != requested_population_size:
             logging.info(
-                "Adjusted pymoo nsga3 population size from %d to %d to cover %d reference directions",
+                "已将 pymoo nsga3 种群大小从 %d 调整为 %d 以覆盖 %d 个参考方向",
                 requested_population_size,
                 actual_population_size,
                 len(ref_dirs),
@@ -424,7 +424,7 @@ def _build_algorithm(
         if len(sampling) < actual_population_size:
             sampling = _extend_sampling_to_size(sampling, bounds, actual_population_size)
         logging.info(
-            "Using pymoo nsga3 | n_obj=%d | ref_dirs=%d | n_partitions=%d (%s)",
+            "使用 pymoo nsga3 | 目标数=%d | 参考方向=%d | 分区数=%d (%s)",
             ref_dirs.shape[1],
             len(ref_dirs),
             n_partitions,
@@ -441,7 +441,7 @@ def _build_algorithm(
         )
         return algorithm
 
-    logging.info("Using pymoo nsga2")
+    logging.info("使用 pymoo nsga2")
     return NSGA2(
         pop_size=population_plan["actual_population_size"],
         sampling=sampling,
@@ -560,7 +560,7 @@ def run_backend(
                 n_obj=len(config["optimize"]["scoring"]),
                 has_constraints=evaluator_adapter.has_constraints,
             )
-            logging.info("Evaluated %d starting configs", len(seed_payloads))
+            logging.info("已评估 %d 个起始配置", len(seed_payloads))
             log_seed_memory(
                 "pymoo_starting_payloads_ready",
                 count=len(seed_payloads),
@@ -575,7 +575,7 @@ def run_backend(
                 bounds=bounds,
             )
         ngen = max(1, int(config["optimize"]["iters"] / population_size))
-        logging.info("Starting optimize...")
+        logging.info("开始优化...")
         pymoo_minimize(
             problem,
             algorithm,
@@ -583,7 +583,7 @@ def run_backend(
             seed=1,
             verbose=False,
         )
-        logging.info("Optimization complete.")
+        logging.info("优化完成。")
         return {
             "pool": pool,
             "pool_terminated": False,
