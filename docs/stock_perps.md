@@ -1,139 +1,139 @@
-# Stock Perpetuals Trading Guide
+# 股票永续合约交易指南
 
-This guide covers trading stock perpetuals (equity perps) on Hyperliquid using Passivbot.
+本指南介绍如何使用 Passivbot 在 Hyperliquid 上交易股票永续合约（equity perps）。
 
-## Current Support Status
+## 当前支持状态
 
-Passivbot currently supports **cross-only** live trading for Hyperliquid HIP-3 markets.
+Passivbot 目前**仅支持** Hyperliquid HIP-3 市场的全仓实盘交易。
 
-- Cross-capable HIP-3 markets may still be traded in cross mode.
-- HIP-3 markets that are isolated-only by exchange metadata are currently ignored for new entries.
-- If the bot detects an existing isolated HIP-3 position or open order at startup, it hard-fails instead of trying to manage that state.
+- 支持全仓的 HIP-3 市场仍可以全仓模式交易。
+- 交易所元数据标记为仅逐仓的 HIP-3 市场目前会被跳过，不进行新入场。
+- 如果 bot 在启动时检测到现有的逐仓 HIP-3 仓位或未结订单，会直接失败而不是尝试管理该状态。
 
-The isolated-margin code paths remain in the repo for possible future work, but isolated HIP-3 live trading is currently not supported.
+逐仓保证金代码路径仍保留在仓库中以备未来可能的工作，但逐仓 HIP-3 实盘交易目前不支持。
 
-## Overview
+## 概述
 
-Stock perpetuals are perpetual futures contracts that track traditional equity prices (TSLA, NVDA, AAPL, etc.). On Hyperliquid, these are deployed via **HIP-3** (Hyperliquid Improvement Proposal 3), which enables permissionless perpetual market creation.
+股票永续合约是跟踪传统股票价格（TSLA、NVDA、AAPL 等）的永续期货合约。在 Hyperliquid 上，这些通过 **HIP-3**（Hyperliquid Improvement Proposal 3）部署，它支持无许可的永续合约市场创建。
 
-The primary stock perps provider on Hyperliquid is **TradeXYZ** (trade.xyz), which deploys markets with the `xyz:` prefix (e.g., `xyz:TSLA`, `xyz:NVDA`).
+Hyperliquid 上的主要股票永续合约提供商是 **TradeXYZ**（trade.xyz），它部署带有 `xyz:` 前缀的市场（如 `xyz:TSLA`、`xyz:NVDA`）。
 
-### Key Characteristics
+### 关键特性
 
-| Aspect | Stock Perps | Crypto Perps |
-|--------|-------------|--------------|
-| Symbol format | `xyz:TSLA/USDC:USDC` | `BTC/USDC:USDC` |
-| Margin mode | Exchange metadata decides; Passivbot currently supports cross-only live trading | Cross or Isolated |
-| Max leverage | 10x | Up to 50x |
-| Trading hours | 24/7 | 24/7 |
-| Fees | 2x standard Hyperliquid fees | Standard fees |
-| Collateral | USDC | USDC |
+| 方面 | 股票永续合约 | 加密永续合约 |
+|------|-------------|--------------|
+| 符号格式 | `xyz:TSLA/USDC:USDC` | `BTC/USDC:USDC` |
+| 保证金模式 | 由交易所元数据决定；Passivbot 目前仅支持全仓实盘交易 | 全仓或逐仓 |
+| 最大杠杆 | 10x | 最高 50x |
+| 交易时间 | 24/7 | 24/7 |
+| 手续费 | 标准 Hyperliquid 手续费的 2 倍 | 标准手续费 |
+| 抵押品 | USDC | USDC |
 
-### Available Stock Perps
+### 可用的股票永续合约
 
-As of early 2026, TradeXYZ offers perpetuals on:
-- **Tech giants**: TSLA, NVDA, AAPL, MSFT, META, AMZN, GOOGL, NFLX, AMD
-- **Fintech/Crypto-adjacent**: COIN, HOOD, PLTR, MSTR
-- **Commodities**: GOLD, SILVER, COPPER, NATGAS, URANIUM
-- **Currencies**: EUR, JPY
-- **Index**: XYZ100 (Nasdaq-like index)
+截至 2026 年初，TradeXYZ 提供以下永续合约：
+- **科技巨头**：TSLA、NVDA、AAPL、MSFT、META、AMZN、GOOGL、NFLX、AMD
+- **金融科技/加密相关**：COIN、HOOD、PLTR、MSTR
+- **大宗商品**：GOLD、SILVER、COPPER、NATGAS、URANIUM
+- **货币**：EUR、JPY
+- **指数**：XYZ100（类似纳斯达克的指数）
 
-Other HIP-3 builders (FLX, KM, CASH, VNTL, HYNA, ABCD) also offer various perps. Cross-capable builder markets may still work, but isolated-only HIP-3 trading is currently disabled.
+其他 HIP-3 构建者（FLX、KM、CASH、VNTL、HYNA、ABCD）也提供各种永续合约。支持全仓的构建者市场可能仍然有效，但仅逐仓的 HIP-3 交易目前被禁用。
 
-## Understanding Balance and Margin
+## 理解余额和保证金
 
-### How Isolated Margin Works
+### 逐仓保证金如何工作
 
-HIP-3 stock perps may be either **isolated-only** or **cross-capable**, depending on exchange metadata. Many still use isolated margin, which is fundamentally different from cross margin used by most crypto perps. Passivbot currently avoids that isolated live path and treats HIP-3 as cross-only when possible.
+HIP-3 股票永续合约可能是**仅逐仓**或**支持全仓**的，取决于交易所元数据。许多仍使用逐仓保证金，这与大多数加密永续合约使用的全仓保证金有根本不同。Passivbot 目前避免逐仓实盘路径，在可能时将 HIP-3 视为仅全仓。
 
-| Cross Margin (HL crypto perps) | Isolated Margin (HIP-3/XYZ perps) |
+| 全仓保证金（HL 加密永续合约） | 逐仓保证金（HIP-3/XYZ 永续合约） |
 |-------------------------------|-----------------------------------|
-| Entire balance backs all positions | Each position has dedicated margin |
-| One liquidation can cascade to others | Liquidations are contained per-position |
-| More capital efficient | Safer but requires more upfront margin |
-| Default for BTC, ETH, etc. | Unsupported in Passivbot live trading for now |
+| 整个余额为所有仓位担保 | 每个仓位有专用保证金 |
+| 一次清算可能级联到其他仓位 | 清算限制在每个仓位内 |
+| 资本效率更高 | 更安全但需要更多前期保证金 |
+| BTC、ETH 等的默认模式 | Passivbot 实盘交易暂不支持 |
 
-### Balance Display Differences
+### 余额显示差异
 
-You'll see different balance breakdowns depending on which interface you use:
+根据使用的界面，你会看到不同的余额分解：
 
-**Hyperliquid Web UI (app.hyperliquid.xyz)**:
-- Shows your **total account value** (e.g., 105 USDC)
-- This includes all free balance + margin locked in positions
+**Hyperliquid Web UI（app.hyperliquid.xyz）**：
+- 显示你的**总账户价值**（例如 105 USDC）
+- 这包括所有可用余额 + 仓位中锁定的保证金
 
-**TradeXYZ Web UI (trade.xyz)**:
-- Shows a **breakdown by builder**:
-  - `USDC (HL perps)`: Free balance available for HL native perps or withdrawal
-  - `USDC (XYZ perps)`: Margin currently locked in your XYZ stock perp positions
+**TradeXYZ Web UI（trade.xyz）**：
+- 显示**按构建者分解**：
+  - `USDC (HL perps)`：可用于 HL 原生永续合约或提取的可用余额
+  - `USDC (XYZ perps)`：当前锁定在 XYZ 股票永续仓位中的保证金
 
-**Example**:
+**示例**：
 ```
-Hyperliquid UI:     105 USDC total
+Hyperliquid UI:     105 USDC 总计
 TradeXYZ UI:        11.91 USDC (HL perps) + 93.27 USDC (XYZ perps) = 105.18 USDC
 ```
 
-The ~$93 locked in "XYZ perps" is your margin for open TSLA positions. If those positions get liquidated, only that $93 is at risk - your remaining $12 stays safe.
+锁定在"XYZ perps"中的约 $93 是你开仓 TSLA 仓位的保证金。如果这些仓位被清算，只有那 $93 有风险——你剩余的 $12 是安全的。
 
-### Margin Calculation
+### 保证金计算
 
-When you open a position on an isolated margin market:
+当你在逐仓保证金市场开仓时：
 
 ```
 margin_required = position_notional / leverage
                 = (quantity × price) / leverage
 ```
 
-For example, opening 0.24 TSLA at $423 with 2x leverage:
+例如，以 2x 杠杆在 $423 开 0.24 TSLA：
 ```
 margin = (0.24 × $423) / 2 = $50.76
 ```
 
-This margin is **locked** for that position until you close it. Your free balance decreases accordingly.
+此保证金在你平仓之前**锁定**给该仓位。你的可用余额相应减少。
 
-### Passivbot Balance Display
+### Passivbot 余额显示
 
-Passivbot shows your **total account value** from the Hyperliquid API, which includes:
-- Free balance
-- All locked margin
-- Unrealized PnL
+Passivbot 显示来自 Hyperliquid API 的**总账户价值**，包括：
+- 可用余额
+- 所有锁定的保证金
+- 未实现 PnL
 
-The balance changes you see in logs reflect margin being allocated/released as positions open/close:
+你在日志中看到的余额变化反映仓位开/平时保证金的分配/释放：
 ```
-[balance] 105.21 -> 84.27   # Margin locked for new position
-[balance] 84.27 -> 67.35    # More margin locked for second entry
+[balance] 105.21 -> 84.27   # 新仓位锁定的保证金
+[balance] 84.27 -> 67.35    # 第二次入场锁定更多保证金
 ```
 
-## Requirements
+## 要求
 
-### 1. Hyperliquid Account
+### 1. Hyperliquid 账户
 
-You need a Hyperliquid account with USDC deposited. No KYC required - your wallet is your identity.
+你需要一个存入 USDC 的 Hyperliquid 账户。无需 KYC——你的钱包就是你的身份。
 
-### 2. One-Time TradeXYZ Registration
+### 2. 一次性 TradeXYZ 注册
 
-**Important**: Before you can trade XYZ stock perps via API, you must complete a one-time wallet registration on the TradeXYZ platform:
+**重要**：在通过 API 交易 XYZ 股票永续合约之前，你必须在 TradeXYZ 平台上完成一次性钱包注册：
 
-1. Go to [trade.xyz](https://trade.xyz)
-2. Click "Connect Wallet" and connect your Hyperliquid wallet
-3. Sign the verification transaction to prove wallet ownership
-4. Accept the terms of service and privacy policy
-5. Click **"Enable Trading"** when prompted and sign the confirmation
+1. 前往 [trade.xyz](https://trade.xyz)
+2. 点击"Connect Wallet"并连接你的 Hyperliquid 钱包
+3. 签署验证交易以证明钱包所有权
+4. 接受服务条款和隐私政策
+5. 提示时点击 **"Enable Trading"** 并签署确认
 
-This registration links your wallet to the TradeXYZ builder, enabling API access to their HIP-3 markets. Without this step, orders will fail with "Insufficient margin" errors even if you have sufficient balance.
+此注册将你的钱包链接到 TradeXYZ 构建者，启用对其 HIP-3 市场的 API 访问。没有此步骤，即使你有足够余额，订单也会因"Insufficient margin"错误而失败。
 
-### 3. Regional Restrictions
+### 3. 地区限制
 
-TradeXYZ prohibits access from:
-- United States
-- OFAC-sanctioned countries
+TradeXYZ 禁止以下地区访问：
+- 美国
+- OFAC 制裁国家
 
-Ensure you're not connecting from a restricted region.
+确保你不是从受限地区连接。
 
-## Configuration
+## 配置
 
-### Symbol Selection
+### 符号选择
 
-You can specify stock perps in `approved_coins` using any of these formats:
+你可以使用以下任何格式在 `approved_coins` 中指定股票永续合约：
 
 ```json
 {
@@ -143,7 +143,7 @@ You can specify stock perps in `approved_coins` using any of these formats:
 }
 ```
 
-or explicitly with the prefix:
+或显式带前缀：
 
 ```json
 {
@@ -153,11 +153,11 @@ or explicitly with the prefix:
 }
 ```
 
-Passivbot automatically maps `TSLA` to `XYZ-TSLA/USDC:USDC` on Hyperliquid.
+Passivbot 自动将 `TSLA` 映射到 Hyperliquid 上的 `XYZ-TSLA/USDC:USDC`。
 
-### Mixing Crypto and Stock Perps
+### 混合加密和股票永续合约
 
-You can run both crypto perps and supported stock perps in the same bot:
+你可以在同一个 bot 中运行加密永续合约和受支持的股票永续合约：
 
 ```json
 {
@@ -167,73 +167,73 @@ You can run both crypto perps and supported stock perps in the same bot:
 }
 ```
 
-Passivbot automatically sets the correct margin mode for each symbol:
-- **Crypto perps** (BTC, ETH, SOL, etc.) → cross margin
-- **Stock perps** (TSLA, NVDA, AAPL, etc.) → cross only when the market is cross-capable; isolated-only markets are skipped
+Passivbot 自动为每个符号设置正确的保证金模式：
+- **加密永续合约**（BTC、ETH、SOL 等）→ 全仓保证金
+- **股票永续合约**（TSLA、NVDA、AAPL 等）→ 仅当市场支持全仓时使用全仓；仅逐仓的市场会被跳过
 
 ```
 BTC/USDC:USDC: margin=ok (cross)
 XYZ-XYZ100/USDC:USDC: margin=ok (cross)
 ```
 
-**How balance works in mixed mode:**
+**混合模式下余额如何工作：**
 
-| Component | Backs What |
-|-----------|------------|
-| Free balance | Shared by all cross-margin positions (BTC, ETH, etc.) |
-| Locked margin (per stock) | Only that specific stock perp position |
+| 组件 | 担保什么 |
+|------|----------|
+| 可用余额 | 由所有全仓保证金仓位共享（BTC、ETH 等）|
+| 锁定保证金（每股票）| 仅该特定股票永续仓位 |
 
-**Risk isolation**: This is how isolated margin works at the exchange level. Passivbot currently does not support live HIP-3 isolated trading, but the distinction is still useful context for understanding the exchange.
+**风险隔离**：这是交易所层面逐仓保证金的工作方式。Passivbot 目前不支持实盘 HIP-3 逐仓交易，但此区分对于理解交易所有用。
 
-**Practical consideration**: Isolated margin positions lock up capital, reducing what's available for cross-margin positions. Plan your `n_positions` and `total_wallet_exposure_limit` accordingly.
+**实际考虑**：逐仓保证金仓位锁定资本，减少可用于全仓保证金仓位的资金。相应地规划你的 `n_positions` 和 `total_wallet_exposure_limit`。
 
-### Automatic Detection
+### 自动检测
 
-Passivbot automatically detects stock perps by:
-1. The `xyz:` symbol prefix (or `XYZ-` in CCXT format)
-2. The `onlyIsolated: true` market flag
-3. Membership in the known stock ticker list (TSLA, NVDA, AAPL, etc.)
+Passivbot 通过以下方式自动检测股票永续合约：
+1. `xyz:` 符号前缀（或 CCXT 格式中的 `XYZ-`）
+2. `onlyIsolated: true` 市场标志
+3. 属于已知股票代码列表（TSLA、NVDA、AAPL 等）
 
-### Leverage and Margin
+### 杠杆和保证金
 
-Stock perps do not all share the same margin capabilities. Passivbot currently:
+股票永续合约并非都具有相同的保证金能力。Passivbot 目前：
 
-1. Detects whether a HIP-3 market is isolated-only or cross-capable from exchange metadata
-2. Uses cross mode on cross-capable HIP-3 markets
-3. Ignores isolated-only HIP-3 markets for new entries
-4. Hard-fails if existing isolated HIP-3 live state is detected at startup
-5. Retains the isolated-margin code for possible future support work
+1. 从交易所元数据检测 HIP-3 市场是仅逐仓还是支持全仓
+2. 在支持全仓的 HIP-3 市场上使用全仓模式
+3. 忽略仅逐仓的 HIP-3 市场进行新入场
+4. 如果在启动时检测到现有的逐仓 HIP-3 实盘状态，直接失败
+5. 保留逐仓保证金代码以备未来可能的支持工作
 
-**Leverage calculation for isolated margin:**
+**逐仓保证金的杠杆计算：**
 
-The remaining isolated-margin notes below are kept as exchange/background reference. They do not mean isolated HIP-3 trading is currently supported in Passivbot live mode.
+以下剩余的逐仓保证金说明作为交易所/背景参考保留。它们并不意味着 Passivbot 实盘模式目前支持逐仓 HIP-3 交易。
 
-For isolated margin, your margin requirement is: `margin = exposure / leverage`
+对于逐仓保证金，你的保证金要求是：`margin = exposure / leverage`
 
-To ensure you never exceed your balance, Passivbot uses:
+为确保你永远不会超过余额，Passivbot 使用：
 ```
 min_leverage = ceil(max(long_TWEL, short_TWEL))
 ```
 
-For example, with TWEL = 1.25:
-- Minimum leverage = ceil(1.25) = 2x
-- Maximum exposure at $100k balance = $125k
-- Margin required = $125k / 2 = $62.5k (within balance)
+例如，TWEL = 1.25：
+- 最小杠杆 = ceil(1.25) = 2x
+- $100k 余额的最大敞口 = $125k
+- 所需保证金 = $125k / 2 = $62.5k（在余额范围内）
 
-### Minimum Order Size
+### 最小订单大小
 
-Stock perps on Hyperliquid have a **$10 minimum order value**. With small balances, this limits how many grid entries you can place.
+Hyperliquid 上的股票永续合约有 **$10 最小订单价值**。对于小额余额，这限制了你可以放置的网格入场数量。
 
-For a $100 balance trading TSLA at $400:
-- Minimum qty = $10 / $400 = 0.025 TSLA
-- At TWEL 1.0 with 2x leverage: max exposure = $200, max qty = 0.5 TSLA
-- Practical grid depth: ~5-8 entries before hitting minimums
+对于 $100 余额在 $400 交易 TSLA：
+- 最小数量 = $10 / $400 = 0.025 TSLA
+- TWEL 1.0 且 2x 杠杆：最大敞口 = $200，最大数量 = 0.5 TSLA
+- 实际网格深度：约 5-8 次入场后达到最小值
 
-Consider setting `filter_by_min_effective_cost: false` if you want to trade with smaller balances and accept that some grid levels may be skipped.
+如果你想用较小余额交易并接受某些网格级别可能被跳过，考虑设置 `filter_by_min_effective_cost: false`。
 
-### Example Config
+### 示例配置
 
-Minimal test config for stock perps:
+股票永续合约的最小测试配置：
 
 ```json
 {
@@ -262,42 +262,42 @@ Minimal test config for stock perps:
 }
 ```
 
-Key settings explained:
-- `leverage: 2` - Safe starting point, meets isolated margin requirements
-- `filter_by_min_effective_cost: false` - Allow trading even if balance is low
-- `minimum_coin_age_days: 0` - Stock perps are new, don't filter by age
-- `entry_initial_qty_pct: 0.4` - Larger initial entries (fewer grid levels with small balance)
+关键设置说明：
+- `leverage: 2` - 安全的起点，满足逐仓保证金要求
+- `filter_by_min_effective_cost: false` - 即使余额低也允许交易
+- `minimum_coin_age_days: 0` - 股票永续合约是新的，不按年龄过滤
+- `entry_initial_qty_pct: 0.4` - 较大的初始入场（小余额时网格级别较少）
 
-## Oracle Pricing Behavior
+## Oracle 定价行为
 
-Stock perps use oracle pricing from RedStone's HyperStone oracle. During market hours, prices track live stock prices. During market closure (weekends, holidays):
+股票永续合约使用来自 RedStone 的 HyperStone oracle 的 oracle 定价。在市场开盘期间，价格跟踪实时股票价格。在市场收盘期间（周末、节假日）：
 
-- Oracle maintains "stickiness" to the closing price
-- Price boundaries are set based on the final open price
-- Large trades can move the price within these boundaries
+- Oracle 对收盘价保持"粘性"
+- 价格边界基于最终开盘价设定
+- 大额交易可以在这些边界内移动价格
 
-**Risk Warning**: Weekend trading carries additional risk. A December 2025 incident saw a whale trigger a 3.5% selloff on a Sunday, causing liquidations. Consider reducing position sizes or pausing bots during market closures.
+**风险警告**：周末交易具有额外风险。2025 年 12 月的一起事件中，一条鲸鱼在周日引发了 3.5% 的抛售，导致清算。考虑在市场收盘期间减小仓位大小或暂停 bot。
 
-## Data Sources for Backtesting and Live Trading
+## 回测和实盘交易的数据源
 
-Passivbot uses multiple data sources for stock perps, automatically falling back to alternatives when primary sources are unavailable:
+Passivbot 对股票永续合约使用多个数据源，当主要来源不可用时自动回退到替代方案：
 
-### 1. Hyperliquid API (Primary for Live Trading)
-- **Coverage**: Last ~3.5 days (5000 1m candles)
-- **Format**: Native perp data with oracle pricing
-- **Usage**: Live trading, recent backtesting
-- **No setup required** - Works automatically
+### 1. Hyperliquid API（实盘交易的主要来源）
+- **覆盖范围**：最近约 3.5 天（5000 根 1m K 线）
+- **格式**：带 oracle 定价的原生永续合约数据
+- **用途**：实盘交易、近期回测
+- **无需设置** - 自动工作
 
-### 2. Yahoo Finance (Free, Default for Historical)
-- **Coverage**: Last 7 days of 1m data
-- **Cost**: FREE, no API key required
-- **Setup**: Installed automatically with yfinance package
-- **Limitations**: Only market hours data, no weekends
+### 2. Yahoo Finance（免费，历史数据默认）
+- **覆盖范围**：最近 7 天的 1m 数据
+- **成本**：免费，无需 API key
+- **设置**：随 yfinance 包自动安装
+- **限制**：仅市场开盘时间数据，无周末数据
 
-### 3. Finnhub / Alpha Vantage (Optional, for Extended History)
-- **Coverage**: Varies by provider
-- **Cost**: Requires API key (free tiers available)
-- **Setup**: Add to api-keys.json
+### 3. Finnhub / Alpha Vantage（可选，用于扩展历史）
+- **覆盖范围**：因提供商而异
+- **成本**：需要 API key（有免费层级）
+- **设置**：添加到 api-keys.json
 
 ```json
 {
@@ -308,52 +308,52 @@ Passivbot uses multiple data sources for stock perps, automatically falling back
 }
 ```
 
-### Data Source Priority
+### 数据源优先级
 
-CandlestickManager automatically selects the best source:
-1. Local cache (if available)
-2. Hyperliquid API (last 3.5 days)
-3. Yahoo Finance (last 7 days, free)
-4. Configured TradFi provider (older data)
+CandlestickManager 自动选择最佳来源：
+1. 本地缓存（如果可用）
+2. Hyperliquid API（最近 3.5 天）
+3. Yahoo Finance（最近 7 天，免费）
+4. 配置的 TradFi 提供商（更早的数据）
 
-### Important Notes About TradFi Data
+### TradFi 数据的重要说明
 
-TradFi data represents actual stock prices and **does not include**:
-- Perpetual funding rates
-- Oracle-driven pricing during market closure
-- Weekend/after-hours price movements
+TradFi 数据代表实际股票价格，**不包括**：
+- 永续合约资金费率
+- 市场收盘期间的 oracle 驱动定价
+- 周末/盘后价格变动
 
-This data is suitable for:
-- Strategy development and initial backtesting
-- Understanding general price behavior
-- Warm-up periods for EMAs
+此数据适用于：
+- 策略开发和初始回测
+- 理解一般价格行为
+- EMA 的预热期
 
-For accurate backtesting of actual perp behavior, use native Hyperliquid data where available.
+要准确回测实际永续合约行为，请在可用时使用原生 Hyperliquid 数据。
 
-## Limitations
+## 限制
 
-### Current Limitations
+### 当前限制
 
-1. **Isolated margin only** - Cross margin support planned for future HIP-3 upgrade
-2. **10x max leverage** - Lower than crypto perps
-3. **Higher fees** - 2x standard Hyperliquid fees
-4. **Builder registration required** - One-time setup per builder (TradeXYZ, FLX, etc.)
-5. **No hedge mode** - Same as regular Hyperliquid
-6. **$10 minimum order** - Limits grid depth on small accounts
+1. **仅逐仓保证金** - 全仓保证金支持计划在未来的 HIP-3 升级中
+2. **10x 最大杠杆** - 低于加密永续合约
+3. **更高的手续费** - 标准 Hyperliquid 手续费的 2 倍
+4. **需要构建者注册** - 每个构建者（TradeXYZ、FLX 等）一次性设置
+5. **无对冲模式** - 与常规 Hyperliquid 相同
+6. **$10 最小订单** - 限制小账户的网格深度
 
-## Troubleshooting
+## 故障排除
 
 ### "Insufficient margin to place order"
 
-**Cause**: Wallet not registered with TradeXYZ
+**原因**：钱包未在 TradeXYZ 注册
 
-**Solution**: Complete the one-time registration at [trade.xyz](https://trade.xyz) (see Requirements section)
+**解决方案**：在 [trade.xyz](https://trade.xyz) 完成一次性注册（参见要求部分）
 
-### "Too many DEXes found" when loading markets
+### 加载市场时 "Too many DEXes found"
 
-**Cause**: CCXT needs HIP-3 DEX specification
+**原因**：CCXT 需要 HIP-3 DEX 规范
 
-**Solution**: Passivbot handles this automatically. If using CCXT directly:
+**解决方案**：Passivbot 自动处理此问题。如果直接使用 CCXT：
 ```python
 exchange.options["fetchMarkets"] = {
     "types": ["swap", "hip3"],
@@ -363,44 +363,44 @@ exchange.options["fetchMarkets"] = {
 
 ### "No long symbols are approved due to min effective cost too high"
 
-**Cause**: Balance too low for $10 minimum order size
+**原因**：余额太低，不满足 $10 最小订单大小
 
-**Solution**: Either:
-1. Increase account balance
-2. Set `filter_by_min_effective_cost: false` in config
-3. Reduce `n_positions` to concentrate capital
+**解决方案**：二选一：
+1. 增加账户余额
+2. 在配置中设置 `filter_by_min_effective_cost: false`
+3. 减少 `n_positions` 以集中资本
 
-### Orders rejected during market closure
+### 市场收盘期间订单被拒绝
 
-**Cause**: Oracle price boundaries or liquidity issues
+**原因**：Oracle 价格边界或流动性问题
 
-**Solution**: Consider pausing trading during extended market closures (weekends, holidays)
+**解决方案**：考虑在延长的市场收盘期间（周末、节假日）暂停交易
 
-### Symbol not found / "Skipping unsupported markets"
+### 符号未找到 / "Skipping unsupported markets"
 
-**Cause**: Symbol mapping issue or market not loaded
+**原因**：符号映射问题或市场未加载
 
-**Solution**: Ensure you're using a valid ticker (TSLA, NVDA, etc.) and that the Hyperliquid markets cache is fresh. Delete `caches/hyperliquid/markets.json` to force refresh.
+**解决方案**：确保你使用的是有效的代码（TSLA、NVDA 等），并且 Hyperliquid 市场缓存是最新的。删除 `caches/hyperliquid/markets.json` 以强制刷新。
 
-## Live Test Results (January 2026)
+## 实盘测试结果（2026 年 1 月）
 
-Successfully tested with:
-- **Account**: ~$105 USDC
-- **Symbol**: TSLA (xyz:TSLA)
-- **Leverage**: 2x
-- **Results**:
-  - Bot correctly detected isolated margin requirement
-  - Margin mode set to isolated automatically
-  - Multiple fills executed at ~$423
-  - Position tracking and order management working correctly
+成功测试：
+- **账户**：约 $105 USDC
+- **符号**：TSLA（xyz:TSLA）
+- **杠杆**：2x
+- **结果**：
+  - Bot 正确检测到逐仓保证金要求
+  - 保证金模式自动设为逐仓
+  - 在约 $423 处执行了多笔成交
+  - 仓位跟踪和订单管理正常工作
 
-## Resources
+## 资源
 
-- [TradeXYZ Documentation](https://docs.trade.xyz)
-- [Hyperliquid HIP-3 Docs](https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-improvement-proposals-hips/hip-3-builder-deployed-perpetuals)
-- [HyperStone Oracle (RedStone)](https://blog.redstone.finance/2025/11/13/felix-launches-its-first-hyperliquid-hip-3-market-with-tsla-powered-by-hyperstone/)
+- [TradeXYZ 文档](https://docs.trade.xyz)
+- [Hyperliquid HIP-3 文档](https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-improvement-proposals-hips/hip-3-builder-deployed-perpetuals)
+- [HyperStone Oracle（RedStone）](https://blog.redstone.finance/2025/11/13/felix-launches-its-first-hyperliquid-hip-3-market-with-tsla-powered-by-hyperstone/)
 
 ---
 
-*Last updated: January 2026*
-*Status: Live tested and working*
+*最后更新：2026 年 1 月*
+*状态：已实盘测试并正常工作*
