@@ -31,9 +31,9 @@
 - **candle_interval_minutes**: 在回测循环运行前将原始 1m OHLCV 聚合为更粗的 K 线。`1` 保持原生 1m 行为；高于 `1` 的值会加速回测和优化器运行，但会损失区间内的成交排序。
 - **gap_tolerance_ohlcvs_minutes**: 准备好的 OHLCV 数据中最大可容忍的空洞大小，超过此值则认为该币种/交易所的数据集损坏。较大的值接受更稀疏的历史数据；较小的值在归档空洞上更快失败。
 - **liquidation_threshold**: 提前停止回测的权益底线保护。一旦总权益降至或低于 `starting_balance * liquidation_threshold`，运行终止，`backtest_completion_ratio` 将低于 `1.0`。示例：`starting_balance = 1000` 且 `liquidation_threshold = 0.05` 时，回测在权益 `<= 50` 时停止。这不是”5% 回撤”阈值；如果运行从未超过起始值，它大约对应 `0.95` 的最差回撤。必须满足 `0.0 <= liquidation_threshold < 1.0`。
-- **maker_fee_override**: 可选的 maker 手续费覆盖（每一份；使用 `0.0002` 表示 0.02%）。留空 `null` 使用交易所派生的 maker 手续费。
-- **taker_fee_override**: 可选的 taker 手续费覆盖（每一份；使用 `0.00055` 表示 0.055%）。留空 `null` 使用交易所派生的 taker 手续费。
-- **market_order_slippage_pct**: 仅回测的滑点，当回测器模拟市价单执行时应用。这适用于 `bot.{long,short}.hsl_panic_close_order_type` 为 `”market”` 时的 HSL 恐慌平仓，以及被 `live.market_orders_allowed` 提升为市价执行的普通 orchestrator 订单。卖单以 `close * (1 - slippage_pct)` 向下取整到 `price_step` 成交；买单以 `close * (1 + slippage_pct)` 向上取整成交。一旦选择市价执行路径，成交即被保证，且 resulting 成交也使用 taker 手续费。默认 `0.0005`（5 bps）。
+- **maker_fee_override**: 可选的 maker 手续费覆盖（小数形式；使用 `0.0002` 表示 0.02%）。留空 `null` 使用交易所派生的 maker 手续费。
+- **taker_fee_override**: 可选的 taker 手续费覆盖（小数形式；使用 `0.00055` 表示 0.055%）。留空 `null` 使用交易所派生的 taker 手续费。
+- **market_order_slippage_pct**: 仅回测的滑点，当回测器模拟市价单执行时应用。这适用于 `bot.{long,short}.hsl_panic_close_order_type` 为 `”market”` 时的 HSL 恐慌平仓，以及被 `live.market_orders_allowed` 提升为市价执行的普通 orchestrator 订单。卖单以 `close * (1 - slippage_pct)` 向下取整到 `price_step` 成交；买单以 `close * (1 + slippage_pct)` 向上取整成交。一旦选择市价执行路径，成交即被保证，且产生的成交也使用 taker 手续费。默认 `0.0005`（5 bps）。
 - **visible_metrics**: 控制独立回测后在终端打印哪些指标。`null` 显示 `optimize.scoring` 和 `optimize.limits` 隐含的指标，`[]` 显示所有指标，显式列表会向默认视图添加额外的命名指标。这仅影响 CLI 可见性；完整的指标集仍会被计算和持久化。
 - **config_version**: 配置文件的顶层 schema 版本字符串。规范的 `v7.10` 配置使用 `v7.10.0`。没有此字段的旧配置被视为遗留配置，并在加载时迁移。
 - **balance_sample_divider**: 为 `balance_and_equity.csv.gz` 和相关图表采样余额/权益时每个桶的分钟数。`1` 保持完整的每分钟分辨率；较高的值会稀疏化序列（例如 `15` 每 15 分钟存储一个点）以减小文件大小。CSV 包含 USD 和 BTC 的账户余额/权益，以及与抵押品无关的 `strategy_equity`。
@@ -443,7 +443,7 @@ Forager 币种选择现在使用两阶段模型：粗略的量修剪，然后跨
   - `”all”`：完整的可用历史。
   - 实盘和回测使用相同的已实现 PnL 风险窗口合约：将已实现成交事件过滤到活跃回溯窗口，然后仅从该过滤序列重新计算累计 PnL、当前值和峰值。
 - **price_distance_threshold**: EMA 限价单所需的距当前价格行为的最小距离。
-- **risk_wel_enforcer_threshold**: 触发 WEL 执行器的每符号乘数。当仓位的敞口超过 `wallet_exposure_limit * (1 + risk_we_excess_allowance_pct) * risk_wel_enforcer_threshold` 时，bot 发出 reduce-only 订单将其控制回来。设 <1.0 进行持续修剪，`1.0` 为硬上限，≤0 禁用。
+- **risk_wel_enforcer_threshold**: 触发 WEL 执行器的每符号乘数。当仓位的敞口超过 `wallet_exposure_limit * (1 + risk_we_excess_allowance_pct) * risk_wel_enforcer_threshold` 时，bot 发出减仓订单将其控制回来。设 <1.0 进行持续修剪，`1.0` 为硬上限，≤0 禁用。
 - **risk_twel_enforcer_threshold**: 触发 TWEL 执行器的已配置 `total_wallet_exposure_limit` 的分数。当总敞口超过此阈值时，bot 排队减少订单而不是新入场。设 >1.0 允许宽限期，`1.0` 严格执行，≤0 禁用。
 - **risk_we_excess_allowance_pct**: 执行器在修剪前容忍的每符号超出配置钱包敞口限制的津贴。有助于平滑减少；保持 `0.0` 作为硬上限。
 - **max_realized_loss_pct**: 平仓订单的全局已实现亏损门控，锚定于成交历史的峰值已实现余额。对于每个平仓订单，如果预计已实现 PnL 会将余额推至 `peak_balance * (1 - max_realized_loss_pct)` 以下，则订单被阻止。适用于所有平仓订单类型（包括 WEL/TWEL 自动减少和解套），恐慌平仓除外。
@@ -457,7 +457,7 @@ Forager 币种选择现在使用两阶段模型：粗略的量修剪，然后跨
 - **warmup_concurrency**: 实盘预热任务的并发上限。`0` 让 Passivbot 自动选择；正值限制并行预热的符号数量。
 - **max_concurrent_api_requests**: 可选的全局实盘 REST 并发上限。留空 `null` 使用交易所/默认行为；设置整数可更积极地限制经过身份验证和公共请求的扇出。
 - **warmup_minutes**: 不是配置键。这是从 `warmup_ratio`、指标跨度和 `max_warmup_minutes` 内部计算的每币种派生预热窗口。
-- **time_in_force**: 默认为 Good-Till-Cancelled。
+- **time_in_force**: 默认为撤销前有效（Good-Till-Cancelled）。
 - **user**: 从 `api-keys.json` 获取 API key/secret。
 
 ## 优化设置
