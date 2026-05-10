@@ -146,6 +146,7 @@ def _normalize_spec(
     index: int,
     unknown_goal: str,
 ) -> tuple[ObjectiveSpec, bool]:
+    """将单个 scoring 条目（字符串、字典或 ObjectiveSpec）规范化为 ObjectiveSpec。"""
     if isinstance(item, ObjectiveSpec):
         spec = ObjectiveSpec(
             metric=canonicalize_metric_name(item.metric),
@@ -196,6 +197,7 @@ def normalize_scoring_entries(
     dedupe: bool = True,
     unknown_goal: str = "error",
 ) -> tuple[list[ObjectiveSpec], bool]:
+    """规范化 scoring 列表，返回去重后的 ObjectiveSpec 列表及是否有变更。"""
     if scoring is None:
         return [], False
     if not isinstance(scoring, (list, tuple)):
@@ -283,6 +285,7 @@ def dominates_objectives(
     rhs: Sequence[float],
     specs: Sequence[ObjectiveSpec],
 ) -> bool:
+    """判断 lhs 是否在多目标意义上严格支配 rhs。"""
     better_in_one = False
     for a, b, spec in zip(lhs, rhs, specs):
         if spec.goal == "max":

@@ -89,6 +89,7 @@ def _canonical_log_json(value: Any) -> str:
 
 
 def _format_optimize_limits_change_for_log(old_value: Any, new_value: Any) -> Optional[str]:
+    """格式化 optimize.limits 变更的日志消息，对比新增和移除的条目。"""
     if not isinstance(old_value, list) or not isinstance(new_value, list):
         return None
     if not all(isinstance(x, dict) for x in old_value) or not all(isinstance(x, dict) for x in new_value):
@@ -294,6 +295,7 @@ def load_hjson_config(config_path: str, *, log_errors: bool = True) -> dict:
 
 
 def load_config(filepath: str, live_only=False, verbose=True) -> dict:
+    """加载配置文件并记录加载变换日志。"""
     try:
         config = staged_load_prepared_config(
             filepath,
@@ -508,6 +510,7 @@ def _apply_non_live_adjustments(
 
 
 def format_config(config: dict, verbose=True, live_only=False, base_config_path: str = "") -> dict:
+    """规范化配置并记录格式化变换日志。"""
     result = normalize_config(
         config,
         base_config_path=base_config_path,
@@ -546,6 +549,7 @@ def _clean_dynamic_node(value):
 
 
 def _clean_with_template(template_node, source_node, path: Path = ()):
+    """根据模板结构递归清理配置节点，移除不在模板中的键。"""
     if isinstance(template_node, dict):
         source_dict = source_node if isinstance(source_node, dict) else {}
         if path in PARTIALLY_OPEN_CONFIG_PATHS:
@@ -620,6 +624,7 @@ def sanitize_prepared_config_for_dump(config: dict, *, extra_keys: Iterable[str]
 
 
 def _limits_structurally_equal(raw_limits: Any, normalized_limits: List[Dict[str, Any]]) -> bool:
+    """检查原始 limits 与规范化 limits 是否结构相等（忽略浮点误差）。"""
     if not isinstance(raw_limits, list) or len(raw_limits) != len(normalized_limits):
         return False
 
@@ -684,6 +689,7 @@ def merge_negative_cli_values(argv):
 
 
 def create_acronym(full_name, acronyms=set()):
+    """根据配置全名生成唯一的缩写，避免与已有缩写冲突。"""
     i = 1
     while True:
         i += 1
@@ -704,7 +710,7 @@ def create_acronym(full_name, acronyms=set()):
 
         # 使用正则表达式同时按 '_' 和 '.' 分割
         splitted = re.split(r"[._]+", shortened_name)
-        acronym = "".join(word[0] for word in splitted if word)  # skip any empty splits
+        acronym = "".join(word[0] for word in splitted if word)  # 跳过空分割
 
         if acronym not in acronyms:
             break
@@ -1087,6 +1093,7 @@ def _register_argument(container, visible_names, hidden_names, **kwargs):
 
 
 def _argument_metavar(type_, full_name: str, value):
+    """根据参数类型和名称推断 argparse metavar 显示文本。"""
     if type_ is comma_separated_values:
         return "CSV"
     if type_ is comma_separated_values_float:
@@ -1116,6 +1123,7 @@ def _argument_help_text(full_name: str, appendix: str) -> str:
 
 
 def _classify_live_argument(full_name: str, help_all: bool) -> Optional[str]:
+    """将 live 命令的配置参数分类到对应的帮助组。"""
     coin_selection = {
         "live.approved_coins",
         "live.ignored_coins",
@@ -1151,6 +1159,7 @@ def _classify_live_argument(full_name: str, help_all: bool) -> Optional[str]:
 
 
 def _classify_backtest_argument(full_name: str, help_all: bool) -> Optional[str]:
+    """将 backtest 命令的配置参数分类到对应的帮助组。"""
     shared_group = field_cli_help_group(full_name, "backtest")
     if shared_group is not None:
         return shared_group
@@ -1194,6 +1203,7 @@ def _classify_backtest_argument(full_name: str, help_all: bool) -> Optional[str]
 
 
 def _classify_optimize_argument(full_name: str, help_all: bool) -> Optional[str]:
+    """将 optimize 命令的配置参数分类到对应的帮助组。"""
     shared_group = field_cli_help_group(full_name, "optimize")
     if shared_group is not None:
         return shared_group
@@ -1280,6 +1290,7 @@ def classify_config_argument(
 
 
 def project_template_config_for_cli(config: dict, command: Optional[str]) -> dict:
+    """根据 CLI 命令类型裁剪模板配置，仅保留相关部分。"""
     result = deepcopy(config)
     if command == "backtest":
         result.pop("optimize", None)
@@ -1522,6 +1533,7 @@ def add_arguments_recursively(
 
 
 def recursive_config_update(config, key, value, path=None, verbose=False):
+    """递归更新配置中指定键路径的值，自动进行类型强转。"""
     if path is None:
         path = []
 
@@ -1576,6 +1588,7 @@ def recursive_config_update(config, key, value, path=None, verbose=False):
 
 
 def update_config_with_args(config, args, verbose=False, allowed_keys: Optional[set[str]] = None):
+    """将 CLI 命名空间参数应用到配置字典，记录变更。"""
     changed_keys = []
     diffs = []
     for key, value in vars(args).items():

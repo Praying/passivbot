@@ -59,6 +59,7 @@ def hydrate_missing_template_fields(
 
 
 def seed_missing_compatibility_sections(template: dict, result: dict, *, tracker=None) -> None:
+    """为缺失的兼容性节（bot 方向、live 币种列表、optimize bounds）填充默认值。"""
     for pside in ("long", "short"):
         if pside not in result["bot"]:
             seeded = deepcopy(template["bot"][pside])
@@ -96,6 +97,7 @@ def sync_with_template(
     verbose: bool = True,
     tracker=None,
 ) -> None:
+    """将配置结果与模板同步，移除模板中不存在的键并保留指定路径。"""
     existing_base = result["live"].get("base_config_path") if "live" in result else None
     had_key = "live" in result and "base_config_path" in result["live"]
     if base_config_path or "base_config_path" not in result["live"]:
@@ -140,6 +142,7 @@ def sync_with_template(
 
 
 def _normalize_coin_sources(raw: Any) -> Dict[str, str]:
+    """规范化 backtest.coin_sources 映射，将 symbol 转换为 coin 并检查冲突。"""
     if raw is None:
         return {}
     if not isinstance(raw, dict):
@@ -183,6 +186,7 @@ def apply_non_live_adjustments(
     raw_optimize_limits: Any = None,
     raw_optimize_limits_present: Optional[bool] = None,
 ) -> None:
+    """应用非实盘模式的配置调整：规范化币种来源、日期、scoring、limits 和 bounds。"""
     for key in ("approved_coins", "ignored_coins"):
         result["live"][key] = normalize_coins_source(
             result["live"].get(key, ""),
