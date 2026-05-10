@@ -70,6 +70,7 @@ def dump_interactive_plot(
     candles_interval=None,
     theme="",
 ):
+    """生成交互式 pyecharts K 线图并保存为 HTML 文件。"""
     if candles_interval is None:
         candles_interval = config.get("plot_candles_interval", datetime.timedelta(minutes=1))
     if type(candles_interval) is str:
@@ -106,6 +107,7 @@ def dump_interactive_plot(
 
 
 def create_graphs(data, candles_interval, is_ohlcv=True):
+    """将 OHLCV/tick 数据聚合成 K 线并返回 pyecharts Candlestick 对象。"""
     # 分配 K 线数据
     candles_date = np.empty((len(data),), dtype=datetime.datetime)
     candles_data = np.empty((len(data),), dtype=object)
@@ -141,7 +143,7 @@ def create_graphs(data, candles_interval, is_ohlcv=True):
             high = data_row[1]
             low = data_row[2]
             close = data_row[3]
-        else:  # ticks format
+        else:  # tick 格式
             high = low = close = data_row[2]
 
         if current_date >= next_date:
@@ -203,6 +205,7 @@ def create_graphs(data, candles_interval, is_ohlcv=True):
 
 
 def create_positions(fills: pd.DataFrame, long: bool):
+    """将成交记录拆分为入场、盈利平仓和亏损平仓三个散点系列。"""
     entries_timestamps = []
     entries_prices = []
     entries_we = []
@@ -220,6 +223,7 @@ def create_positions(fills: pd.DataFrame, long: bool):
     position_backgrounds = []
     first_entry = None
 
+    # 遍历每笔成交，分类为入场、盈利平仓或亏损平仓
     for index, fill in fills.iterrows():
         timestamp = CustomDatetime.from_timestamp(fill["timestamp"])
         we = "%.02f%%" % (fill["wallet_exposure"] * 100,)
@@ -244,6 +248,7 @@ def create_positions(fills: pd.DataFrame, long: bool):
                 losses_we.append(we)
                 losses_pnl.append(pnl)
 
+            # 仓位完全关闭，添加背景色标记
             if math.isclose(fill["wallet_exposure"], 0) and first_entry:
                 background = dict(
                     x0=first_entry[0],

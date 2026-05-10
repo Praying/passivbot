@@ -69,6 +69,7 @@ def plot_two_series(series1: pd.Series, series2: pd.Series, *, title: str = ""):
 
 
 def make_table(result_):
+    """根据回测结果字典构建 PrettyTable 摘要表格。"""
     result = result_.copy()
     if "result" not in result:
         result["result"] = result
@@ -221,6 +222,7 @@ def dump_plots(
     n_parts: int = None,
     disable_plotting: bool = False,
 ):
+    """将回测结果导出为 CSV、JSON 及分段 K 线填充图。"""
     init(autoreset=True)
     plt.rcParams["figure.figsize"] = [21, 13]
     try:
@@ -250,6 +252,7 @@ def dump_plots(
 
     if disable_plotting:
         return
+    # 根据天数计算分段数量，默认每段约两周
     n_parts = (
         n_parts
         if n_parts is not None
@@ -333,6 +336,7 @@ def dump_plots(
 
 
 def plot_fills(df, fdf_, side: int = 0, plot_whole_df: bool = False, title=""):
+    """在价格折线上绘制成交标记（做多/做空、入场/平仓）。"""
     if fdf_.empty:
         return None
 
@@ -459,6 +463,7 @@ def scale_array(xs, bottom, top):
 
 
 def plot_fills_long(hlcvs, fdf, coins, coin, start_pct=0.0, end_pct=1.0):
+    """绘制单币种做多成交图（价格线 + 入场/平仓标记 + 持仓价格）。"""
     start_idx = int(round(len(hlcvs) * start_pct))
     end_idx = int(round(len(hlcvs) * end_pct))
     coin_idx = coins.index(coin)
@@ -477,6 +482,7 @@ def plot_fills_long(hlcvs, fdf, coins, coin, start_pct=0.0, end_pct=1.0):
 
 
 def plot_fills_multi(symbol, sdf, fdf, start_pct=0.0, end_pct=1.0):
+    """在多币种统计 DataFrame 上绘制指定交易对的做多/做空成交。"""
     plt.clf()
     start_minute = int(sdf.index[-1] * start_pct)
     end_minute = int(sdf.index[-1] * end_pct)
@@ -543,6 +549,7 @@ def plot_pnls_separate(sdf, fdf, start_pct=0.0, end_pct=1.0, symbols=None):
 
 
 def plot_pnls_stuck(sdf, fdf, symbol=None, start_pct=0.0, end_pct=1.0, unstuck_threshold=0.9):
+    """绘制权益曲线，按钱包暴露是否接近上限标记"套牢"状态。"""
     plt.clf()
     symbols = [c[: c.find("_price")] for c in sdf.columns if "_price" in c]
     start_minute = int(sdf.index[-1] * start_pct)
@@ -579,6 +586,7 @@ def plot_fills_forager(
     stride: int = 1,
     fast: bool = False,
 ):
+    """在 K 线图上绘制 forager 模式的成交标记、持仓价格与 EMA 带。"""
     if clear:
         plt.clf()
     if len(fdf) == 0:
@@ -613,6 +621,7 @@ def plot_fills_forager(
         return pd.to_datetime(values, errors="coerce")
 
     if "timestamp" in hlcc.columns:
+        # 使用实际时间戳作为 X 轴
         candle_x = _coerce_plot_datetimes(hlcc["timestamp"])
         minute_to_datetime = pd.Series(candle_x.to_numpy(), index=hlcc.index)
     else:
@@ -639,6 +648,7 @@ def plot_fills_forager(
     if len(longs) == 0 and len(shorts) == 0:
         return plt
     legend = ["close", "low", "high"]
+    # ---- 做多成交绘制 ----
     if len(longs) > 0:
         longs_types = longs["type"].astype(str)
         longs_price_series = longs["price"]
@@ -668,6 +678,7 @@ def plot_fills_forager(
             lp = lp.astype(float, copy=False)
         else:
             lp = lp.apply(pd.to_numeric, errors="coerce")
+        # 每个 minute 只保留最后一笔持仓价格
         lp = lp.groupby(level=0).last()
         pprices_long = lp.reindex(hlcc.index).ffill()
         pct_change = pprices_long["pprice"].pct_change().fillna(0.0)
@@ -688,6 +699,7 @@ def plot_fills_forager(
                 "pprices_long",
             ]
         )
+    # ---- 做空成交绘制 ----
     if len(shorts) > 0:
         shorts_types = shorts["type"].astype(str)
         shorts_price_series = shorts["price"]
@@ -753,6 +765,7 @@ def create_forager_balance_figures(
     stride: int = 1,
     fast: bool = False,
 ) -> dict:
+    """绘制 USD 和 BTC 的现金/余额/权益双面板图表，可选对数 Y 轴。"""
     stride = max(1, int(stride)) if stride else 1
     df = bal_eq.iloc[::stride]
 
@@ -906,6 +919,7 @@ def create_forager_pnl_figure(
     autoplot: bool | None = None,
     return_figures: bool | None = None,
 ) -> dict:
+    """绘制累计已实现净 PnL 及含未实现 PnL 的综合曲线。"""
     figures: dict = {}
     if fdf.empty:
         return figures
@@ -975,9 +989,11 @@ def create_forager_hard_stop_drawdown_figure(
     autoplot: bool | None = None,
     return_figures: bool | None = None,
 ) -> dict:
+    """绘制硬止损回撤图，含原始回撤、EMA 回撤、触发评分及 RED 接近度。"""
     figures: dict = {}
 
     def _resolve_pside_cfg(pside: str) -> dict:
+        """从配置中解析指定方向的硬止损参数。"""
         bot = ((config or {}).get("bot") or {})
         pside_cfg = bot.get(pside) or {}
         if not isinstance(pside_cfg, dict):
@@ -992,6 +1008,7 @@ def create_forager_hard_stop_drawdown_figure(
         }
 
     def _minute_quantized_drawdown_ema(trace_df: pd.DataFrame, ema_span_minutes: float) -> pd.Series:
+        """按分钟量化间隔计算回撤的 EMA，处理不规则采样间隔。"""
         drawdown_raw = trace_df["drawdown_raw"].clip(lower=0.0).astype(float)
         if drawdown_raw.empty:
             return drawdown_raw
@@ -1017,6 +1034,7 @@ def create_forager_hard_stop_drawdown_figure(
     if return_figures is None:
         return_figures = not autoplot
 
+    # 解析并过滤已启用且参数有效的方向配置
     pside_cfgs = {
         pside: _resolve_pside_cfg(pside)
         for pside in ("long", "short")
@@ -1032,6 +1050,7 @@ def create_forager_hard_stop_drawdown_figure(
         return figures
 
     def _trace_from_values(timestamps_ms, raw_values, ema_values=None, score_values=None):
+        """从原始数组构建 drawdown trace DataFrame，可选附带 EMA 和评分列。"""
         sample_count = min(len(timestamps_ms), len(raw_values))
         if sample_count <= 0:
             return pd.DataFrame()
@@ -1055,6 +1074,7 @@ def create_forager_hard_stop_drawdown_figure(
         return trace.dropna(subset=["drawdown_raw"])[~trace.index.duplicated(keep="first")].sort_index()
 
     traces: dict[str, pd.DataFrame] = {}
+    # 优先从 hard_stop_plot_data 获取预计算的 trace
     if isinstance(hard_stop_plot_data, dict):
         for pside in ("long", "short"):
             trace = _trace_from_values(
@@ -1065,6 +1085,7 @@ def create_forager_hard_stop_drawdown_figure(
             )
             if not trace.empty:
                 traces[pside] = trace
+        # 若无新格式 trace，尝试兼容旧格式（仅 long 方向）
         if not traces and "long" in pside_cfgs:
             legacy_trace = _trace_from_values(
                 hard_stop_plot_data.get("timestamps_ms", []) or [],
@@ -1073,6 +1094,7 @@ def create_forager_hard_stop_drawdown_figure(
             if not legacy_trace.empty:
                 traces["long"] = legacy_trace
 
+    # 若无预计算 trace，则从 bal_eq 推算通用回撤曲线
     if not traces:
         if bal_eq.empty or "usd_total_equity" not in bal_eq.columns:
             return figures
@@ -1093,6 +1115,7 @@ def create_forager_hard_stop_drawdown_figure(
             )
         else:
             sample_minutes = 1.0
+        # 根据回看策略选取权益峰值
         if pnls_lookback.is_all:
             peak_strategy_equity = df["usd_total_equity"].cummax()
         else:
@@ -1102,6 +1125,7 @@ def create_forager_hard_stop_drawdown_figure(
             peak_strategy_equity = (
                 df["usd_total_equity"].rolling(lookback_window, min_periods=1).max()
             )
+        # 回撤 = 1 - 当前权益 / 峰值权益，截断至 0
         generic_trace = pd.DataFrame(
             {
                 "drawdown_raw": (
@@ -1111,8 +1135,10 @@ def create_forager_hard_stop_drawdown_figure(
             },
             index=df.index,
         )
+        # 将通用 trace 复制给所有启用的方向
         traces = {pside: generic_trace.copy() for pside in pside_cfgs}
 
+    # 为每个方向计算 EMA、评分、接近度百分比和阈值线
     series_by_side = {}
     for pside, trace_df in traces.items():
         hard_stop_cfg = pside_cfgs.get(pside)
@@ -1128,6 +1154,8 @@ def create_forager_hard_stop_drawdown_figure(
         if "drawdown_score" in trace_df:
             drawdown_score = trace_df["drawdown_score"].clip(lower=0.0).astype(float)
         else:
+            # 评分 = 原始回撤与 EMA 回撤的较小值
+            drawdown_score = pd.concat([drawdown_raw, drawdown_ema], axis=1).min(axis=1)
             drawdown_score = pd.concat([drawdown_raw, drawdown_ema], axis=1).min(axis=1)
         tier_ratios = hard_stop_cfg.get("tier_ratios", {}) or {}
         series_by_side[pside] = {
@@ -1163,6 +1191,7 @@ def create_forager_hard_stop_drawdown_figure(
     threshold_colors = {"yellow": "#d4a017", "orange": "#d95f02", "red": "#b22222"}
     multiple_sides = len(side_order) > 1
 
+    # 绘制各方向的回撤图和 RED 接近度图
     for side_idx, pside in enumerate(side_order):
         series = series_by_side[pside]
         x = series["trace"].index.to_numpy()
@@ -1291,6 +1320,7 @@ def create_forager_coin_figures(
     close_after_callback: bool = True,
     timestamps=None,
 ) -> dict:
+    """为每个币种单独绘制 forager 模式的 K 线填充图。"""
     figures: Dict[str, Figure] = {}
     if hlcvs is None:
         return figures
