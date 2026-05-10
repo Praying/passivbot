@@ -1,21 +1,20 @@
 """
-CandlestickManager: lightweight 1m OHLCV manager with gap standardization.
+CandlestickManager: 轻量级 1m OHLCV 管理器，支持缺口标准化。
 
-This module provides a minimal, self-contained implementation tailored to the
-unit tests in tests/test_candlestick_manager.py while following the requested
-API and data format. It focuses on:
+本模块提供一个最小化、自包含的实现，适配 tests/test_candlestick_manager.py
+中的单元测试，同时遵循所要求的 API 和数据格式。核心功能：
 
-- UTC millisecond timestamps and structured NumPy dtype for candles
-- Gap standardization with synthesized zero-candles (not persisted)
-- Inclusive range selection with minute alignment
-- Latest EMA for close/volume/log range computed lazily from cached candles
-- Shard saving with atomic write and index.json maintenance
+- UTC 毫秒时间戳和结构化 NumPy dtype 的 K 线数据
+- 缺口标准化：合成的零成交 K 线（不持久化）
+- 包含两端的时间范围选择，按分钟对齐
+- 收盘价/成交量/对数区间的最新 EMA 从缓存 K 线惰性计算
+- 分片保存采用原子写入和 index.json 维护
 
-Example
+示例
 -------
 >>> from candlestick_manager import CandlestickManager, ONE_MIN_MS
 >>> cm = CandlestickManager(exchange=None, exchange_name="demo")
->>> # Preload some candles directly into cache (ts, o, h, l, c, bv)
+>>> # 直接向缓存预加载一些 K 线 (ts, o, h, l, c, bv)
 >>> import time, numpy as np
 >>> now = int(time.time() * 1000)
 >>> base = _floor_minute(now) - 5 * ONE_MIN_MS
@@ -67,12 +66,12 @@ from legacy_data_migrator import (
     normalize_ccxt_volume_to_base,
 )
 
-# Suppress portalocker's "timeout has no effect in blocking mode" warning
+# 抑制 portalocker 的 "timeout has no effect in blocking mode" 警告
 warnings.filterwarnings(
     "ignore", message="timeout has no effect in blocking mode", module="portalocker"
 )
 
-# ----- Constants and dtypes -----
+# ----- 常量和 dtype -----
 
 ONE_MIN_MS = 60_000
 
@@ -82,8 +81,8 @@ _LOCK_BACKOFF_INITIAL = 0.1
 _LOCK_BACKOFF_MAX = 2.0
 _GATEIO_RECENT_1M_LIMIT_CANDLES = 9_990
 
-# See: https://github.com/enarjord/passivbot/issues/547
-# True if running on Windows (used for file/path compatible names)
+# 参见: https://github.com/enarjord/passivbot/issues/547
+# 在 Windows 上运行时为 True（用于文件/路径兼容命名）
 windows_compatibility = (
     sys.platform.startswith("win") or os.environ.get("WINDOWS_COMPATIBILITY") == "1"
 )
@@ -98,19 +97,19 @@ class _LockRecord:
 
 
 class GapEntry(TypedDict, total=False):
-    """Enhanced gap metadata stored in index.json known_gaps."""
+    """存储在 index.json known_gaps 中的增强缺口元数据。"""
 
-    start_ts: int  # Gap start timestamp (ms)
-    end_ts: int  # Gap end timestamp (ms)
-    retry_count: int  # Number of fetch attempts (max 3 before marking persistent)
+    start_ts: int  # 缺口起始时间戳 (ms)
+    end_ts: int  # 缺口结束时间戳 (ms)
+    retry_count: int  # 获取尝试次数（达到 3 次后标记为持久缺口）
     reason: str  # "auto_detected", "exchange_downtime", "no_archive", "fetch_failed", "manual", "no_trades"
-    added_at: int  # Timestamp when gap was first detected (ms)
+    added_at: int  # 缺口首次检测到的时间戳 (ms)
 
 
-# Maximum fetch attempts before marking gap as persistent
+# 标记缺口为持久缺口前的最大获取尝试次数
 _GAP_MAX_RETRIES = 3
 
-# Valid gap reasons
+# 有效的缺口原因
 GAP_REASON_AUTO = "auto_detected"
 GAP_REASON_EXCHANGE_DOWNTIME = "exchange_downtime"
 GAP_REASON_NO_ARCHIVE = "no_archive"
@@ -143,7 +142,7 @@ EMA_SERIES_DTYPE = np.dtype(
 )
 
 
-# ----- Utilities -----
+# ----- 工具函数 -----
 
 
 def _linear_interpolate(value0: float, value1: float, ratio: float) -> float:
@@ -151,7 +150,7 @@ def _linear_interpolate(value0: float, value1: float, ratio: float) -> float:
 
 
 def ohlcv_xm_to_1m(candle: np.void, minutes: int) -> np.ndarray:
-    """Expand one higher-timeframe OHLCV candle into deterministic synthetic 1m candles."""
+    """将一根高级别时间周期的 OHLCV K 线展开为确定性的合成 1m K 线。"""
     if minutes <= 0:
         raise ValueError(f"minutes must be > 0, got {minutes}")
 
@@ -236,7 +235,7 @@ def ohlcv_15m_to_1m(candle: np.void) -> np.ndarray:
 
 
 def synthesize_1m_from_higher_tf(candles: np.ndarray, tf_minutes: int) -> np.ndarray:
-    """Expand a higher-timeframe candle array into synthetic 1m OHLCV candles."""
+    """将高级别时间周期的 K 线数组展开为合成的 1m OHLCV K 线。"""
     arr = _ensure_dtype(candles)
     if arr.size == 0:
         return np.empty((0,), dtype=CANDLE_DTYPE)
@@ -252,12 +251,12 @@ def synthesize_1m_from_higher_tf(candles: np.ndarray, tf_minutes: int) -> np.nda
 
 
 def get_caller_name(depth: int = 2, logger: Optional[logging.Logger] = None) -> str:
-    """Return a more useful origin for debug logs.
+    """返回更有用的调用来源信息，用于调试日志。
 
-    Heuristics:
-    - Skip CandlestickManager frames and common wrappers ("one", "<listcomp>", asyncio internals)
-    - Prefer frames from a Passivbot instance method if present (module contains "passivbot")
-    - Otherwise return the first non-wrapper frame as module.Class.func or module.func
+    启发式策略：
+    - 跳过 CandlestickManager 帧和常见包装帧（"one"、"<listcomp>"、asyncio 内部）
+    - 优先返回包含 "passivbot" 的实例方法帧（如果存在）
+    - 否则返回第一个非包装帧，格式为 module.Class.func 或 module.func
     """
 
     def frame_to_name(fr) -> str:
@@ -359,7 +358,7 @@ def _ensure_dtype(a: np.ndarray) -> np.ndarray:
 
 
 def _ts_index(a: np.ndarray) -> np.ndarray:
-    """Return sorted ts column as plain int64 array."""
+    """返回排序后的 ts 列作为纯 int64 数组。"""
     if a.size == 0:
         return np.empty((0,), dtype=np.int64)
     return np.asarray(a["ts"], dtype=np.int64)
@@ -367,18 +366,16 @@ def _ts_index(a: np.ndarray) -> np.ndarray:
 
 def _sanitize_symbol(symbol: str) -> str:
     sanitized = symbol.replace("/", "_")
-    # See: https://github.com/enarjord/passivbot/issues/547
-    # If running under "Windows Compatibility" mode,
-    # also replace ':' with '_' to ensure compatibility with Windows file naming restrictions.
+    # 参见: https://github.com/enarjord/passivbot/issues/547
+    # 如果在"Windows 兼容模式"下运行，
+    # 也替换 ':' 为 '_' 以确保兼容 Windows 文件命名限制。
     if windows_compatibility:
         sanitized = sanitized.replace(":", "_")
     return sanitized
 
 
 def _quarantine_gateio_cache_if_stale(cache_base: str, cutoff_date: str) -> None:
-    """
-    Move gateio cache to a timestamped backup if any shard predates cutoff_date.
-    """
+    """如果任意分片早于 cutoff_date，将 gateio 缓存移动到带时间戳的备份目录。"""
     try:
         cutoff = datetime.strptime(cutoff_date, "%Y-%m-%d").date()
     except Exception:
@@ -437,15 +434,13 @@ def _looks_like_daily_shard_filename(name: str) -> bool:
 
 
 def _quarantine_root_level_timeframe_debris(cache_base: str) -> int:
-    """
-    Quarantine invalid files found directly under exchange/timeframe roots.
+    """隔离在交易所/时间周期根目录下发现的无效文件。
 
-    Valid OHLCV layout is:
+    有效的 OHLCV 布局为：
     `{cache_base}/{exchange}/{timeframe}/{symbol}/YYYY-MM-DD.npy`
 
-    Any daily shard files or index.json files found directly under
-    `{cache_base}/{exchange}/{timeframe}` are debris from older/corrupt layouts and
-    should not remain in place.
+    在 `{cache_base}/{exchange}/{timeframe}` 下直接发现的日分片文件
+    或 index.json 文件属于旧版/损坏布局的残留，不应保留在原位。
     """
     root = Path(cache_base)
     if not root.is_dir():
@@ -493,8 +488,8 @@ def _quarantine_root_level_timeframe_debris(cache_base: str) -> int:
     return moved
 
 
-# Parse timeframe string like '1m','5m','1h','1d' to milliseconds.
-# Falls back to ONE_MIN_MS on invalid input. Seconds are rounded down to minutes.
+# 将时间周期字符串（如 '1m'、'5m'、'1h'、'1d'）解析为毫秒。
+# 无效输入时回退到 ONE_MIN_MS。秒级向下取整到分钟。
 def _tf_to_ms(s: Optional[str]) -> int:
     if not s:
         return ONE_MIN_MS
@@ -523,30 +518,30 @@ def _tf_to_ms(s: Optional[str]) -> int:
 
 
 class CandlestickManager:
-    """Manage 1m OHLCV candles with simple cache and gap standardization.
+    """管理 1m OHLCV K 线，提供简单缓存和缺口标准化。
 
-    Parameters
+    参数
     ----------
     exchange : Any
-        CCXT exchange instance or None. Tests pass None, so network fetch is skipped.
+        CCXT 交易所实例或 None。测试传入 None 时跳过网络获取。
     exchange_name : str
-        Name of the exchange used for cache directory layout.
+        交易所名称，用于缓存目录布局。
     cache_dir : str
-        Root directory for on-disk cache. Default "caches".
+        磁盘缓存根目录。默认 "caches"。
     default_window_candles : int
-        Default window used when start_ts is not provided.
+        未提供 start_ts 时使用的默认窗口大小。
     overlap_candles : int
-        Overlap applied when refreshing from network (not exercised in tests).
+        从网络刷新时应用的重叠量（测试中不使用）。
     max_memory_candles_per_symbol : int
-        Max number of 1m candles in RAM per symbol (rolling window).
+        每个交易对在内存中的最大 1m K 线数量（滚动窗口）。
     max_disk_candles_per_symbol_per_tf : int
-        Max total candles per symbol+timeframe on disk (oldest shards pruned).
+        每个交易对+时间周期在磁盘上的最大 K 线总量（旧分片被裁剪）。
     debug : int | bool
-        Logging verbosity (0=warnings, 1=network info, 2=debug, 3=trace).
+        日志详细程度（0=警告, 1=网络信息, 2=调试, 3=跟踪）。
     """
 
-    # Many helpers accept both `timeframe=` and the concise `tf=` alias.  The alias keeps
-    # existing call sites terse while still advertising the more descriptive name.
+    # 许多辅助方法同时接受 `timeframe=` 和简写 `tf=` 别名。别名保持
+    # 现有调用点简洁，同时仍然推广更具描述性的名称。
 
     def __init__(
         self,
@@ -556,30 +551,30 @@ class CandlestickManager:
         cache_dir: str = "caches",
         default_window_candles: int = 100,
         overlap_candles: int = 30,
-        # Retention knobs (candle-count based):
+        # 保留策略控制参数（基于 K 线数量）：
         max_memory_candles_per_symbol: int = 200_000,
         max_disk_candles_per_symbol_per_tf: int = 2_000_000,
         debug: int | bool = False,
-        # Optional progress logging (INFO, throttled). 0 disables, 30.0 recommended.
+        # 可选的进度日志（INFO 级别，节流）。0 禁用，推荐 30.0。
         progress_log_interval_seconds: float = 10.0,
-        # Optional callback invoked for every external (network) fetch attempt.
+        # 可选回调，在每次外部（网络）获取尝试时调用。
         remote_fetch_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
-        # Optional global concurrency limiter for remote ccxt calls
+        # 远程 ccxt 调用的可选全局并发限制器
         max_concurrent_requests: int | None = None,
         lock_timeout_seconds: float | None = None,
-        # Archive fetching: if False, only use ccxt REST API even if archives are available.
-        # Useful for live bots where archives may timeout; backtester enables by default.
+        # 归档获取：如果为 False，即使归档可用也仅使用 ccxt REST API。
+        # 适用于实盘机器人（归档可能超时）；回测默认启用。
         archive_enabled: bool = True,
-        # Optional list of symbols to log per-page OHLCV ranges (debugging pagination).
+        # 可选的交易对列表，记录每页 OHLCV 范围（调试分页）。
         page_debug_symbols: Optional[Iterable[str]] = None,
     ) -> None:
         self.exchange = exchange
-        # If no explicit exchange_name provided, infer from ccxt instance id
+        # 如果未显式提供 exchange_name，从 ccxt 实例 id 推断
         if (not exchange_name or exchange_name == "unknown") and getattr(exchange, "id", None):
             self.exchange_name = str(getattr(exchange, "id"))
         else:
             self.exchange_name = exchange_name
-        # Normalize ccxt IDs to standard cache names (e.g. "binanceusdm" -> "binance")
+        # 将 ccxt ID 归一化为标准缓存名称（如 "binanceusdm" -> "binance"）
         _en = self.exchange_name.lower()
         for _suffix in ("usdm", "futures"):
             if _en.endswith(_suffix):
@@ -590,9 +585,9 @@ class CandlestickManager:
         self.overlap_candles = int(overlap_candles)
         self.max_memory_candles_per_symbol = int(max_memory_candles_per_symbol)
         self.max_disk_candles_per_symbol_per_tf = int(max_disk_candles_per_symbol_per_tf)
-        # Archive fetching: if False, only use ccxt REST API
+        # 归档获取：如果为 False，仅使用 ccxt REST API
         self.archive_enabled = bool(archive_enabled)
-        # Debug levels: 0=warnings, 1=network-only, 2=full debug, 3=trace
+        # 调试级别：0=警告, 1=仅网络, 2=完整调试, 3=跟踪
         try:
             dbg = int(float(debug))
         except Exception:
@@ -603,52 +598,52 @@ class CandlestickManager:
         except Exception:
             self._progress_log_interval_seconds = 0.0
         self._progress_last_log: Dict[Tuple[str, str, str], float] = {}
-        self._warning_last_log: Dict[str, float] = {}  # throttle repeated warnings
-        self._warning_throttle_seconds: float = 300.0  # 5 minutes between repeated warnings
+        self._warning_last_log: Dict[str, float] = {}  # 节流重复警告
+        self._warning_throttle_seconds: float = 300.0  # 重复警告间隔 5 分钟
         self._persist_batch_observer: Optional[
             Callable[[str, str, np.ndarray], None]
         ] = None
-        # Summary tracking for strict gap warnings (logged once per 15 min instead of per-event)
-        self._strict_gaps_summary: Dict[str, int] = {}  # symbol -> missing count
+        # 严格缺口警告的摘要跟踪（每 15 分钟汇总一次，而非逐事件记录）
+        self._strict_gaps_summary: Dict[str, int] = {}  # symbol -> 缺失数量
         self._strict_gaps_summary_last_log: float = 0.0
-        self._strict_gaps_summary_interval: float = 900.0  # 15 minutes
+        self._strict_gaps_summary_interval: float = 900.0  # 15 分钟
         self._remote_fetch_callback = remote_fetch_callback
-        # Cache of legacy shard paths per (exchange, symbol, tf)
+        # 每个交易所+交易对+时间周期的旧版分片路径缓存
         self._legacy_shard_paths_cache: Dict[Tuple[str, str, str], Dict[str, str]] = {}
-        # Cache for legacy day quality decisions: (symbol, tf, date_key) -> legacy_is_complete
+        # 旧版日质量决策缓存：(symbol, tf, date_key) -> legacy_is_complete
         self._legacy_day_quality_cache: Dict[Tuple[str, str, str], bool] = {}
-        # Cache of primary shard paths per (symbol, tf) - avoids redundant glob scans
+        # 每个交易对+时间周期的主分片路径缓存 - 避免冗余 glob 扫描
         self._shard_paths_cache: Dict[Tuple[str, str], Dict[str, str]] = {}
 
         self._cache: Dict[str, np.ndarray] = {}
         self._index: Dict[str, dict] = {}
         self._index_mtime: Dict[str, Optional[float]] = {}
-        # Cache for EMA computations: per symbol -> {(metric, span, tf): (value, end_ts, computed_at_ms)}
+        # EMA 计算缓存：每个交易对 -> {(metric, span, tf): (value, end_ts, computed_at_ms)}
         self._ema_cache: Dict[str, Dict[Tuple[str, int, str], Tuple[float, int, int]]] = {}
-        # Cache for current (in-progress) minute close per symbol: symbol -> (price, updated_ms)
+        # 每个交易对的当前（进行中）分钟收盘价缓存：symbol -> (price, updated_ms)
         self._current_close_cache: Dict[str, Tuple[float, int]] = {}
-        # Cache for fetched higher-timeframe windows to avoid duplicate remote calls (LRU per symbol)
-        # Keyed per symbol -> OrderedDict[(tf_str, start_ts, end_ts) -> (array, fetched_at_ms)]
+        # 获取的高级时间周期窗口缓存，避免重复远程调用（每个交易对 LRU）
+        # 每个交易对 -> OrderedDict[(tf_str, start_ts, end_ts) -> (array, fetched_at_ms)]
         self._tf_range_cache: Dict[str, OrderedDict[Tuple[str, int, int], Tuple[np.ndarray, int]]] = (
             {}
         )
         self._tf_range_cache_cap = 8
         self._step_warning_keys: set[Tuple[str, str, str]] = set()
-        # Deduplication for zero-candle synthesis warnings - only warn once per unique gap
-        # Key: (symbol, first_ts) to identify a gap by its starting point
-        # The end timestamp changes as time passes, but the start identifies the gap origin
+        # 零成交 K 线合成警告去重 - 每个唯一缺口仅警告一次
+        # 键: (symbol, first_ts) 通过起始点标识缺口
+        # 结束时间戳随时间推移而变化，但起始时间戳标识缺口的来源
         self._synth_gap_warned: set[Tuple[str, int]] = set()
-        # Batch mode for startup: when enabled, collect warnings and log summary later
+        # 启动批次模式：启用时收集警告并稍后汇总记录
         self._synth_candle_batch_mode: bool = False
-        # symbol -> {"count": int, "min_ts": int, "max_ts": int} during batch
+        # 批次期间的 symbol -> {"count": int, "min_ts": int, "max_ts": int}
         self._synth_candle_batch: Dict[str, Dict[str, int]] = {}
-        # Batch mode for candle replacement logs: collect replacements and log summary at INFO
+        # K 线替换日志的批次模式：收集替换信息并在 INFO 级别汇总记录
         self._candle_replace_batch_mode: bool = False
-        self._candle_replace_batch: Dict[str, int] = {}  # symbol -> count replaced during batch
-        # Track which timestamps were synthesized (per symbol) for EMA recomputation detection
-        # When real data arrives for a previously synthetic timestamp, EMAs should be recomputed
-        self._synthetic_timestamps: Dict[str, set[int]] = {}  # symbol -> set of synthetic ts (ms)
-        # Timeout parameters for cross-process fetch locks
+        self._candle_replace_batch: Dict[str, int] = {}  # symbol -> 批次期间替换数量
+        # 跟踪哪些时间戳是合成的（每个交易对），用于 EMA 重计算检测
+        # 当真实数据到达之前合成的时间戳时，EMA 应被重计算
+        self._synthetic_timestamps: Dict[str, set[int]] = {}  # symbol -> 合成时间戳集合 (ms)
+        # 跨进程获取锁的超时参数
         self._lock_timeout_seconds = float(_LOCK_TIMEOUT_SECONDS)
         if lock_timeout_seconds is not None:
             try:
@@ -660,15 +655,15 @@ class CandlestickManager:
         self._lock_stale_seconds = float(_LOCK_STALE_SECONDS)
         self._lock_backoff_initial = float(_LOCK_BACKOFF_INITIAL)
         self._lock_backoff_max = float(_LOCK_BACKOFF_MAX)
-        # Reentrant bookkeeping for portalocker fetch locks: key -> _LockRecord
+        # portalocker 获取锁的可重入记录：key -> _LockRecord
         self._held_fetch_locks: Dict[Tuple[str, str], _LockRecord] = {}
         self._shutdown_guard = threading.Lock()
         self._closed = False
         atexit.register(self._cleanup_on_exit)
 
-        # Standardize cache directory names (e.g., binanceusdm -> binance),
-        # migrate any legacy data from historical_data/ to caches/ohlcv/,
-        # and merge any duplicate symbol directories from inconsistent sanitization
+        # 标准化缓存目录名称（如 binanceusdm -> binance），
+        # 将所有旧版数据从 historical_data/ 迁移到 caches/ohlcv/，
+        # 并合并不一致命名产生的重复交易对目录
         ohlcv_cache_base = os.path.join(self.cache_dir, "ohlcv")
         os.makedirs(ohlcv_cache_base, exist_ok=True)
         historical_data_path = os.path.join(
@@ -711,33 +706,32 @@ class CandlestickManager:
                             exc,
                         )
         except portalocker.exceptions.LockException:
-            # Another process is handling migrations; skip.
+            # 另一个进程正在处理迁移；跳过。
             pass
 
         self._setup_logging()
         self._cleanup_stale_locks()
 
-        # Initialize optional global semaphore for remote calls
+        # 初始化远程调用的可选全局信号量
         try:
             mcr = None if max_concurrent_requests in (None, 0) else int(max_concurrent_requests)
             self._net_sem = asyncio.Semaphore(mcr) if (mcr and mcr > 0) else None
         except Exception:
             self._net_sem = None
 
-        # Global rate limit coordination: when a rate limit is hit, all concurrent
-        # requests pause until this timestamp (prevents thundering herd retries)
+        # 全局速率限制协调：当触发速率限制时，所有并发请求暂停到该时间戳（防止惊群重试）
         self._rate_limit_until: float = 0.0
         self._rate_limit_lock = asyncio.Lock()
         self._rate_limit_count: int = 0
 
-        # Persistent HTTP session for archive fetches (created lazily)
+        # 归档获取的持久 HTTP 会话（惰性创建）
         self._http_session: Optional["aiohttp.ClientSession"] = None
         self._http_session_lock = asyncio.Lock()
 
-        # fetch controls
-        # Base timeframe for storage/fetching is always 1m; higher TFs are per-call
+        # 获取控制参数
+        # 存储/获取的基础时间周期始终为 1m；更高级别的时间周期按调用指定
         self._ccxt_timeframe = "1m"
-        # Determine exchange id and adjust defaults per exchange quirks
+        # 确定交易所 ID 并根据交易所特性调整默认值
         self._ex_id = getattr(self.exchange, "id", self.exchange_name) or self.exchange_name
         self._ccxt_limit_default = 1000
         self._ccxt_page_overlap_candles = 0
@@ -746,25 +740,25 @@ class CandlestickManager:
         self._ccxt_limit_probe_done = False
         self._gateio_recent_window_clip_warned: set[str] = set()
         if isinstance(self._ex_id, str) and "bitget" in self._ex_id.lower():
-            # Bitget often serves 1m klines with 200 limit per page
+            # Bitget 的 1m K 线通常每页限制 200 条
             self._ccxt_limit_default = 200
-            # Overlap page boundaries to avoid missing the boundary candle
+            # 页边界重叠以避免遗漏边界 K 线
             self._ccxt_page_overlap_candles = 1
-            # Bitget since parameter behaves as exclusive for 1m OHLCV
+            # Bitget 的 since 参数对于 1m OHLCV 表现为排他
             self._ccxt_since_exclusive = True
-            # Probe at runtime to see if Bitget now accepts >200 rows per page
+            # 运行时探测 Bitget 是否已支持每页 >200 条数据
             self._ccxt_limit_probe_done = False
         if isinstance(self._ex_id, str) and "kucoin" in self._ex_id.lower():
-            # KuCoin futures returns max 200 rows per OHLCV call and can be sparse (trade-only minutes).
+            # KuCoin 期货每次 OHLCV 调用最多返回 200 行，且可能稀疏（仅有交易的分钟）。
             self._ccxt_limit_default = 200
-            # Overlap page boundaries to validate gaps between fetches.
+            # 页边界重叠以验证获取间的缺口。
             self._ccxt_page_overlap_candles = 1
-            # Gaps inside a single payload are considered verified no-trade gaps.
+            # 单次负载内的缺口被视为已验证的无交易缺口。
             self._record_payload_gaps_as_known = True
-            # KuCoin since behaves as exclusive for 1m OHLCV.
+            # KuCoin 的 since 参数对于 1m OHLCV 表现为排他。
             self._ccxt_since_exclusive = True
 
-        # Optional per-page range logging for selected symbols (debug pagination)
+        # 选定交易对的可选每页范围日志（调试分页）
         self._page_debug_all = False
         self._page_debug_symbols: set[str] = set()
         if page_debug_symbols:
@@ -782,7 +776,7 @@ class CandlestickManager:
             except Exception:
                 self._page_debug_symbols = set()
 
-    # ----- Logging -----
+    # ----- 日志 -----
 
     def _setup_logging(self) -> None:
         trace_level = getattr(logging, "TRACE", None)
@@ -801,19 +795,19 @@ class CandlestickManager:
         self.log.setLevel(desired_level)
 
     def start_synth_candle_batch(self) -> None:
-        """Start batching zero-candle synthesis warnings for later aggregated logging."""
+        """开始批次收集零成交 K 线合成警告，以便后续汇总记录。"""
         self._synth_candle_batch_mode = True
         self._synth_candle_batch.clear()
 
     def flush_synth_candle_batch(self) -> None:
-        """Log aggregated zero-candle synthesis summary and exit batch mode."""
+        """记录汇总的零成交 K 线合成摘要并退出批次模式。"""
         self._synth_candle_batch_mode = False
         if not self._synth_candle_batch:
             return
         total_symbols = len(self._synth_candle_batch)
         total_candles = sum(v.get("count", 0) for v in self._synth_candle_batch.values())
-        # Use WARNING only for large amounts of synthesized candles (>1000), otherwise INFO
-        # This is expected behavior on illiquid pairs during warmup
+        # 仅在合成 K 线数量较大（>1000）时使用 WARNING，否则使用 INFO
+        # 在流动性不足的交易对预热期间，这是预期行为
         log_fn = self.log.warning if total_candles > 1000 else self.log.info
 
         def _fmt_range(min_ts: Optional[int], max_ts: Optional[int]) -> str:
@@ -844,7 +838,7 @@ class CandlestickManager:
                 rng,
             )
         else:
-            # Log top symbols by synthesized count (limit to keep logs concise)
+            # 按合成数量记录前 N 个交易对（限制以保持日志简洁）
             top_n = 5
             sorted_syms = sorted(
                 self._synth_candle_batch.items(),
@@ -870,12 +864,12 @@ class CandlestickManager:
         self._synth_candle_batch.clear()
 
     def start_candle_replace_batch(self) -> None:
-        """Start batching candle replacement logs for later aggregated logging."""
+        """开始批次收集 K 线替换日志，以便后续汇总记录。"""
         self._candle_replace_batch_mode = True
         self._candle_replace_batch.clear()
 
     def flush_candle_replace_batch(self) -> None:
-        """Log aggregated candle replacement summary at INFO and exit batch mode."""
+        """在 INFO 级别记录汇总的 K 线替换摘要并退出批次模式。"""
         self._candle_replace_batch_mode = False
         if not self._candle_replace_batch:
             return
@@ -898,10 +892,10 @@ class CandlestickManager:
             )
         self._candle_replace_batch.clear()
 
-    # ----- Retention helpers -----
+    # ----- 保留策略辅助方法 -----
 
     def _cleanup_stale_locks(self) -> None:
-        """Remove leftover lock files that are clearly stale."""
+        """移除明显过期的残留锁文件。"""
         try:
             base = Path(self.cache_dir) / self.exchange_name
         except Exception:
@@ -1002,7 +996,7 @@ class CandlestickManager:
                 return
             nmax = self.max_memory_candles_per_symbol
             if nmax > 0 and arr.shape[0] > nmax:
-                # keep last nmax by ts
+                # 保留最后 nmax 条按 ts 排序的数据
                 arr = np.sort(arr, order="ts")
                 self._cache[symbol] = arr[-nmax:]
         except Exception:
@@ -1017,7 +1011,7 @@ class CandlestickManager:
             shards = idx.get("shards", {})
             if not shards:
                 return
-            # Sum counts; if over limit, delete oldest shard files until within limit
+            # 累加数量；如果超出限制，删除最旧的分片文件直到在限制内
             total = 0
             items = []
             for k, v in shards.items():
@@ -1030,9 +1024,9 @@ class CandlestickManager:
             limit = self.max_disk_candles_per_symbol_per_tf
             if limit <= 0 or total <= limit:
                 return
-            # Sort shards by date_key ascending (oldest first)
+            # 按日期键升序排列分片（最旧的在前）
             items.sort(key=lambda x: x[0])
-            # Remove oldest until under limit
+            # 移除最旧的分片直到在限制内
             for date_key, meta in items:
                 path = meta.get("path")
                 try:
@@ -1040,7 +1034,7 @@ class CandlestickManager:
                         os.remove(path)
                 except Exception:
                     pass
-                # update index
+                # 更新索引
                 try:
                     cnt = int(meta.get("count", 0))
                 except Exception:
@@ -1049,7 +1043,7 @@ class CandlestickManager:
                 shards.pop(date_key, None)
                 if total <= limit:
                     break
-            # persist updated index
+            # 持久化更新后的索引
             idx["shards"] = shards
             key = f"{symbol}::{tf_norm}"
             self._index[key] = idx
@@ -1057,7 +1051,7 @@ class CandlestickManager:
         except Exception:
             return
 
-    # ----- Logging helpers -----
+    # ----- 日志辅助方法 -----
 
     @staticmethod
     def _fmt_ts(ms: Optional[int]) -> str:
@@ -1076,7 +1070,7 @@ class CandlestickManager:
         except Exception:
             ex = self.exchange_name
         base = [f"[candle] event={event}"]
-        # In debug modes, include caller info for traceability
+        # 调试模式下包含调用者信息以便追溯
         if self.debug_level >= 1:
             try:
                 caller = get_caller_name()
@@ -1092,7 +1086,7 @@ class CandlestickManager:
                 parts.append(f"{k}={v}")
         msg = " ".join(base + parts)
         if level == "debug":
-            # Apply debug filtering: level 0 -> drop; level 1 -> only ccxt_* events; level 2 -> all
+            # 应用调试过滤：级别 0 -> 丢弃；级别 1 -> 仅 ccxt_* 事件；级别 2 -> 全部
             if self.debug_level <= 0:
                 return
             is_network = isinstance(event, str) and (
@@ -1109,7 +1103,7 @@ class CandlestickManager:
             self.log.error(msg)
 
     def _progress_log(self, key: Tuple[str, str, str], event: str, **fields) -> None:
-        """Emit throttled DEBUG progress logs when enabled."""
+        """启用时发出节流的 DEBUG 级别进度日志。"""
         if self._progress_log_interval_seconds <= 0.0:
             return
         now = time.monotonic()
@@ -1120,12 +1114,12 @@ class CandlestickManager:
         self._log("debug", event, **fields)
 
     def _log_persistent_gap_summary(self) -> None:
-        """Log accumulated persistent gap summary if any, throttled to once per 30 min."""
+        """如果有累积的持久缺口摘要则记录，节流为每 30 分钟一次。"""
         if not hasattr(self, "_persistent_gap_summary") or not self._persistent_gap_summary:
             return
         now = time.monotonic()
         last = getattr(self, "_persistent_gap_summary_last_log", 0.0)
-        if (now - last) < 1800.0:  # Only log summary once per 30 minutes
+        if (now - last) < 1800.0:  # 每 30 分钟仅记录一次摘要
             return
         self._persistent_gap_summary_last_log = now
         summary = self._persistent_gap_summary
@@ -1142,11 +1136,10 @@ class CandlestickManager:
         self._persistent_gap_summary.clear()
 
     def _throttled_warning(self, throttle_key: str, event: str, **fields) -> None:
-        """Emit a warning at most once per throttle window (default 5 min).
+        """在节流窗口（默认 5 分钟）内最多发出一次警告。
 
-        Use this for warnings that may repeat frequently but only need to
-        inform the user once. After the throttle window expires, the warning
-        will be emitted again if the condition persists.
+        用于可能频繁重复但只需告知用户一次的警告。节流窗口过期后，
+        如果条件持续存在，将再次发出警告。
         """
         now = time.monotonic()
         last = self._warning_last_log.get(throttle_key, 0.0)
@@ -1156,11 +1149,11 @@ class CandlestickManager:
         self._log("warning", event, **fields)
 
     def _record_strict_gap(self, symbol: str, missing_count: int) -> None:
-        """Accumulate strict gap counts for summary logging."""
+        """累积严格缺口计数，用于摘要记录。"""
         self._strict_gaps_summary[symbol] = self._strict_gaps_summary.get(symbol, 0) + missing_count
 
     def _log_strict_gaps_summary(self) -> None:
-        """Log accumulated strict gap summary if any, throttled to once per 15 min."""
+        """如果有累积的严格缺口摘要则记录，节流为每 15 分钟一次。"""
         if not self._strict_gaps_summary:
             return
         now = time.monotonic()
@@ -1187,7 +1180,7 @@ class CandlestickManager:
         try:
             cb(payload)
         except Exception:
-            # Must never break the fetch path due to logging/progress UI.
+            # 观测钩子绝不能中断获取路径或交易。
             return
 
     def set_persist_batch_observer(
@@ -1196,7 +1189,7 @@ class CandlestickManager:
     ) -> None:
         self._persist_batch_observer = observer
 
-    # ----- Paths and index -----
+    # ----- 路径和索引 -----
 
     def _symbol_dir(
         self, symbol: str, timeframe: Optional[str] = None, *, tf: Optional[str] = None
@@ -1221,7 +1214,7 @@ class CandlestickManager:
         return str(Path(self._symbol_dir(symbol, timeframe=timeframe, tf=tf)) / f"{date_key}.npy")
 
     def _prune_missing_shards_from_index(self, idx: dict) -> int:
-        """Remove shard entries whose files are missing; refresh derived meta fields."""
+        """移除文件缺失的分片条目；刷新派生的元数据字段。"""
         try:
             shards = idx.get("shards", {})
             if not isinstance(shards, dict) or not shards:
@@ -1284,7 +1277,7 @@ class CandlestickManager:
 
         if existing is None or cached_mtime != current_mtime:
             idx = {"shards": {}, "meta": {}}
-            # Try load from disk
+            # 尝试从磁盘加载
             if current_mtime is not None:
                 try:
                     with open(idx_path, "r", encoding="utf-8") as f:
@@ -1311,7 +1304,7 @@ class CandlestickManager:
             meta.setdefault("last_final_ts", 0)
             observed_start_ts = meta.get("observed_start_ts", meta.get("inception_ts"))
             meta["observed_start_ts"] = int(observed_start_ts) if observed_start_ts is not None else None
-            meta["inception_ts"] = meta["observed_start_ts"]  # legacy alias for earliest observed candle
+            meta["inception_ts"] = meta["observed_start_ts"]  # 旧版别名，表示最早观测到的 K 线
             meta.setdefault("authoritative_start_ts", None)
             meta.setdefault("authoritative_start_source", None)
             meta.setdefault("inception_ts_probe_ms", 0)
@@ -1333,7 +1326,7 @@ class CandlestickManager:
                     if migrated_pre_inception:
                         meta["known_gaps"] = retained_gaps
 
-            # Keep index consistent if shard files were deleted.
+            # 如果分片文件被删除，保持索引一致。
             removed = self._prune_missing_shards_from_index(idx)
             if removed:
                 self._log(
@@ -1358,7 +1351,7 @@ class CandlestickManager:
             return idx
 
         idx = existing
-        # Ensure meta keys even for cached entries (in case earlier versions lacked them)
+        # 即使对于缓存条目也确保元数据键存在（以防早期版本缺少它们）
         idx.setdefault("shards", {})
         meta = idx.setdefault("meta", {})
         legacy_history_bounds = (
@@ -1389,7 +1382,7 @@ class CandlestickManager:
                 if migrated_pre_inception:
                     meta["known_gaps"] = retained_gaps
 
-        # Keep cached index consistent if shard files were deleted while running.
+        # 如果分片文件在运行期间被删除，保持缓存索引一致。
         removed = self._prune_missing_shards_from_index(idx)
         if removed:
             self._log(
@@ -1423,9 +1416,9 @@ class CandlestickManager:
         key = f"{symbol}::{tf_norm}"
         idx_path = self._index_path(symbol, timeframe=timeframe, tf=tf_norm)
         payload = json.dumps(self._index[key], sort_keys=True).encode("utf-8")
-        # Lock the final target index.json to serialize writers
+        # 锁定最终目标 index.json 以序列化写入者
         os.makedirs(os.path.dirname(idx_path), exist_ok=True)
-        # Use portalocker with a filename, not a file handle, so it creates the file if missing
+        # 使用 portalocker 基于文件名而非文件句柄，以便在文件缺失时创建
         lock_path = idx_path + ".lock"
         with portalocker.Lock(lock_path, timeout=5):
             self._atomic_write_bytes(idx_path, payload)
@@ -1447,6 +1440,7 @@ class CandlestickManager:
 
     @asynccontextmanager
     async def _acquire_fetch_lock(self, symbol: str, timeframe: Optional[str]) -> AsyncIterator[None]:
+        """获取跨进程获取锁，支持可重入和过期锁清理。"""
         tf_norm = self._normalize_timeframe_arg(timeframe, None)
 
         lock_path = self._fetch_lock_path(symbol, tf_norm)
@@ -1561,7 +1555,7 @@ class CandlestickManager:
     def _normalize_timeframe_arg(
         timeframe: Optional[str], tf: Optional[str], default: str = "1m"
     ) -> str:
-        """Resolve alias combination to a canonical, lowercase timeframe string."""
+        """将别名组合解析为规范的小写时间周期字符串。"""
         value = tf if tf is not None else timeframe
         if not value:
             return default
@@ -1577,15 +1571,15 @@ class CandlestickManager:
             self._cache[symbol] = arr
         return arr
 
-    # ----- Shard loading helpers -----
+    # ----- 分片加载辅助方法 -----
 
     def _iter_shard_paths(
         self, symbol: str, timeframe: Optional[str] = None, *, tf: Optional[str] = None
     ) -> Dict[str, str]:
-        """Return mapping date_key -> path for available shard files on disk.
+        """返回磁盘上可用分片文件的 date_key -> path 映射。
 
-        Results are cached per (symbol, tf) to avoid redundant glob scans.
-        Call _invalidate_shard_paths_cache(symbol, tf) after saving new shards.
+        结果按 (symbol, tf) 缓存以避免冗余 glob 扫描。
+        保存新分片后调用 _invalidate_shard_paths_cache(symbol, tf)。
         """
         tf_norm = self._normalize_timeframe_arg(timeframe, tf)
         cache_key = (symbol, tf_norm)
@@ -1594,7 +1588,7 @@ class CandlestickManager:
 
         sd = Path(self._symbol_dir(symbol, timeframe=timeframe, tf=tf))
         if not sd.exists():
-            # Cache empty result to avoid repeated directory checks
+            # 缓存空结果以避免重复目录检查
             self._shard_paths_cache[cache_key] = {}
             return {}
         out: Dict[str, str] = {}
@@ -1608,28 +1602,28 @@ class CandlestickManager:
     def _invalidate_shard_paths_cache(
         self, symbol: str, timeframe: Optional[str] = None, *, tf: Optional[str] = None
     ) -> None:
-        """Invalidate the cached shard paths for a symbol/tf after saving new shards."""
+        """保存新分片后，使交易对/tf 的缓存分片路径失效。"""
         tf_norm = self._normalize_timeframe_arg(timeframe, tf)
         cache_key = (symbol, tf_norm)
         self._shard_paths_cache.pop(cache_key, None)
 
     def _date_range_of_key(self, date_key: str) -> Tuple[int, int]:
-        """Return [start_ms, end_ms] inclusive for a date key YYYY-MM-DD in UTC."""
-        # Parse simple date without importing datetime to keep deps minimal
+        """返回日期键 YYYY-MM-DD 在 UTC 下的 [start_ms, end_ms] 包含范围。"""
+        # 解析简单日期而不导入 datetime 以保持最小依赖
         y, m, d = map(int, date_key.split("-"))
-        # Use time.gmtime to compute midnight UTC of that date
+        # 使用 time.gmtime 计算该日期的 UTC 午夜时间
         tm = time.struct_time((y, m, d, 0, 0, 0, 0, 0, 0))
         start = int(calendar.timegm(tm)) * 1000
         end = start + 24 * 60 * 60 * 1000 - ONE_MIN_MS
         return start, end
 
     def _date_key(self, ts_ms: int) -> str:
-        """Return YYYY-MM-DD for a UTC ms timestamp."""
+        """返回 UTC 毫秒时间戳对应的 YYYY-MM-DD。"""
         return time.strftime("%Y-%m-%d", time.gmtime(int(ts_ms) / 1000.0))
 
     def _date_keys_between(self, start_ts: int, end_ts: int) -> Dict[str, Tuple[int, int]]:
-        """Return mapping of date_key -> (day_start_ms, day_end_ms) covering [start,end]."""
-        # Align to 00:00 UTC of the start day
+        """返回覆盖 [start, end] 范围的 date_key -> (day_start_ms, day_end_ms) 映射。"""
+        # 对齐到起始日的 UTC 00:00
         first_key = self._date_key(start_ts)
         y, m, d = map(int, first_key.split("-"))
         tm = time.struct_time((y, m, d, 0, 0, 0, 0, 0, 0))
@@ -1644,7 +1638,7 @@ class CandlestickManager:
         return res
 
     def _legacy_coin_from_symbol(self, symbol: str) -> str:
-        """Return the coin key used by legacy downloader caches."""
+        """返回旧版下载器缓存使用的币种键。"""
         symbol = str(symbol or "")
         if not symbol:
             return ""
@@ -1655,8 +1649,8 @@ class CandlestickManager:
         else:
             base = symbol
         base = base.strip()
-        # Some exchanges encode symbols like "HYPE_USDT:USDT".
-        # Legacy downloader caches typically use the base coin only ("HYPE").
+        # 某些交易所编码交易对如 "HYPE_USDT:USDT"。
+        # 旧版下载器缓存通常仅使用基础币种（"HYPE"）。
         if "_" in base:
             left, right = base.rsplit("_", 1)
             if right in {"USDT", "USDC", "USD", "BUSD"}:
@@ -1664,7 +1658,7 @@ class CandlestickManager:
         return base
 
     def _legacy_symbol_code_from_symbol(self, symbol: str) -> str:
-        """Return legacy symbol codes used in some historical_data subtrees."""
+        """返回某些 historical_data 子目录中使用的旧版交易对代码。"""
         try:
             return self._archive_symbol_code(symbol)
         except Exception:
@@ -1702,7 +1696,7 @@ class CandlestickManager:
         return out
 
     def _get_legacy_shard_paths(self, symbol: str, tf: str) -> Dict[str, str]:
-        """Return mapping date_key -> legacy shard path for a symbol+tf (cached)."""
+        """返回交易对+时间周期的 date_key -> 旧版分片路径映射（已缓存）。"""
         ex = str(self.exchange_name or "").lower()
         key = (ex, str(symbol), str(tf))
         cached = self._legacy_shard_paths_cache.get(key)
@@ -1719,7 +1713,7 @@ class CandlestickManager:
                 for p in dp.glob("*.npy"):
                     name = p.stem
                     if len(name) == 10 and name[4] == "-" and name[7] == "-":
-                        # Prefer earlier directories in the list if duplicates exist.
+                        # 如果存在重复，优先使用列表中较早的目录。
                         mapping.setdefault(name, str(p))
             except Exception:
                 continue
@@ -1737,7 +1731,7 @@ class CandlestickManager:
 
     def _load_shard(self, path: str) -> np.ndarray:
         if not os.path.exists(path):
-            # Missing file is expected for pre-inception dates - log at debug level
+            # 文件缺失对于预启动日期是正常的 - 以调试级别记录
             self.log.debug(f"Shard not found (expected for pre-inception): {path}")
             return np.empty((0,), dtype=CANDLE_DTYPE)
         try:
@@ -1745,7 +1739,7 @@ class CandlestickManager:
                 arr = np.load(f, allow_pickle=False)
             if isinstance(arr, np.ndarray) and arr.dtype == CANDLE_DTYPE:
                 return arr
-            # Legacy downloader shards are often stored as 2D float arrays:
+            # 旧版下载器分片通常存储为二维浮点数组：
             # [timestamp, open, high, low, close, volume]
             if isinstance(arr, np.ndarray) and arr.ndim == 2 and arr.shape[1] >= 6:
                 raw = np.asarray(arr[:, :6], dtype=np.float64)
@@ -1758,21 +1752,21 @@ class CandlestickManager:
                 out["bv"] = raw[:, 5].astype(np.float32)
                 return out
             return _ensure_dtype(arr)
-        except Exception as e:  # pragma: no cover - best effort
+        except Exception as e:  # pragma: no cover - 尽力而为
             self.log.warning(f"Failed loading shard {path}: {e}")
             return np.empty((0,), dtype=CANDLE_DTYPE)
 
     def _legacy_day_is_complete(self, symbol: str, tf: str, date_key: str) -> bool:
-        """Return True if legacy has a continuous shard for this day.
+        """如果旧版数据有该日期的连续分片则返回 True。
 
-        "Complete" is defined as a full UTC-day of 1m candles:
-        - exactly 1440 minutes
-        - spanning [00:00, 23:59] UTC for the given date_key
-        - strictly 1m-continuous with no duplicates
+        "完整"定义为完整的 UTC 日 1m K 线：
+        - 恰好 1440 分钟
+        - 覆盖给定 date_key 的 [00:00, 23:59] UTC
+        - 严格 1m 连续且无重复
 
-        This is intentionally strict because this flag gates whether we skip writing a
-        primary shard overlay. If we mistakenly treat a partial legacy shard as complete,
-        we will keep re-downloading the missing minutes every run but never persist them.
+        这是有意设计为严格的，因为此标志控制是否跳过写入主分片覆盖层。
+        如果错误地将不完整的旧版分片视为完整，每次运行都会重新下载缺失的分钟
+        但永远不会持久化它们。
         """
         cache_key = (str(symbol), str(tf), str(date_key))
         cached = self._legacy_day_quality_cache.get(cache_key)
@@ -1818,13 +1812,12 @@ class CandlestickManager:
         timeframe: Optional[str] = None,
         tf: Optional[str] = None,
     ) -> Optional[np.ndarray]:
-        """Load any shards intersecting [start_ts, end_ts] and merge into cache.
+        """加载所有与 [start_ts, end_ts] 相交的分片并合并到缓存。
 
-        Primary cache: `{cache_dir}/ohlcv/{exchange}/{tf}/{symbol}/YYYY-MM-DD.npy`
+        主缓存：`{cache_dir}/ohlcv/{exchange}/{tf}/{symbol}/YYYY-MM-DD.npy`
 
-        Note: Legacy data from `historical_data/` is automatically migrated to the
-        primary cache on CandlestickManager initialization. The legacy fallback below
-        remains as a safety net for any data that wasn't migrated.
+        注意：`historical_data/` 中的旧版数据会在 CandlestickManager 初始化时
+        自动迁移到主缓存。下面的旧版回退作为安全网，处理未被迁移的数据。
         """
         try:
             tf_norm = self._normalize_timeframe_arg(timeframe, tf)
@@ -1847,8 +1840,8 @@ class CandlestickManager:
                 chosen_path: Optional[str] = None
                 chosen_source: str = ""
 
-                # For 1m, treat legacy downloader shards as canonical and use primary as an
-                # overlay only when legacy is missing/incomplete.
+                # 对于 1m，将旧版下载器分片视为规范的，仅在旧版缺失/不完整时
+                # 使用主分片作为覆盖层。
                 if tf_norm == "1m" and legacy_path is not None:
                     legacy_complete = False
                     try:
@@ -1862,7 +1855,7 @@ class CandlestickManager:
                         legacy_hits += 1
                     else:
                         if primary_path is not None:
-                            # Load both and merge to maximize coverage (reduces slow refetch paths).
+                            # 加载两者并合并以最大化覆盖（减少慢速重获路径）。
                             chosen_path = legacy_path
                             chosen_source = "merge"
                             merged_hits += 1
@@ -1901,7 +1894,7 @@ class CandlestickManager:
                 legacy_days=legacy_hits,
                 merged_days=merged_hits,
             )
-            # Load and merge with coarse progress updates to show activity for large ranges.
+            # 加载并合并，带粗粒度进度更新以显示大范围操作的活跃状态。
             arrays: List[np.ndarray] = []
             t0 = time.monotonic()
             last_progress_log = t0
@@ -1917,13 +1910,13 @@ class CandlestickManager:
                             primary_arr = self._load_shard(str(pp))
                     except Exception:
                         primary_arr = np.empty((0,), dtype=CANDLE_DTYPE)
-                    # Keep legacy canonical: primary should only fill legacy gaps.
+                    # 保留旧版为规范数据：主分片仅用于填充旧版缺口。
                     a = self._merge_overwrite(primary_arr, legacy_arr)
                 else:
                     a = self._load_shard(path)
 
-                # NOTE: We intentionally do NOT write legacy data into primary shards.
-                # Primary is only used to fill gaps where legacy is missing/incomplete.
+                # 注意：我们有意不将旧版数据写入主分片。
+                # 主分片仅用于填充旧版缺失/不完整的缺口。
                 arrays.append(a)
                 now = time.monotonic()
                 if now - last_progress_log >= 5.0 or i == len(load_keys):
@@ -1943,8 +1936,8 @@ class CandlestickManager:
                 return
             merged_disk = np.sort(np.concatenate(arrays), order="ts")
 
-            # If legacy data revealed earlier candles than our stored inception_ts,
-            # update inception_ts now so archive prefetch logic doesn't skip.
+            # 如果旧版数据揭示了比存储的 inception_ts 更早的 K 线，
+            # 现在更新 inception_ts 以免归档预取逻辑跳过。
             if tf_norm == "1m":
                 try:
                     self._maybe_update_inception_ts(symbol, merged_disk, save=True)
@@ -1981,9 +1974,9 @@ class CandlestickManager:
                 self._cache[symbol] = merged
                 return merged
             else:
-                # Do not touch 1m cache for higher TF; let caller handle
+                # 不触碰高级别时间周期的 1m 缓存；让调用者处理
                 return merged_disk
-        except Exception as e:  # pragma: no cover - noncritical
+        except Exception as e:  # pragma: no cover - 非关键操作
             self._log("warning", "disk_load_error", symbol=symbol, timeframe=tf_norm, error=str(e))
             return None
 
@@ -1995,7 +1988,7 @@ class CandlestickManager:
         timeframe: Optional[str] = None,
         tf: Optional[str] = None,
     ) -> None:
-        """Persist fetched candles to daily shards by date_key."""
+        """按 date_key 将获取的 K 线持久化为日分片。"""
         if arr.size == 0:
             return
         arr = np.sort(_ensure_dtype(arr), order="ts")
@@ -2033,10 +2026,10 @@ class CandlestickManager:
         tf: Optional[str] = None,
         defer_index: bool = False,
     ) -> None:
-        """Persist candles by merging with existing shards on disk.
+        """通过与磁盘上现有分片合并来持久化 K 线。
 
-        Args:
-            defer_index: If True, defer index.json write until flush_deferred_index is called.
+        参数:
+            defer_index: 如果为 True，延迟 index.json 写入直到调用 flush_deferred_index。
         """
         if arr.size == 0:
             return
@@ -2054,7 +2047,7 @@ class CandlestickManager:
             if path and os.path.exists(path):
                 existing = self._load_shard(path)
             merged = self._merge_overwrite(existing, chunk)
-            # Defer index write for all but the last shard (or all if defer_index=True)
+            # 除最后一个分片外延迟索引写入（如果 defer_index=True 则全部延迟）
             should_defer = defer_index or not is_last
             self._save_shard(symbol, key, merged, tf=tf_norm, defer_index=should_defer)
             shard_paths[key] = self._shard_path(symbol, key, tf=tf_norm)
@@ -2064,7 +2057,7 @@ class CandlestickManager:
         bucket: List[Tuple] = []
         keys_to_process = []
 
-        # First pass: collect all keys
+        # 第一遍：收集所有键
         for row in arr:
             key = self._date_key(int(row["ts"]))
             if current_key is None:
@@ -2077,12 +2070,12 @@ class CandlestickManager:
         if current_key is not None:
             keys_to_process.append((current_key, bucket))
 
-        # Second pass: flush with is_last flag
+        # 第二遍：带 is_last 标志刷新
         for i, (key, bucket_data) in enumerate(keys_to_process):
             is_last = i == len(keys_to_process) - 1
             flush_bucket(key, bucket_data, is_last=is_last)
 
-        # Invalidate shard paths cache so subsequent lookups see newly saved files
+        # 使分片路径缓存失效，以便后续查找能看到新保存的文件
         if shards_saved:
             self._invalidate_shard_paths_cache(symbol, tf=tf_norm)
 
@@ -2098,19 +2091,19 @@ class CandlestickManager:
         defer_index: bool = False,
         skip_memory_retention: bool = False,
     ) -> None:
-        """Merge `batch` into memory (optional) and persist incrementally to disk.
+        """将 `batch` 合并到内存（可选）并增量持久化到磁盘。
 
-        Args:
-            defer_index: If True, defer index.json write until flush_deferred_index is called.
-            skip_memory_retention: If True, skip memory retention enforcement to preserve
-                full historical data in cache (useful for backtest data preparation).
+        参数:
+            defer_index: 如果为 True，延迟 index.json 写入直到调用 flush_deferred_index。
+            skip_memory_retention: 如果为 True，跳过内存保留策略执行以在缓存中
+                保留完整历史数据（适用于回测数据准备）。
         """
         if batch.size == 0:
             return
         arr = np.sort(_ensure_dtype(batch), order="ts")
         tf_norm = self._normalize_timeframe_arg(timeframe, tf)
 
-        # Update inception_ts if this is new earliest data for 1m (defer save until end)
+        # 如果这是 1m 的新的最早数据，则更新 inception_ts（延迟保存到末尾）
         if tf_norm == "1m":
             self._maybe_update_inception_ts(symbol, arr, save=not defer_index)
 
@@ -2128,8 +2121,8 @@ class CandlestickManager:
                     last_refresh_ms=last_refresh_ms,
                     last_final_ts=int(merged_cache[-1]["ts"]),
                 )
-            # Check if real data has replaced any previously synthetic timestamps
-            # If so, mark that EMAs should be recomputed for this symbol
+            # 检查真实数据是否替换了之前的合成时间戳
+            # 如果是，标记该交易对的 EMA 需要重计算
             self._check_synthetic_replacement(symbol, arr)
 
         self._save_range_incremental(symbol, arr, timeframe=tf_norm, defer_index=defer_index)
@@ -2142,7 +2135,7 @@ class CandlestickManager:
                 return
 
     def _check_synthetic_replacement(self, symbol: str, real_data: np.ndarray) -> None:
-        """Check if real data replaces previously synthetic timestamps and invalidate EMA cache if so."""
+        """检查真实数据是否替换了之前合成的时间戳，如果是则使 EMA 缓存失效。"""
         if symbol not in self._synthetic_timestamps or not self._synthetic_timestamps[symbol]:
             return
         if real_data.size == 0:
@@ -2151,15 +2144,15 @@ class CandlestickManager:
         real_ts_set = set(real_data["ts"].astype(np.int64).tolist())
         replaced = self._synthetic_timestamps[symbol] & real_ts_set
         if replaced:
-            # Real data arrived for previously synthetic timestamps - invalidate EMA cache
+            # 真实数据到达了之前合成的时间戳 - 使 EMA 缓存失效
             self._synthetic_timestamps[symbol] -= replaced
             self._invalidate_ema_cache(symbol)
             count = len(replaced)
             if self._candle_replace_batch_mode:
-                # Batch mode: collect for aggregated summary later
+                # 批次模式：收集以供后续汇总
                 self._candle_replace_batch[symbol] = self._candle_replace_batch.get(symbol, 0) + count
             else:
-                # Normal operation: log at DEBUG (individual messages are noisy)
+                # 正常操作：以 DEBUG 级别记录（单条消息较嘈杂）
                 self.log.debug(
                     "[candle] %s: real data replaced %d synthetic candle%s, EMA cache invalidated",
                     symbol,
@@ -2168,7 +2161,7 @@ class CandlestickManager:
                 )
 
     def _track_synthetic_timestamps(self, symbol: str, timestamps: List[int]) -> None:
-        """Track runtime synthetic timestamps for replacement detection."""
+        """跟踪运行时合成时间戳，用于替换检测。"""
         if not symbol or not timestamps:
             return
         ts_set = {int(ts) for ts in timestamps if int(ts) > 0}
@@ -2177,16 +2170,16 @@ class CandlestickManager:
         if symbol not in self._synthetic_timestamps:
             self._synthetic_timestamps[symbol] = set()
         self._synthetic_timestamps[symbol].update(ts_set)
-        # Keep only the most recent week to bound memory usage.
+        # 仅保留最近一周的数据以限制内存使用。
         cutoff = _utc_now_ms() - 7 * 24 * 60 * ONE_MIN_MS
         self._synthetic_timestamps[symbol] = {
             ts for ts in self._synthetic_timestamps[symbol] if ts > cutoff
         }
 
     def _materialize_runtime_synthetic_gap(self, symbol: str, through_ts: int) -> int:
-        """Fill finalized-minute gaps in memory only (never persisted to disk).
+        """仅在内存中填充已结束分钟的缺口（不持久化到磁盘）。
 
-        Returns number of synthesized candles added to in-memory cache.
+        返回添加到内存缓存的合成 K 线数量。
         """
         through_ts = _floor_minute(int(through_ts))
         if through_ts <= 0:
@@ -2194,7 +2187,7 @@ class CandlestickManager:
 
         arr = _ensure_dtype(self._cache.get(symbol, np.empty((0,), dtype=CANDLE_DTYPE)))
         if arr.size == 0:
-            # Try loading a broader historical slice so we can seed from last known close.
+            # 尝试加载更广泛的历史切片，以便从最后已知的收盘价开始填充。
             try:
                 seed_start = max(0, through_ts - 30 * 24 * 60 * ONE_MIN_MS)
                 loaded = self._load_from_disk(symbol, seed_start, through_ts, timeframe="1m")
@@ -2220,8 +2213,7 @@ class CandlestickManager:
         if last_ts >= through_ts:
             return 0
 
-        # Cap synthesis burst to avoid building enormous in-memory runs if a symbol has
-        # been inactive for a very long time.
+        # 限制合成突发量，避免交易对长期不活跃时构建巨大的内存序列。
         max_synth = max(1, min(self.max_memory_candles_per_symbol, 24 * 60))
         first_synth_ts = max(last_ts + ONE_MIN_MS, through_ts - (max_synth - 1) * ONE_MIN_MS)
         if first_synth_ts > through_ts:
@@ -2268,33 +2260,33 @@ class CandlestickManager:
         return int(synth_ts.shape[0])
 
     def _invalidate_ema_cache(self, symbol: str) -> None:
-        """Invalidate all cached EMA values for a symbol, forcing recomputation."""
+        """使交易对的所有缓存 EMA 值失效，强制重计算。"""
         if symbol in self._ema_cache:
             del self._ema_cache[symbol]
 
     def needs_ema_recompute(self, symbol: str) -> bool:
-        """Check if EMAs for a symbol should be recomputed due to synthetic data replacement.
+        """检查交易对的 EMA 是否应因合成数据替换而重计算。
 
-        The bot can call this method to check if real data has replaced synthetic data
-        since the last EMA computation, indicating EMAs should be recomputed.
+        机器人可以调用此方法检查自上次 EMA 计算以来，真实数据是否替换了合成数据，
+        表明 EMA 应被重计算。
 
-        Returns True if:
-        - EMA cache was invalidated due to synthetic replacement
-        - Symbol has no cached EMAs (will be computed fresh anyway)
+        在以下情况返回 True：
+        - EMA 缓存因合成替换而失效
+        - 交易对没有缓存的 EMA（将重新计算）
 
-        Returns False if:
-        - Symbol has valid cached EMAs computed from real data
+        在以下情况返回 False：
+        - 交易对有基于真实数据的有效缓存 EMA
         """
-        # If there's no EMA cache for this symbol, it will be computed fresh
+        # 如果该交易对没有 EMA 缓存，将重新计算
         if symbol not in self._ema_cache or not self._ema_cache[symbol]:
             return True
-        # If the cache exists, it's valid (invalidation clears it)
+        # 如果缓存存在，则有效（失效操作会清除它）
         return False
 
     def clear_synthetic_tracking(self, symbol: Optional[str] = None) -> None:
-        """Clear synthetic timestamp tracking for a symbol or all symbols.
+        """清除交易对或所有交易对的合成时间戳跟踪。
 
-        Useful after warmup completes or when the bot knows all real data has been fetched.
+        适用于预热完成或机器人确认所有真实数据已获取后。
         """
         if symbol is None:
             self._synthetic_timestamps.clear()
@@ -2302,41 +2294,41 @@ class CandlestickManager:
             del self._synthetic_timestamps[symbol]
 
     def _merge_overwrite(self, existing: np.ndarray, new: np.ndarray) -> np.ndarray:
-        """Merge two candle arrays by ts, preferring values from `new` on conflict."""
+        """按 ts 合并两个 K 线数组，冲突时优先使用 `new` 的值。"""
         if existing.size == 0:
             return np.sort(_ensure_dtype(new), order="ts")
         if new.size == 0:
             return np.sort(_ensure_dtype(existing), order="ts")
         a = _ensure_dtype(existing)
         b = _ensure_dtype(new)
-        # Put existing first, then new; then keep last seen per ts to prefer new
+        # 现有数据在前，新数据在后；然后保留每个时间戳的最后一行以优先使用新数据
         combo = np.concatenate([a, b])
-        # Stable sort ensures that for equal timestamps, rows from `new` remain after `existing`.
+        # 稳定排序确保相同时间戳时，`new` 的行在 `existing` 之后。
         combo = np.sort(combo, order="ts", kind="stable")
         ts = combo["ts"].astype(np.int64, copy=False)
         if combo.size <= 1:
             return combo
-        # Deduplicate keeping the last occurrence per timestamp (vectorized).
+        # 去重：保留每个时间戳的最后一次出现（向量化操作）。
         keep = np.empty(combo.size, dtype=bool)
         keep[:-1] = ts[:-1] != ts[1:]
         keep[-1] = True
         merged = combo[keep]
-        # Enforce in-memory retention: keep only the latest N candles per symbol (applied by caller after assign)
+        # 执行内存保留策略：每个交易对仅保留最新的 N 根 K 线（由调用者在赋值后应用）
         return merged
 
-    # ----- Known gap helpers -----
+    # ----- 已知缺口辅助方法 -----
 
     def _get_known_gaps_enhanced(self, symbol: str) -> List[GapEntry]:
-        """Return known gaps as enhanced GapEntry objects with full metadata."""
+        """返回已知缺口为增强的 GapEntry 对象，包含完整元数据。"""
         idx = self._ensure_symbol_index(symbol)
         gaps = idx.get("meta", {}).get("known_gaps", [])
         out: List[GapEntry] = []
         now_ms = int(time.time() * 1000)
         for it in gaps:
             try:
-                # Support both old format [[start, end], ...] and new format [GapEntry, ...]
+                # 支持旧格式 [[start, end], ...] 和新格式 [GapEntry, ...]
                 if isinstance(it, dict):
-                    # New enhanced format
+                    # 新版增强格式
                     entry: GapEntry = {
                         "start_ts": int(it.get("start_ts", 0)),
                         "end_ts": int(it.get("end_ts", 0)),
@@ -2347,7 +2339,7 @@ class CandlestickManager:
                     if entry["start_ts"] <= entry["end_ts"]:
                         out.append(entry)
                 elif isinstance(it, (list, tuple)) and len(it) >= 2:
-                    # Legacy format: auto-upgrade to enhanced
+                    # 旧版格式：自动升级为增强格式
                     a, b = int(it[0]), int(it[1])
                     if a <= b:
                         out.append(
@@ -2364,26 +2356,26 @@ class CandlestickManager:
         return out
 
     def _get_known_gaps(self, symbol: str) -> List[Tuple[int, int]]:
-        """Return known gaps as simple (start_ts, end_ts) tuples for backward compatibility."""
+        """返回已知缺口为简单的 (start_ts, end_ts) 元组，用于向后兼容。"""
         enhanced = self._get_known_gaps_enhanced(symbol)
         return [(g["start_ts"], g["end_ts"]) for g in enhanced]
 
     def _save_known_gaps_enhanced(self, symbol: str, gaps: List[GapEntry]) -> None:
-        """Save gaps in enhanced format, merging overlapping ranges."""
-        # Sort by start_ts
+        """以增强格式保存缺口，合并重叠范围。"""
+        # 按 start_ts 排序
         gaps = sorted(gaps, key=lambda g: g["start_ts"])
         merged: List[GapEntry] = []
         for gap in gaps:
             if not merged or gap["start_ts"] > merged[-1]["end_ts"] + ONE_MIN_MS:
                 merged.append(gap)
             else:
-                # Merge overlapping gaps, keeping max retry count and earliest added_at
+                # 合并重叠缺口，保留最大重试次数和最早的添加时间
                 prev = merged[-1]
                 merged[-1] = {
                     "start_ts": prev["start_ts"],
                     "end_ts": max(prev["end_ts"], gap["end_ts"]),
                     "retry_count": max(prev.get("retry_count", 0), gap.get("retry_count", 0)),
-                    "reason": prev.get("reason", GAP_REASON_AUTO),  # Keep original reason
+                    "reason": prev.get("reason", GAP_REASON_AUTO),  # 保留原始原因
                     "added_at": min(prev.get("added_at", 0), gap.get("added_at", 0)),
                 }
         idx = self._ensure_symbol_index(symbol)
@@ -2401,7 +2393,7 @@ class CandlestickManager:
         self._save_index(symbol)
 
     def _save_known_gaps(self, symbol: str, gaps: List[Tuple[int, int]]) -> None:
-        """Save gaps from simple tuples (backward compatibility wrapper)."""
+        """从简单元组保存缺口（向后兼容包装器）。"""
         now_ms = int(time.time() * 1000)
         enhanced = [
             {
@@ -2425,37 +2417,37 @@ class CandlestickManager:
         increment_retry: bool = True,
         retry_count: Optional[int] = None,
     ) -> None:
-        """Add or update a known gap with enhanced metadata.
+        """添加或更新带增强元数据的已知缺口。
 
-        If a gap overlapping with [start_ts, end_ts] already exists:
-        - Extends the gap to cover the full range
-        - Increments retry_count if increment_retry is True (unless retry_count is specified)
-        - Updates reason if provided
+        如果与 [start_ts, end_ts] 重叠的缺口已存在：
+        - 扩展缺口以覆盖完整范围
+        - 如果 increment_retry 为 True 则递增 retry_count（除非指定了 retry_count）
+        - 如果提供了 reason 则更新
 
-        If retry_count reaches _GAP_MAX_RETRIES, the gap is considered persistent
-        and will not be re-fetched unless force_refetch_gaps is used.
+        如果 retry_count 达到 _GAP_MAX_RETRIES，缺口被视为持久缺口，
+        除非使用 force_refetch_gaps 否则不会重新获取。
 
-        Args:
-            retry_count: If specified, set retry_count directly instead of incrementing.
-                         Useful for pre-inception gaps that should be immediately persistent.
+        参数:
+            retry_count: 如果指定，直接设置 retry_count 而非递增。
+                         适用于应立即标记为持久的预启动缺口。
         """
         now_ms = int(time.time() * 1000)
         gaps = self._get_known_gaps_enhanced(symbol)
 
-        # Check if we have an overlapping gap to update
+        # 检查是否有重叠的缺口需要更新
         updated = False
         previous_retry_count = 0
         for gap in gaps:
             if gap["start_ts"] <= end_ts + ONE_MIN_MS and gap["end_ts"] >= start_ts - ONE_MIN_MS:
-                # Overlapping - extend and optionally increment retry
+                # 重叠 - 扩展并可选递增重试次数
                 gap["start_ts"] = min(gap["start_ts"], int(start_ts))
                 gap["end_ts"] = max(gap["end_ts"], int(end_ts))
                 previous_retry_count = gap.get("retry_count", 0)
                 if retry_count is not None:
                     gap["retry_count"] = retry_count
                 elif increment_retry:
-                    # Cap retry_count at _GAP_MAX_RETRIES to prevent unbounded growth
-                    # and avoid redundant disk writes for persistent gaps
+                    # 将 retry_count 上限设为 _GAP_MAX_RETRIES 以防止无限增长
+                    # 并避免对持久缺口的冗余磁盘写入
                     new_retry_count = previous_retry_count + 1
                     gap["retry_count"] = min(new_retry_count, _GAP_MAX_RETRIES)
                 if reason != GAP_REASON_AUTO:
@@ -2483,9 +2475,8 @@ class CandlestickManager:
                 retry_count=new_gap["retry_count"],
             )
         else:
-            # Log warning only when gap transitions from retryable to persistent
-            # (retry_count goes from <max to >=max). Use throttling to prevent spam
-            # in edge cases where the same gap is processed multiple times.
+            # 仅当缺口从可重试转为持久时记录警告
+            # （retry_count 从 <max 变为 >=max）。使用节流防止在相同缺口被多次处理的边缘情况下产生刷屏。
             updated_gap = next(
                 (
                     g
@@ -2497,14 +2488,14 @@ class CandlestickManager:
             if updated_gap:
                 current_retry_count = updated_gap.get("retry_count", 0)
                 gap_reason = updated_gap.get("reason", GAP_REASON_AUTO)
-                # Only warn on transition to persistent status (skip pre_inception - expected behavior)
+                # 仅在转为持久状态时警告（跳过 pre_inception - 预期行为）
                 if (
                     current_retry_count >= _GAP_MAX_RETRIES
                     and previous_retry_count < _GAP_MAX_RETRIES
                     and gap_reason != "pre_inception"
                 ):
                     gap_minutes = (updated_gap["end_ts"] - updated_gap["start_ts"]) // ONE_MIN_MS + 1
-                    # Track persistent gaps for summary logging
+                    # 跟踪持久缺口用于摘要记录
                     if not hasattr(self, "_persistent_gap_summary"):
                         self._persistent_gap_summary: Dict[str, int] = {}
                     self._persistent_gap_summary[symbol] = (
@@ -2521,7 +2512,7 @@ class CandlestickManager:
         *,
         reason: str = GAP_REASON_NO_TRADES,
     ) -> None:
-        """Record a gap as verified (no data on exchange), so we don't retry it."""
+        """将缺口记录为已验证（交易所无数据），不再重试。"""
         if start_ts > end_ts:
             return
         self._add_known_gap(
@@ -2534,7 +2525,7 @@ class CandlestickManager:
         )
 
     def _should_retry_gap(self, gap: GapEntry) -> bool:
-        """Check if a gap should be retried (retry_count < max)."""
+        """检查缺口是否应重试（retry_count < max）。"""
         return gap.get("retry_count", 0) < _GAP_MAX_RETRIES
 
     def clear_known_gaps(
@@ -2543,21 +2534,21 @@ class CandlestickManager:
         *,
         date_range: Optional[Tuple[int, int]] = None,
     ) -> int:
-        """Clear known gaps for a symbol, optionally filtered by date range.
+        """清除交易对的已知缺口，可选择按日期范围过滤。
 
-        Args:
-            symbol: The symbol to clear gaps for
-            date_range: Optional (start_ts, end_ts) to only clear gaps within this range
+        参数:
+            symbol: 要清除缺口的交易对
+            date_range: 可选的 (start_ts, end_ts)，仅清除此范围内的缺口
 
-        Returns:
-            Number of gaps cleared
+        返回:
+            清除的缺口数量
         """
         gaps = self._get_known_gaps_enhanced(symbol)
         if not gaps:
             return 0
 
         if date_range is None:
-            # Clear all gaps
+            # 清除所有缺口
             cleared = len(gaps)
             idx = self._ensure_symbol_index(symbol)
             idx["meta"]["known_gaps"] = []
@@ -2571,13 +2562,13 @@ class CandlestickManager:
             )
             return cleared
 
-        # Clear only gaps overlapping with date_range
+        # 仅清除与 date_range 重叠的缺口
         range_start, range_end = date_range
         remaining = []
         cleared = 0
         for gap in gaps:
             if gap["end_ts"] < range_start or gap["start_ts"] > range_end:
-                # Outside range - keep
+                # 在范围外 - 保留
                 remaining.append(gap)
             else:
                 cleared += 1
@@ -2595,16 +2586,16 @@ class CandlestickManager:
         return cleared
 
     def get_gap_summary(self, symbol: str) -> Dict[str, Any]:
-        """Get summary of known gaps for a symbol.
+        """获取交易对的已知缺口摘要。
 
-        Returns:
-            Dict with keys:
-            - total_gaps: Number of gap entries
-            - total_minutes: Total minutes of gaps
-            - persistent_gaps: Gaps with retry_count >= max
-            - retryable_gaps: Gaps with retry_count < max
-            - by_reason: Dict of reason -> count
-            - gaps: List of gap details
+        返回:
+            包含以下键的字典：
+            - total_gaps: 缺口条目数
+            - total_minutes: 缺口总分钟数
+            - persistent_gaps: retry_count >= max 的持久缺口
+            - retryable_gaps: retry_count < max 的可重试缺口
+            - by_reason: 原因 -> 数量的字典
+            - gaps: 缺口详情列表
         """
         gaps = self._get_known_gaps_enhanced(symbol)
         if not gaps:
@@ -2646,7 +2637,7 @@ class CandlestickManager:
         }
 
     def _missing_spans(self, arr: np.ndarray, start_ts: int, end_ts: int) -> List[Tuple[int, int]]:
-        """Return list of inclusive [gap_start, gap_end] minute-aligned spans missing in arr."""
+        """返回 arr 中缺失的分钟对齐的包含区间 [gap_start, gap_end] 列表。"""
         spans: List[Tuple[int, int]] = []
         if start_ts > end_ts:
             return spans
@@ -2656,14 +2647,14 @@ class CandlestickManager:
         ts = ts[(ts >= start_ts) & (ts <= end_ts)]
         if ts.size == 0:
             return [(start_ts, end_ts)]
-        # head gap
+        # 头部缺口
         if ts[0] > start_ts:
             spans.append((start_ts, int(ts[0] - ONE_MIN_MS)))
-        # middle gaps
+        # 中间缺口
         for i in range(len(ts) - 1):
             if ts[i + 1] - ts[i] > ONE_MIN_MS:
                 spans.append((int(ts[i] + ONE_MIN_MS), int(ts[i + 1] - ONE_MIN_MS)))
-        # tail gap
+        # 尾部缺口
         if ts[-1] < end_ts:
             spans.append((int(ts[-1] + ONE_MIN_MS), end_ts))
         return spans
@@ -2672,7 +2663,7 @@ class CandlestickManager:
     def _missing_spans_step(
         arr: np.ndarray, start_ts: int, end_ts: int, step_ms: int
     ) -> List[Tuple[int, int]]:
-        """Return list of inclusive [gap_start, gap_end] spans missing in arr at step_ms."""
+        """返回 arr 中按 step_ms 步长缺失的包含区间 [gap_start, gap_end] 列表。"""
         spans: List[Tuple[int, int]] = []
         if start_ts > end_ts or step_ms <= 0:
             return spans
@@ -2683,14 +2674,14 @@ class CandlestickManager:
         if ts.size == 0:
             return [(start_ts, end_ts)]
         ts = np.sort(ts)
-        # head gap
+        # 头部缺口
         if ts[0] > start_ts:
             spans.append((int(start_ts), int(ts[0] - step_ms)))
-        # middle gaps
+        # 中间缺口
         for i in range(len(ts) - 1):
             if ts[i + 1] - ts[i] > step_ms:
                 spans.append((int(ts[i] + step_ms), int(ts[i + 1] - step_ms)))
-        # tail gap
+        # 尾部缺口
         if ts[-1] < end_ts:
             spans.append((int(ts[-1] + step_ms), int(end_ts)))
         return spans
@@ -2706,10 +2697,10 @@ class CandlestickManager:
         log_level: str = "info",
         max_span_log: int = 3,
     ) -> Dict[str, Any]:
-        """Check whether disk cache fully covers [start_ts, end_ts] for a symbol.
+        """检查磁盘缓存是否完全覆盖交易对的 [start_ts, end_ts] 范围。
 
-        Returns a dict with:
-            ok, missing_spans, missing_candles, loaded_rows, timeframe.
+        返回包含以下键的字典：
+            ok, missing_spans, missing_candles, loaded_rows, timeframe。
         """
         tf_norm = self._normalize_timeframe_arg(timeframe, tf)
         step_ms = _tf_to_ms(tf_norm)
@@ -2777,7 +2768,7 @@ class CandlestickManager:
         tf: Optional[str] = None,
         log_level: str = "info",
     ) -> Dict[str, Any]:
-        """Rebuild index.json metadata for shards intersecting [start_ts, end_ts]."""
+        """重建与 [start_ts, end_ts] 相交的分片的 index.json 元数据。"""
         tf_norm = self._normalize_timeframe_arg(timeframe, tf)
         step_ms = _tf_to_ms(tf_norm)
         if step_ms <= 0:
@@ -2794,7 +2785,7 @@ class CandlestickManager:
                 "end_ts": e_ts,
             }
 
-        # Ensure shard path cache is fresh for this symbol/tf.
+        # 确保该交易对/tf 的分片路径缓存是最新的。
         self._invalidate_shard_paths_cache(symbol, tf=tf_norm)
         shard_paths = self._iter_shard_paths(symbol, tf=tf_norm)
 
@@ -2844,7 +2835,7 @@ class CandlestickManager:
         if pruned:
             removed += pruned
 
-        # Guard against corrupted refresh timestamps that prevent updates.
+        # 防止损坏的刷新时间戳阻止更新。
         meta = idx.setdefault("meta", {})
         now = _utc_now_ms()
         try:
@@ -2888,7 +2879,7 @@ class CandlestickManager:
             "end_ts": e_ts,
         }
 
-    # ----- Refresh metadata helpers -----
+    # ----- 刷新元数据辅助方法 -----
 
     def _get_last_refresh_ms(self, symbol: str) -> int:
         idx = self._ensure_symbol_index(symbol)
@@ -2898,11 +2889,11 @@ class CandlestickManager:
             return 0
 
     def get_last_refresh_ms(self, symbol: str) -> int:
-        """Public helper to read last refresh timestamp (ms) from index metadata."""
+        """公共辅助方法：从索引元数据读取最后刷新时间戳 (ms)。"""
         return self._get_last_refresh_ms(symbol)
 
     def get_last_final_ts(self, symbol: str) -> int:
-        """Return last finalized candle timestamp (ms) seen for this symbol, or 0 if unknown."""
+        """返回该交易对观测到的最后已结束 K 线时间戳 (ms)，如果未知则返回 0。"""
         idx = self._ensure_symbol_index(symbol)
         try:
             return int(idx.get("meta", {}).get("last_final_ts", 0))
@@ -2920,14 +2911,14 @@ class CandlestickManager:
         self._index[symbol] = idx
         self._save_index(symbol)
 
-    # ----- Coverage / history-bound tracking -----
+    # ----- 覆盖范围/历史边界跟踪 -----
 
     def _infer_legacy_authoritative_start_ts(self, meta: Dict[str, Any]) -> Optional[int]:
-        """Infer authoritative lower bound from legacy inception/pre_inception metadata.
+        """从旧版 inception/pre_inception 元数据推断权威下界。
 
-        Old caches used `inception_ts` both as earliest observed candle and as an implicit
-        lower bound when paired with persistent `pre_inception` gaps immediately preceding it.
-        Preserve that learned boundary during migration instead of dropping it.
+        旧版缓存将 `inception_ts` 同时用作最早观测 K 线和隐式下界
+        （当紧邻其前的持久 `pre_inception` 缺口存在时）。
+        在迁移期间保留该学习到的边界而非丢弃。
         """
         try:
             observed_start = meta.get("observed_start_ts", meta.get("inception_ts"))
@@ -2955,11 +2946,11 @@ class CandlestickManager:
         return None
 
     def _get_inception_ts(self, symbol: str) -> Optional[int]:
-        """Return earliest observed candle timestamp for this symbol, or None.
+        """返回该交易对最早观测到的 K 线时间戳，如果未知则返回 None。
 
-        Historically this field was also used as an authoritative exchange-history lower bound.
-        It now tracks only local observed coverage, while authoritative clipping uses
-        ``authoritative_start_ts``.
+        历史上此字段也被用作交易所历史数据的权威下界。
+        现在它仅跟踪本地观测覆盖，权威裁剪使用
+        ``authoritative_start_ts``。
         """
         idx = self._ensure_symbol_index(symbol)
         try:
@@ -2970,11 +2961,11 @@ class CandlestickManager:
             return None
 
     def _set_inception_ts(self, symbol: str, ts: int, *, save: bool = True) -> None:
-        """Set earliest observed candle timestamp for this symbol."""
+        """设置该交易对最早观测到的 K 线时间戳。"""
         idx = self._ensure_symbol_index(symbol)
         meta = idx.setdefault("meta", {})
         current = meta.get("observed_start_ts", meta.get("inception_ts"))
-        # Only update if unset or if new ts is earlier
+        # 仅在未设置或新时间戳更早时更新
         if current is None or int(ts) < int(current):
             observed_ts = int(ts)
             meta["observed_start_ts"] = observed_ts
@@ -2989,8 +2980,8 @@ class CandlestickManager:
             if save:
                 self._save_index(symbol)
             if auth_updated:
-                # If we previously marked ranges as pre-inception but later observed earlier
-                # real data, that authoritative lower bound became stale.
+                # 如果之前将范围标记为预启动但后来观测到更早的
+                # 真实数据，则该权威下界已过时。
                 try:
                     self._prune_pre_inception_gaps(symbol, observed_ts, save=save)
                 except Exception as exc:
@@ -3032,7 +3023,7 @@ class CandlestickManager:
             return None
 
     def _get_authoritative_start_ts(self, symbol: str) -> Optional[int]:
-        """Return authoritative exchange-history lower bound, if known."""
+        """返回交易所历史数据的权威下界（如果已知）。"""
         idx = self._ensure_symbol_index(symbol)
         meta = idx.setdefault("meta", {})
         try:
@@ -3058,7 +3049,7 @@ class CandlestickManager:
     def _set_authoritative_start_ts(
         self, symbol: str, ts: int, *, source: str, save: bool = True
     ) -> None:
-        """Persist authoritative exchange-history lower bound for this symbol."""
+        """持久化该交易对的交易所历史数据权威下界。"""
         idx = self._ensure_symbol_index(symbol)
         meta = idx.setdefault("meta", {})
         observed_start = self._get_inception_ts(symbol)
@@ -3085,7 +3076,7 @@ class CandlestickManager:
                 )
 
     def _prune_pre_inception_gaps(self, symbol: str, inception_ts: int, *, save: bool = True) -> None:
-        """Trim/remove known gaps with reason='pre_inception' now covered by real data."""
+        """修剪/移除现在已被真实数据覆盖的 reason='pre_inception' 已知缺口。"""
         gaps = self._get_known_gaps_enhanced(symbol)
         if not gaps:
             return
@@ -3104,7 +3095,7 @@ class CandlestickManager:
                     new_gaps.append(g)
                     continue
                 if s <= cutoff_end:
-                    # Overlaps: trim to end before inception
+                    # 重叠：裁剪至启动前结尾
                     trimmed: GapEntry = {
                         "start_ts": s,
                         "end_ts": cutoff_end,
@@ -3116,7 +3107,7 @@ class CandlestickManager:
                         new_gaps.append(trimmed)
                     changed = True
                     continue
-                # Entirely after inception: remove
+                # 完全在启动之后：移除
                 changed = True
             except Exception:
                 new_gaps.append(g)
@@ -3125,7 +3116,7 @@ class CandlestickManager:
             self._save_known_gaps_enhanced(symbol, new_gaps)
 
     def _get_min_shard_ts(self, symbol: str) -> Optional[int]:
-        """Return earliest shard timestamp (ms) from index or disk, if available."""
+        """返回索引或磁盘上最早的分片时间戳 (ms)，如果可用。"""
         try:
             idx = self._ensure_symbol_index(symbol, tf="1m")
             shards = idx.get("shards") or {}
@@ -3144,7 +3135,7 @@ class CandlestickManager:
         except Exception:
             pass
 
-        # Fallback: infer earliest shard from filenames on disk.
+        # 回退：从磁盘上的文件名推断最早分片。
         try:
             shard_dir = self._symbol_dir(symbol, tf="1m")
             if not os.path.isdir(shard_dir):
@@ -3159,7 +3150,7 @@ class CandlestickManager:
             return None
 
     def _get_inception_probe_meta(self, symbol: str) -> Tuple[int, int]:
-        """Return (last_probe_ms, last_probe_end_ts) for inception probing."""
+        """返回启动探测的 (last_probe_ms, last_probe_end_ts)。"""
         idx = self._ensure_symbol_index(symbol)
         meta = idx.get("meta", {})
         try:
@@ -3172,7 +3163,7 @@ class CandlestickManager:
     def _set_inception_probe_meta(
         self, symbol: str, probe_ms: int, probe_end_ts: int, *, save: bool = True
     ) -> None:
-        """Persist inception probe metadata to avoid repeated probes."""
+        """持久化启动探测元数据以避免重复探测。"""
         idx = self._ensure_symbol_index(symbol)
         meta = idx.setdefault("meta", {})
         meta["inception_ts_probe_ms"] = int(probe_ms)
@@ -3182,7 +3173,7 @@ class CandlestickManager:
             self._save_index(symbol)
 
     def _maybe_update_inception_ts(self, symbol: str, arr: np.ndarray, *, save: bool = True) -> None:
-        """Update inception_ts if arr contains an earlier timestamp than known."""
+        """如果 arr 包含比已知更早的时间戳则更新 inception_ts。"""
         if arr.size == 0:
             return
         first_ts = int(arr[0]["ts"]) if arr.ndim else int(arr["ts"])
@@ -3190,13 +3181,13 @@ class CandlestickManager:
         if current is None or first_ts < current:
             self._set_inception_ts(symbol, first_ts, save=save)
 
-    # ----- CCXT fetching -----
+    # ----- CCXT 获取 -----
 
     async def _apply_rate_limit_backoff(self) -> None:
-        """Wait if we're in a global rate limit backoff period.
+        """如果在全局速率限制退避期内则等待。
 
-        When a rate limit is hit, all concurrent requests should pause to avoid
-        the thundering herd problem where they all retry simultaneously.
+        当触发速率限制时，所有并发请求应暂停以避免惊群问题
+        （所有请求同时重试）。
         """
         now = time.time()
         if now < self._rate_limit_until:
@@ -3206,10 +3197,10 @@ class CandlestickManager:
                 await asyncio.sleep(wait_time)
 
     async def _set_global_rate_limit(self, backoff_seconds: float = 5.0) -> None:
-        """Set a global rate limit backoff that affects all concurrent requests."""
+        """设置影响所有并发请求的全局速率限制退避。"""
         async with self._rate_limit_lock:
             new_until = time.time() + backoff_seconds
-            # Only extend if the new backoff is longer than existing
+            # 仅在新退避比现有退避更长时扩展
             if new_until > self._rate_limit_until:
                 self._rate_limit_until = new_until
                 self._rate_limit_count += 1
@@ -3230,10 +3221,10 @@ class CandlestickManager:
         *,
         tf: Optional[str] = None,
     ) -> list:
-        """Fetch a single OHLCV page from ccxt, with basic retry/backoff."""
+        """从 ccxt 获取单个 OHLCV 页面，带基本重试/退避。"""
         if self.exchange is None:
             return []
-        # Determine method to call (exchange instance or module)
+        # 确定要调用的方法（交易所实例或模块）
         ex = self.exchange
         if not hasattr(ex, "fetch_ohlcv"):
             return []
@@ -3245,16 +3236,16 @@ class CandlestickManager:
         backoff = 1.0 if is_bybit else 0.5
         backoff_cap = 20.0 if is_bybit else 8.0
         for attempt in range(max_attempts):
-            # Wait for global rate limit backoff if one is active
+            # 如果有全局速率限制退避则等待
             await self._apply_rate_limit_backoff()
             try:
                 params: Dict[str, Any] = {}
-                # Provide an end bound for exchanges that support it.
-                # Note: Avoid passing 'until' to Bitget due to API validation errors on non-1m tfs.
+                # 为支持端点边界的交易所提供结束约束。
+                # 注意：避免向 Bitget 传递 'until'，因为非 1m 时间周期会导致 API 验证错误。
                 if end_exclusive_ms is not None:
                     exid = (self._ex_id or "").lower() if isinstance(self._ex_id, str) else ""
-                    # Avoid 'until' for exchanges where it yields tail-anchored or inconsistent pages
-                    # leading to incomplete forward pagination on first run.
+                    # 避免对产生尾锚定或不一致页面的交易所使用 'until'，
+                    # 这会导致首次运行时前向分页不完整。
                     if (
                         "bitget" not in exid
                         and "okx" not in exid
@@ -3264,8 +3255,8 @@ class CandlestickManager:
                     ):
                         params["until"] = int(end_exclusive_ms) - 1
 
-                # Bybit v5 requires a category for some market data routes. CCXT usually infers
-                # this from the market, but being explicit avoids intermittent misclassification.
+                # Bybit v5 对某些市场数据路由需要 category。CCXT 通常从市场信息推断，
+                # 但显式指定可避免间歇性错误分类。
                 if "bybit" in exid:
                     params.setdefault("category", "linear")
 
@@ -3296,10 +3287,9 @@ class CandlestickManager:
                 )
                 if getattr(self, "_net_sem", None) is not None:
                     async with self._net_sem:  # type: ignore[attr-defined]
-                        # Re-check rate limit after acquiring semaphore.
-                        # Tasks may have been queued before a 429 set the
-                        # global backoff; honour it now instead of firing
-                        # immediately after the semaphore unblocks.
+                        # 获取信号量后重新检查速率限制。
+                        # 任务可能在 429 设置全局退避之前已排队；
+                        # 现在遵守它而非在信号量解除阻塞后立即执行。
                         await self._apply_rate_limit_backoff()
                         res = await ex.fetch_ohlcv(
                             symbol,
@@ -3353,7 +3343,7 @@ class CandlestickManager:
                     last_ts=last_ts,
                 )
                 return res or []
-            except Exception as e:  # pragma: no cover - network not used in tests
+            except Exception as e:  # pragma: no cover - 测试中不使用网络
                 err_type = type(e).__name__
                 err_repr = repr(e)
                 elapsed_ms = int((time.monotonic() - t0) * 1000) if "t0" in locals() else None
@@ -3387,15 +3377,15 @@ class CandlestickManager:
                 sleep_s = backoff
                 msg = str(e) or ""
                 msg_l = msg.lower()
-                # Heuristic: slow down harder on rate-limit style responses.
+                # 启发式：对速率限制类响应加大退避力度。
                 is_rate_limit = any(x in msg_l for x in ("rate limit", "too many", "429", "10006"))
                 if is_rate_limit:
-                    # Set global backoff to coordinate all concurrent requests
-                    # Hyperliquid needs longer backoff due to stricter limits
+                    # 设置全局退避以协调所有并发请求
+                    # Hyperliquid 因更严格的限制需要更长的退避
                     global_backoff = 10.0 if is_hyperliquid else 5.0
                     await self._set_global_rate_limit(global_backoff)
                     sleep_s = max(sleep_s, global_backoff)
-                # Bybit: be more persistent on transient network-ish errors.
+                # Bybit：对瞬态网络类错误更加重试。
                 if is_bybit and (
                     err_type
                     in {"RequestTimeout", "NetworkError", "ExchangeNotAvailable", "DDoSProtection"}
@@ -3417,26 +3407,26 @@ class CandlestickManager:
                 backoff = min(backoff * 2.0, backoff_cap)
         return []
 
-    # ----- Array slicing helpers -----
+    # ----- 数组切片辅助方法 -----
 
     def _slice_ts_range(
         self, arr: np.ndarray, start_ts: int, end_ts: int, *, assume_sorted: bool = False
     ) -> np.ndarray:
-        """Return arr sliced to [start_ts, end_ts] inclusive by 'ts'.
+        """按 'ts' 将 arr 切片到 [start_ts, end_ts] 包含范围。
 
-        Assumes arr is structured dtype CANDLE_DTYPE.
+        假设 arr 是结构化 dtype CANDLE_DTYPE。
 
-        Parameters
+        参数
         ----------
         assume_sorted : bool
-            If True, skip the sort (caller guarantees arr is already sorted by ts).
-            Use this when arr comes from get_candles/standardize_gaps which already sorts.
+            如果为 True，跳过排序（调用者保证 arr 已按 ts 排序）。
+            当 arr 来自已排序的 get_candles/standardize_gaps 时使用。
         """
         if arr.size == 0:
             return arr
         arr = _ensure_dtype(arr)
         if not assume_sorted:
-            # Only sort if needed - check if already sorted to skip O(n log n) sort
+            # 仅在需要时排序 - 检查是否已排序以跳过 O(n log n) 排序
             ts_arr = arr["ts"]
             if ts_arr.size > 1 and not np.all(ts_arr[:-1] <= ts_arr[1:]):
                 arr = np.sort(arr, order="ts")
@@ -3446,14 +3436,14 @@ class CandlestickManager:
         return arr[i0:i1]
 
     def _normalize_ccxt_ohlcv(self, rows: list) -> np.ndarray:
-        """Convert ccxt rows [ms,o,h,l,c,vol] to CANDLE_DTYPE and filter alignment."""
+        """将 ccxt 行 [ms,o,h,l,c,vol] 转换为 CANDLE_DTYPE 并过滤对齐。"""
         if not rows:
             return np.empty((0,), dtype=CANDLE_DTYPE)
         out = []
         for r in rows:
             try:
                 ts = int(r[0])
-                # keep only fully minute-aligned candles
+                # 仅保留完全分钟对齐的 K 线
                 if ts % ONE_MIN_MS != 0:
                     ts = _floor_minute(ts)
                 o, h, l, c = map(float, (r[1], r[2], r[3], r[4]))
@@ -3466,7 +3456,7 @@ class CandlestickManager:
             return np.empty((0,), dtype=CANDLE_DTYPE)
         arr = np.array(out, dtype=CANDLE_DTYPE)
         arr = np.sort(arr, order="ts")
-        # drop duplicate ts keeping last
+        # 去除重复 ts，保留最后一个
         ts = arr["ts"].astype(np.int64)
         keep = np.ones(len(arr), dtype=bool)
         last = None
@@ -3486,9 +3476,9 @@ class CandlestickManager:
         tf: Optional[str] = None,
         on_batch: Optional[Callable[[np.ndarray], None]] = None,
     ) -> np.ndarray:
-        """Fetch OHLCV from `since_ms` up to but excluding `end_exclusive_ms`.
+        """从 `since_ms` 获取 OHLCV 直到但不包含 `end_exclusive_ms`。
 
-        Uses ccxt pagination via since+limit. Returns CANDLE_DTYPE array.
+        使用 ccxt 的 since+limit 分页。返回 CANDLE_DTYPE 数组。
         """
         if self.exchange is None:
             return np.empty((0,), dtype=CANDLE_DTYPE)
@@ -3497,9 +3487,9 @@ class CandlestickManager:
         end_excl = int(end_exclusive_ms)
         limit = self._ccxt_limit_default
         tf_norm = self._normalize_timeframe_arg(timeframe, tf, default=self._ccxt_timeframe)
-        # Derive pagination step from timeframe
+        # 从时间周期推导分页步长
         period_ms = _tf_to_ms(tf_norm)
-        # Some exchanges treat `since` as exclusive. Back up by overlap to avoid missing the first candle.
+        # 某些交易所将 `since` 视为排他。退回重叠量以避免遗漏第一根 K 线。
         if self._ccxt_since_exclusive and self._ccxt_page_overlap_candles > 0 and since > 0:
             overlap_ms = period_ms * int(self._ccxt_page_overlap_candles)
             since = max(0, since - overlap_ms)
@@ -3508,7 +3498,7 @@ class CandlestickManager:
         prev_last_ts: Optional[int] = None
         total_span = max(1, end_excl - since_start)
         while since < end_excl:
-            # Bitget auto-probe: try a larger limit once to see if the API supports it.
+            # Bitget 自动探测：尝试一次更大的 limit 看看 API 是否支持。
             probe_limit = None
             if (
                 not self._ccxt_limit_probe_done
@@ -3527,7 +3517,7 @@ class CandlestickManager:
             if arr.size == 0:
                 break
             if probe_limit is not None and not self._ccxt_limit_probe_done:
-                # If Bitget returns >200 rows, we can safely use 1000 going forward.
+                # 如果 Bitget 返回 >200 行，可以安全地使用 1000。
                 if arr.shape[0] > 200:
                     self._ccxt_limit_default = 1000
                     limit = 1000
@@ -3551,11 +3541,11 @@ class CandlestickManager:
                         rows=int(arr.shape[0]),
                     )
                 self._ccxt_limit_probe_done = True
-            # Exclude any candles >= end_exclusive
+            # 排除任何 >= end_exclusive 的 K 线
             arr = arr[arr["ts"] < end_excl]
             if arr.size == 0:
                 break
-            # Diagnostics: page ts range and step
+            # 诊断：页时间戳范围和步长
             try:
                 first_ts = int(arr[0]["ts"])  # type: ignore[index]
                 last_ts = int(arr[-1]["ts"])  # type: ignore[index]
@@ -3563,8 +3553,8 @@ class CandlestickManager:
                     diffs = np.diff(arr["ts"].astype(np.int64))
                     max_step = int(diffs.max())
                     min_step = int(diffs.min())
-                    # Expect step to match the requested timeframe's period
-                    # Log at DEBUG - unexpected steps are common on illiquid exchanges and aren't actionable
+                    # 期望步长与请求的时间周期匹配
+                    # 以 DEBUG 级别记录 - 非预期步长在流动性不足的交易所上很常见，无需操作
                     if max_step != period_ms or min_step != period_ms:
                         warn_key = (self._ex_id, symbol, tf_norm)
                         if warn_key not in self._step_warning_keys:
@@ -3576,7 +3566,7 @@ class CandlestickManager:
                     max_step = ONE_MIN_MS
             except Exception:
                 first_ts = last_ts = 0
-            # Record gaps inside payload and between pages as verified no-trade gaps (exchange-provided).
+            # 将负载内和页面间的缺口记录为已验证的无交易缺口（交易所提供）。
             if self._record_payload_gaps_as_known and tf_norm == "1m":
                 try:
                     ts_arr = arr["ts"].astype(np.int64)
@@ -3623,7 +3613,7 @@ class CandlestickManager:
                     )
                     break
             last_ts = int(arr[-1]["ts"])  # inclusive last
-            # Throttled progress logs (INFO) for long-running paginated fetches
+            # 长时间分页获取的节流进度日志（INFO）
             try:
                 progressed = max(
                     0, min(100.0, 100.0 * float(last_ts - since_start) / float(total_span))
@@ -3646,7 +3636,7 @@ class CandlestickManager:
             if self._ccxt_page_overlap_candles > 0:
                 overlap_ms = period_ms * int(self._ccxt_page_overlap_candles)
                 new_since = max(last_ts - overlap_ms, since + period_ms)
-            # Safety to avoid infinite loops if exchange returns overlapping data
+            # 安全保护：避免交易所在返回重叠数据时无限循环
             if new_since <= since:
                 self.log.debug(
                     f"pagination stop (no progress) exchange={self._ex_id} symbol={symbol} since={since} last_ts={last_ts}"
@@ -3661,7 +3651,7 @@ class CandlestickManager:
             return np.empty((0,), dtype=CANDLE_DTYPE)
         return np.sort(np.concatenate(all_rows), order="ts")
 
-    # ----- Public helpers required by tests -----
+    # ----- 测试所需的公共辅助方法 -----
 
     def standardize_gaps(
         self,
@@ -3674,39 +3664,38 @@ class CandlestickManager:
         assume_sorted: bool = False,
         symbol: Optional[str] = None,
     ) -> np.ndarray:
-        """Return a new array with zero-candles synthesized for missing minutes.
+        """返回为缺失分钟合成零成交 K 线后的新数组。
 
-        Parameters
+        参数
         ----------
         candles : np.ndarray
-            Structured array of dtype CANDLE_DTYPE. Must be sorted by `ts`.
-        start_ts : int, optional
-            Inclusive start timestamp in ms. If None, inferred from first candle.
-        end_ts : int, optional
-            Inclusive end timestamp in ms. If None, inferred from last candle.
+            dtype 为 CANDLE_DTYPE 的结构化数组。必须按 `ts` 排序。
+        start_ts : int, 可选
+            包含的开始时间戳 (ms)。如果为 None，从第一根 K 线推断。
+        end_ts : int, 可选
+            包含的结束时间戳 (ms)。如果为 None，从最后一根 K 线推断。
         strict : bool
-            If True, raises when a gap exists and no previous candle is available
-            to seed the synthesized zero-candle.
+            如果为 True，当缺口存在且没有之前的 K 线可用于生成零成交 K 线时抛出异常。
         fill_leading_gaps : bool
-            If False (default), do NOT synthesize candles before the first real data point.
-            This prevents creating fake flat data when data doesn't exist at start_ts.
-            If True, forward-fill from first available candle to fill leading gaps.
+            如果为 False（默认），不在第一个真实数据点之前合成 K 线。
+            这防止在 start_ts 处数据不存在时生成虚假平坦数据。
+            如果为 True，从第一个可用 K 线前向填充头部缺口。
         assume_sorted : bool
-            If True, skip sorting (caller guarantees array is already sorted by ts).
+            如果为 True，跳过排序（调用者保证数组已按 ts 排序）。
         """
         a = _ensure_dtype(candles)
         if a.size == 0:
-            # Nothing to standardize; caller decides how to handle empty ranges
+            # 无需标准化；由调用者决定如何处理空范围
             return a
 
         if not assume_sorted:
-            # Check if already sorted to skip O(n log n) sort
+            # 检查是否已排序以跳过 O(n log n) 排序
             ts_check = a["ts"]
             if ts_check.size > 1 and not np.all(ts_check[:-1] <= ts_check[1:]):
                 a = np.sort(a, order="ts")
         ts_arr = _ts_index(a)
 
-        # Determine effective boundaries
+        # 确定有效边界
         first_real_ts = int(ts_arr[0])
         last_real_ts = int(ts_arr[-1])
 
@@ -3715,7 +3704,7 @@ class CandlestickManager:
         lo = _floor_minute(lo)
         hi = _floor_minute(hi)
 
-        # If not filling leading gaps, don't start before actual data
+        # 如果不填充头部缺口，不从实际数据之前开始
         effective_lo = lo
         if not fill_leading_gaps and first_real_ts > lo:
             leading_gap_minutes = (first_real_ts - lo) // ONE_MIN_MS
@@ -3730,12 +3719,12 @@ class CandlestickManager:
             effective_lo = _floor_minute(first_real_ts)
 
         expected = np.arange(effective_lo, hi + ONE_MIN_MS, ONE_MIN_MS, dtype=np.int64)
-        # Map from ts to row index in a
+        # 从 ts 到 a 中行索引的映射
         pos = {int(t): i for i, t in enumerate(ts_arr)}
 
         if strict:
-            # In strict mode: do not synthesize zero-candles.
-            # If there are gaps, log a warning and return whatever real candles exist in range.
+            # 严格模式：不合成零成交 K 线。
+            # 如果存在缺口，记录警告并返回范围内的全部真实 K 线。
             i0 = int(np.searchsorted(ts_arr, effective_lo, side="left"))
             i1 = int(np.searchsorted(ts_arr, hi, side="right"))
             missing_count = 0
@@ -3743,7 +3732,7 @@ class CandlestickManager:
                 expected_len = int((hi - effective_lo) // ONE_MIN_MS) + 1
                 slice_ts = ts_arr[i0:i1].astype(np.int64, copy=False)
                 if slice_ts.size:
-                    # Missing at head + tail + internal gaps (but NOT leading gaps if not filling)
+                    # 头部 + 尾部 + 内部缺失（如果不填充则不算头部缺口）
                     if fill_leading_gaps:
                         missing_count += int((int(slice_ts[0]) - effective_lo) // ONE_MIN_MS)
                     missing_count += int((hi - int(slice_ts[-1])) // ONE_MIN_MS)
@@ -3752,17 +3741,17 @@ class CandlestickManager:
                         gaps = diffs[diffs > ONE_MIN_MS]
                         if gaps.size:
                             missing_count += int(np.sum((gaps // ONE_MIN_MS) - 1))
-                    # If duplicates exist, treat them as missing coverage too
+                    # 如果存在重复，也将其视为缺失覆盖
                     missing_count += int(
                         max(0, expected_len - int(np.unique(slice_ts).size) - missing_count)
                     )
                 else:
                     missing_count = expected_len
             except Exception:
-                # fallback: keep behavior safe (no warning rather than exploding)
+                # 回退：保持行为安全（宁可不警告也不要抛出异常）
                 missing_count = 0
             if missing_count:
-                # Accumulate for summary logging instead of per-event warnings
+                # 累积用于摘要记录而非逐事件警告
                 sym_key = symbol or "unknown"
                 self._record_strict_gap(sym_key, int(missing_count))
                 self._log_strict_gaps_summary()
@@ -3771,22 +3760,22 @@ class CandlestickManager:
         out_rows = []
         prev_close: Optional[float] = None
 
-        # Seed prev_close from:
-        # 1) the candle exactly at effective_lo, else
-        # 2) the last candle before effective_lo (ffill from earlier data), else
-        # 3) if fill_leading_gaps=True, use the first available candle (bfill for leading gaps)
+        # 初始化 prev_close 来源：
+        # 1) 恰好在 effective_lo 处的 K 线，否则
+        # 2) effective_lo 之前最后一根 K 线（从更早数据前向填充），否则
+        # 3) 如果 fill_leading_gaps=True，使用第一个可用 K 线（对头部缺口回填）
         if effective_lo in pos:
             prev_close = float(a[pos[effective_lo]]["c"])
         else:
             idx = int(np.searchsorted(ts_arr, effective_lo))
             if idx > 0:
-                # There's a candle before effective_lo - use it for ffill
+                # effective_lo 之前有 K 线 - 用它做前向填充
                 prev_close = float(a[idx - 1]["c"])
             elif fill_leading_gaps and a.size > 0:
-                # No candle before effective_lo, but fill_leading_gaps=True
-                # Use first candle's close to backward-fill leading gaps
+                # effective_lo 之前没有 K 线，但 fill_leading_gaps=True
+                # 使用第一根 K 线的收盘价回填头部缺口
                 prev_close = float(a[0]["c"])
-            # If no candle before, prev_close stays None until we hit real data
+            # 如果之前没有 K 线，prev_close 保持 None 直到遇到真实数据
 
         synthesized_count = 0
         synthesized_timestamps: List[int] = []
@@ -3797,20 +3786,20 @@ class CandlestickManager:
                 prev_close = float(row["c"])  # update seed
             else:
                 if prev_close is None:
-                    # No previous data to forward-fill from - skip this timestamp
+                    # 没有之前的数据可用于前向填充 - 跳过该时间戳
                     continue
-                # Synthesize a zero-candle using previous close (internal gaps only)
+                # 使用前一根收盘价合成零成交 K 线（仅内部缺口）
                 out_rows.append((int(t), prev_close, prev_close, prev_close, prev_close, 0.0))
                 synthesized_timestamps.append(int(t))
                 synthesized_count += 1
 
-        # Track synthetic timestamps for EMA recomputation detection
+        # 跟踪合成时间戳用于 EMA 重计算检测
         if symbol and synthesized_timestamps:
             self._track_synthetic_timestamps(symbol, synthesized_timestamps)
 
-        # Log when zero-candles were synthesized (rate-limited or batched)
+        # 当合成了零成交 K 线时记录日志（节流或批处理）
         if synthesized_count > 0 and symbol:
-            # In batch mode, collect for later aggregated logging
+            # 批次模式下，收集以供后续汇总记录
             if self._synth_candle_batch_mode:
                 try:
                     first_ts = min(synthesized_timestamps)
@@ -3842,21 +3831,21 @@ class CandlestickManager:
                         meta["max_ts"] = int(last_ts)
                 self._synth_candle_batch[symbol] = meta
             else:
-                # Normal mode: deduplicate by gap start (only warn once per unique gap origin)
-                # Round first_ts to nearest hour to reduce duplicate warnings when the same
-                # underlying gap is detected at slightly different boundaries in different fetch windows
+                # 正常模式：按缺口起始去重（每个唯一缺口来源仅警告一次）
+                # 将 first_ts 取整到最近的小时，减少在不同获取窗口以略微不同的
+                # 边界检测到同一底层缺口时的重复警告
                 first_ts = min(synthesized_timestamps)
                 last_ts = max(synthesized_timestamps)
                 hour_ms = 3600_000
-                first_ts_hour = (first_ts // hour_ms) * hour_ms  # Floor to hour boundary
+                first_ts_hour = (first_ts // hour_ms) * hour_ms  # 向下取整到小时边界
                 gap_key = (symbol, first_ts_hour)
 
-                # Skip if we've already warned about a gap starting in this hour window
+                # 如果已对该小时窗口的缺口警告过则跳过
                 if gap_key in self._synth_gap_warned:
                     pass  # Already warned, skip
                 else:
                     self._synth_gap_warned.add(gap_key)
-                    # Format timestamp range for human readability
+                    # 格式化时间戳范围以便人类阅读
                     from datetime import datetime, timezone
 
                     first_dt = datetime.fromtimestamp(first_ts / 1000, tz=timezone.utc).strftime(
@@ -3869,8 +3858,8 @@ class CandlestickManager:
                             "%Y-%m-%dT%H:%M"
                         )
                         ts_info = f"{first_dt} to {last_dt}"
-                    # Use DEBUG for individual gap warnings - the batch summary at startup is enough at WARNING
-                    # Only use WARNING for truly exceptional situations (gaps > 1000 candles during live operation)
+                    # 对单个缺口警告使用 DEBUG - 启动时的批次摘要以 WARNING 级别已足够
+                    # 仅在真正异常情况下使用 WARNING（实盘运行时缺口 > 1000 根 K 线）
                     log_fn = self.log.warning if synthesized_count > 1000 else self.log.debug
                     log_fn(
                         "[candle] %s: synthesized %d zero-candle%s at %s (no data for requested minutes) using prev_close=%.6f",
@@ -3885,25 +3874,25 @@ class CandlestickManager:
             return np.empty((0,), dtype=CANDLE_DTYPE)
         return np.array(out_rows, dtype=CANDLE_DTYPE)
 
-    # ----- External archives (historical) -----
+    # ----- 外部归档（历史数据） -----
 
     def _archive_supported(self) -> bool:
-        """Check if archive fetching is supported and enabled for this exchange."""
+        """检查该交易所是否支持并启用了归档获取。"""
         if not self.archive_enabled:
             return False
         try:
             exid = (self._ex_id or "").lower() if isinstance(self._ex_id, str) else ""
         except Exception:
             exid = ""
-        # Note: Bybit excluded - CCXT is faster and uses far less bandwidth.
-        # Bybit's archive endpoint provides raw trades (not bucketed OHLCVs), so fetching
-        # and bucketing trades costs ~700x more data for BTC. Keep the archive fetch logic
-        # below for reference/optional use, but avoid it by default.
+        # 注意：排除 Bybit - CCXT 更快且消耗更少带宽。
+        # Bybit 的归档端点提供原始交易（而非分桶的 OHLCV），因此获取和
+        # 分桶交易对 BTC 来说数据量大约多 700 倍。保留下面的归档获取逻辑
+        # 作为参考/可选使用，但默认避免使用。
         return exid in {"binanceusdm", "bitget", "kucoinfutures", "hyperliquid"}
 
     @staticmethod
     def _archive_symbol_code(symbol: str) -> str:
-        """Return archive symbol code (typically BASEQUOTE) for ccxt-style symbols."""
+        """返回 ccxt 风格交易对的归档交易对代码（通常为 BASEQUOTE）。"""
         symbol = str(symbol or "")
         if not symbol:
             return ""
@@ -3914,15 +3903,15 @@ class CandlestickManager:
             quote = rest.split(":", 1)[0] if ":" in rest else rest
         elif ":" in symbol:
             base, quote = symbol.split(":", 1)
-        # best-effort fallback
+        # 尽力而为的回退
         base = (base or "").replace("/", "").replace(":", "")
         quote = (quote or "").replace("/", "").replace(":", "")
         return f"{base}{quote}" if quote else base
 
     async def _archive_fetch_day(self, symbol: str, day_key: str) -> Optional[np.ndarray]:
-        """Fetch a full-day (1440x1m) candle array from external archives.
+        """从外部归档获取完整一天的 (1440x1m) K 线数组。
 
-        Returns CANDLE_DTYPE with inclusive timestamps spanning the UTC day, or None if not available.
+        返回包含 UTC 全天时间戳的 CANDLE_DTYPE，如果不可用则返回 None。
         """
         try:
             exid = (self._ex_id or "").lower() if isinstance(self._ex_id, str) else ""
@@ -3946,13 +3935,13 @@ class CandlestickManager:
             return await self._archive_fetch_binance_zip(url, day_key)
 
         if exid == "bybit":
-            # Note: Bybit archive provides raw trades, not bucketed OHLCVs.
-            # It's intentionally disabled by _archive_supported() by default due to bandwidth.
+            # 注意：Bybit 归档提供原始交易而非分桶的 OHLCV。
+            # 由于带宽消耗，_archive_supported() 默认禁用。
             url = f"https://public.bybit.com/trading/{symbol_code}/{symbol_code}{day_key}.csv.gz"
             return await self._archive_fetch_bybit_trades(url, day_key)
 
         if exid == "bitget":
-            # Bitget archive layout varies by date; mirror existing logic.
+            # Bitget 归档布局因日期而异；遵循现有逻辑。
             day_comp = day_key
             day_yymmdd = day_key.replace("-", "")
             if day_comp <= "2024-04-18":
@@ -3977,19 +3966,19 @@ class CandlestickManager:
         return None
 
     async def _get_http_session(self) -> "aiohttp.ClientSession":
-        """Get or create a persistent HTTP session for archive fetches."""
+        """获取或创建归档获取的持久 HTTP 会话。"""
         import aiohttp
 
         async with self._http_session_lock:
             if self._http_session is None or self._http_session.closed:
-                # Archive hosts can be slow and archives can be large; use tolerant timeouts.
-                # Keep connect timeout bounded, but allow more time for reads.
+                # 归档主机可能很慢，归档文件可能很大；使用宽松的超时设置。
+                # 保持连接超时有界，但允许更多读取时间。
                 timeout = aiohttp.ClientTimeout(total=120, connect=20, sock_read=60)
                 connector = aiohttp.TCPConnector(
-                    # Keep concurrency moderate to avoid timeouts under load.
+                    # 保持并发适度以避免超时。
                     limit=20,
                     limit_per_host=6,
-                    ttl_dns_cache=300,  # DNS cache TTL in seconds
+                    ttl_dns_cache=300,  # DNS 缓存 TTL（秒）
                     enable_cleanup_closed=True,
                 )
                 self._http_session = aiohttp.ClientSession(
@@ -3999,7 +3988,7 @@ class CandlestickManager:
             return self._http_session
 
     async def _close_http_session(self) -> None:
-        """Close the HTTP session if open."""
+        """如果 HTTP 会话已打开则关闭。"""
         async with self._http_session_lock:
             if self._http_session is not None and not self._http_session.closed:
                 await self._http_session.close()
@@ -4110,7 +4099,7 @@ class CandlestickManager:
             dfc[c] = pd.to_numeric(dfc[c], errors="coerce")
         dfc = dfc.dropna(subset=["timestamp"]).reset_index(drop=True)
         start_ts, end_ts = self._date_range_of_key(day_key)
-        # Binance timestamps should already be ms.
+        # Binance 时间戳应已是毫秒。
         dfc = dfc[(dfc["timestamp"] >= start_ts) & (dfc["timestamp"] <= end_ts)]
         if dfc.empty:
             return None
@@ -4129,7 +4118,7 @@ class CandlestickManager:
             dfs = []
             for name in z.namelist():
                 with z.open(name) as f:
-                    # Bitget provides xlsx-like sheets; pandas can read excel from bytes.
+                    # Bitget 提供 xlsx 风格的工作表；pandas 可以从字节流读取 excel。
                     df = pd.read_excel(f)
                 df.columns = col_names + [
                     f"extra_{i}" for i in range(len(df.columns) - len(col_names))
@@ -4142,7 +4131,7 @@ class CandlestickManager:
             dfc[c] = pd.to_numeric(dfc[c], errors="coerce")
         dfc = dfc.dropna(subset=["timestamp"]).reset_index(drop=True)
         start_ts, end_ts = self._date_range_of_key(day_key)
-        # Bitget timestamps sometimes come in seconds.
+        # Bitget 时间戳有时以秒为单位。
         ts = dfc["timestamp"].astype("float64").values
         if np.isfinite(ts).any() and float(np.nanmax(np.abs(ts))) < 1e11:
             dfc["timestamp"] = dfc["timestamp"] * 1000.0
@@ -4178,7 +4167,7 @@ class CandlestickManager:
         for c in required:
             dfc[c] = pd.to_numeric(dfc[c], errors="coerce")
         dfc = dfc.dropna(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
-        # Kucoin timestamps are typically seconds.
+        # KuCoin 时间戳通常以秒为单位。
         ts = dfc["timestamp"].astype("float64").values
         if np.isfinite(ts).any() and float(np.nanmax(np.abs(ts))) < 1e11:
             dfc["timestamp"] = dfc["timestamp"] * 1000.0
@@ -4200,7 +4189,7 @@ class CandlestickManager:
             trades = pd.read_csv(f)
         if "timestamp" not in trades.columns or "price" not in trades.columns:
             return None
-        # Bybit archive timestamps are in seconds (trade time).
+        # Bybit 归档时间戳以秒为单位（交易时间）。
         ts_sec = pd.to_numeric(trades["timestamp"], errors="coerce").astype("float64")
         price = pd.to_numeric(trades["price"], errors="coerce").astype("float64")
         size = pd.to_numeric(trades.get("size", 0.0), errors="coerce").astype("float64")
@@ -4230,32 +4219,32 @@ class CandlestickManager:
         return self._ohlcv_df_to_day_arr(ohlcvs, day_key)
 
     async def _archive_fetch_hyperliquid(self, symbol: str, day_key: str) -> Optional[np.ndarray]:
-        """Fetch Hyperliquid archive data for backtesting.
+        """获取 Hyperliquid 归档数据用于回测。
 
-        Data sources tried in order:
-        1. Local pre-processed cache (caches/ohlcv/hyperliquid/{coin}/{day_key}.parquet)
-        2. For stock perps: TradFi API (if credentials available in api-keys.json)
+        按顺序尝试的数据源：
+        1. 本地预处理缓存 (caches/ohlcv/hyperliquid/{coin}/{day_key}.parquet)
+        2. 对于股票永续合约：TradFi API（如果 api-keys.json 中有凭据）
 
-        For Hyperliquid's S3 raw trade data, users can pre-process it using:
+        对于 Hyperliquid 的 S3 原始交易数据，用户可使用以下命令预处理：
             python -m src.tools.hyperliquid_s3_fetcher --start YYYY-MM-DD --end YYYY-MM-DD
             python -m src.tools.trades_to_ohlcv --input caches/hyperliquid_trades --output caches/ohlcv/hyperliquid
 
-        Args:
-            symbol: CCXT-style symbol (e.g., "BTC/USDC:USDC" or "xyz:TSLA/USDC:USDC")
-            day_key: Date string (YYYY-MM-DD)
+        参数:
+            symbol: CCXT 风格交易对（如 "BTC/USDC:USDC" 或 "xyz:TSLA/USDC:USDC"）
+            day_key: 日期字符串 (YYYY-MM-DD)
 
-        Returns:
-            CANDLE_DTYPE array with 1440 candles, or None if not available
+        返回:
+            包含 1440 根 K 线的 CANDLE_DTYPE 数组，如果不可用则返回 None
         """
         import pandas as pd
         from pathlib import Path
 
-        # Derive coin name from symbol for cache path
+        # 从交易对推导币种名用于缓存路径
         base = symbol.split("/")[0] if "/" in symbol else symbol
-        # Handle xyz: prefix in path (replace : with _ for filesystem)
+        # 处理路径中的 xyz: 前缀（将 : 替换为 _ 以兼容文件系统）
         safe_coin = base.replace(":", "_")
 
-        # 1. Check local pre-processed cache first
+        # 1. 首先检查本地预处理缓存
         cache_path = Path("caches/ohlcv/hyperliquid") / safe_coin / f"{day_key}.parquet"
 
         if cache_path.exists():
@@ -4265,7 +4254,7 @@ class CandlestickManager:
                 table = pq.read_table(cache_path)
                 df = table.to_pandas()
 
-                # Rename columns to match expected format
+                # 重命名列以匹配预期格式
                 col_map = {
                     "ts": "timestamp",
                     "o": "open",
@@ -4289,7 +4278,7 @@ class CandlestickManager:
                     "debug", "hyperliquid_archive_error", symbol=symbol, day_key=day_key, error=str(e)
                 )
 
-        # 2. For stock perps, try TradFi data fetch
+        # 2. 对于股票永续合约，尝试 TradFi 数据获取
         try:
             from tradfi_data import is_stock_ticker, hip3_to_tradfi_symbol
         except ImportError:
@@ -4307,15 +4296,15 @@ class CandlestickManager:
     async def _fetch_tradfi_day(
         self, coin: str, day_key: str, cache_path: "Path"
     ) -> Optional[np.ndarray]:
-        """Fetch stock data from TradFi API and cache it.
+        """从 TradFi API 获取股票数据并缓存。
 
-        Args:
-            coin: Stock ticker (e.g., "TSLA", "xyz:TSLA")
-            day_key: Date string (YYYY-MM-DD)
-            cache_path: Path to save cached data
+        参数:
+            coin: 股票代码（如 "TSLA"、"xyz:TSLA"）
+            day_key: 日期字符串 (YYYY-MM-DD)
+            cache_path: 缓存数据保存路径
 
-        Returns:
-            CANDLE_DTYPE array or None
+        返回:
+            CANDLE_DTYPE 数组或 None
         """
         from pathlib import Path
 
@@ -4328,15 +4317,15 @@ class CandlestickManager:
         except ImportError:
             return None
 
-        # Load TradFi credentials from api-keys.json
-        # Default to yfinance (free, no API key required)
+        # 从 api-keys.json 加载 TradFi 凭据
+        # 默认使用 yfinance（免费，无需 API 密钥）
         tradfi_config = self._load_tradfi_config()
         if tradfi_config:
             provider_name = tradfi_config.get("provider", "yfinance")
             api_key = tradfi_config.get("api_key")
-            api_secret = tradfi_config.get("api_secret")  # For Alpaca
+            api_secret = tradfi_config.get("api_secret")  # 用于 Alpaca
         else:
-            # Use yfinance as free default
+            # 使用 yfinance 作为免费默认
             provider_name = "yfinance"
             api_key = None
             api_secret = None
@@ -4348,14 +4337,14 @@ class CandlestickManager:
             self._log("info", "tradfi_fetch", ticker=ticker, day_key=day_key, provider=provider_name)
 
             async with TradFiDataFetcher(provider) as fetcher:
-                # Construct HIP-3 symbol for the fetcher
+                # 为获取器构建 HIP-3 交易对
                 hip3_symbol = f"xyz:{ticker}/USDC:USDC" if not coin.startswith("xyz:") else coin
                 arr = await fetcher.fetch_day(hip3_symbol, day_key)
 
             if arr is not None and arr.size > 0:
-                # Cache the result for future use
+                # 缓存结果以供后续使用
                 self._save_tradfi_cache(arr, cache_path)
-                # Convert to day array format
+                # 转换为日数组格式
                 import pandas as pd
 
                 df = pd.DataFrame(
@@ -4376,7 +4365,7 @@ class CandlestickManager:
         return None
 
     def _load_tradfi_config(self) -> Optional[dict]:
-        """Load TradFi API configuration from api-keys.json."""
+        """从 api-keys.json 加载 TradFi API 配置。"""
         from pathlib import Path
         import json
 
@@ -4392,7 +4381,7 @@ class CandlestickManager:
             return None
 
     def _save_tradfi_cache(self, arr: np.ndarray, cache_path: "Path") -> None:
-        """Save TradFi data to local cache."""
+        """将 TradFi 数据保存到本地缓存。"""
         try:
             import pyarrow as pa
             import pyarrow.parquet as pq
@@ -4415,7 +4404,7 @@ class CandlestickManager:
             self._log("debug", "tradfi_cache_save_error", error=str(e))
 
     def _ohlcv_df_to_day_arr(self, df, day_key: str) -> np.ndarray:
-        """Convert a dataframe with timestamp/open/high/low/close/volume to 1m day array."""
+        """将包含 timestamp/open/high/low/close/volume 的 DataFrame 转换为 1m 日数组。"""
         start_ts, end_ts = self._date_range_of_key(day_key)
         cols = ["timestamp", "open", "high", "low", "close", "volume"]
         for c in cols:
@@ -4425,7 +4414,7 @@ class CandlestickManager:
             .sort_values("timestamp")
             .drop_duplicates(subset=["timestamp"], keep="last")
         )
-        # Convert to CANDLE_DTYPE and then standardize to full-day grid.
+        # 转换为 CANDLE_DTYPE 然后标准化为全天网格。
         arr = np.empty((df.shape[0],), dtype=CANDLE_DTYPE)
         arr["ts"] = df["timestamp"].astype("int64").values
         arr["o"] = df["open"].values
@@ -4436,11 +4425,11 @@ class CandlestickManager:
         arr = arr[(arr["ts"] >= start_ts) & (arr["ts"] <= end_ts)]
         if arr.size == 0:
             return np.empty((0,), dtype=CANDLE_DTYPE)
-        # For archive day data, we expect full day coverage - use fill_leading_gaps=True
+        # 对于归档日数据，期望全天覆盖 - 使用 fill_leading_gaps=True
         out = self.standardize_gaps(
             arr, start_ts=start_ts, end_ts=end_ts, strict=False, fill_leading_gaps=True
         )
-        # Validate full-day coverage (best-effort; callers can fall back to ccxt).
+        # 验证全天覆盖（尽力而为；调用者可回退到 ccxt）。
         if out.size != 1440 or int(out[0]["ts"]) != start_ts or int(out[-1]["ts"]) != end_ts:
             return np.empty((0,), dtype=CANDLE_DTYPE)
         return out
@@ -4448,19 +4437,19 @@ class CandlestickManager:
     async def _prefetch_archives_for_range(
         self, symbol: str, start_ts: int, end_ts: int, *, parallel_days: int = 5
     ) -> None:
-        """Try to materialize missing full-day shards using external archives.
+        """尝试使用外部归档物化缺失的完整日分片。
 
-        Args:
-            symbol: The symbol to fetch archives for
-            start_ts: Start timestamp (ms)
-            end_ts: End timestamp (ms)
-            parallel_days: Number of days to fetch in parallel (default 5)
+        参数:
+            symbol: 要获取归档的交易对
+            start_ts: 开始时间戳 (ms)
+            end_ts: 结束时间戳 (ms)
+            parallel_days: 并行获取的天数（默认 5）
         """
         if not self._archive_supported():
             return
 
-        # For stock-perps with TradFi configured, allow fetches before exchange inception
-        # so historical data can be backfilled from TradFi providers (alpaca/polygon/etc.).
+        # 对于配置了 TradFi 的股票永续合约，允许在交易所启动前获取
+        # 以便从 TradFi 提供商（alpaca/polygon 等）回填历史数据。
         allow_pre_inception_for_stock_perp = False
         try:
             from tradfi_data import is_stock_ticker
@@ -4471,9 +4460,9 @@ class CandlestickManager:
         except Exception:
             allow_pre_inception_for_stock_perp = False
 
-        # Clip/skip only when we know an authoritative lower bound for exchange-available
-        # history. Earliest cached shard is observed local coverage, not proof of
-        # exchange inception, so it must not suppress earlier backfills.
+        # 仅当我们知道交易所可用历史的权威下界时才裁剪/跳过。
+        # 最早的缓存分片是观测到的本地覆盖，不是交易所启动的证明，
+        # 因此它不能阻止更早的回填。
         authoritative_start_ts = self._get_authoritative_start_ts(symbol)
         if (
             authoritative_start_ts is not None
@@ -4523,13 +4512,13 @@ class CandlestickManager:
                 )
             start_ts = authoritative_start_ts
             if start_ts > end_ts:
-                return  # Nothing left to fetch
+                return  # 没有剩余需要获取的内容
 
         day_map = self._date_keys_between(start_ts, end_ts)
         shard_paths = self._iter_shard_paths(symbol, tf="1m")
         legacy_paths = self._get_legacy_shard_paths(symbol, "1m")
 
-        # Determine primary shard completeness via index.json (cheap; avoids loading npy files).
+        # 通过 index.json 确定主分片完整性（廉价；避免加载 npy 文件）。
         idx_shards: Dict[str, Dict[str, Any]] = {}
         try:
             idx = self._ensure_symbol_index(symbol, tf="1m")
@@ -4539,12 +4528,12 @@ class CandlestickManager:
         except Exception:
             idx_shards = {}
 
-        # Don't try to fetch archives for recent days - they don't exist yet
-        # Exchanges typically need 48-72 hours to publish archive data
+        # 不要尝试获取最近几天的归档 - 它们还不存在
+        # 交易所通常需要 48-72 小时才能发布归档数据
         archive_freshness_hours = 72
         archive_cutoff_ms = _utc_now_ms() - (archive_freshness_hours * 3600 * 1000)
 
-        # First pass: count days to fetch
+        # 第一遍：计算需要获取的天数
         days_to_fetch = []
         skipped_reasons = {
             "partial_day_request": 0,
@@ -4556,22 +4545,22 @@ class CandlestickManager:
         for day_key, (day_start, day_end) in day_map.items():
             if start_ts > day_start or end_ts < day_end:
                 skipped_reasons["partial_day_request"] += 1
-                continue  # not a full-day request for this day
+                continue  # 不是该天的完整请求
             if day_end > archive_cutoff_ms:
                 skipped_reasons["too_recent"] += 1
-                continue  # too recent - archive not available yet, use CCXT
+                continue  # 太近 - 归档尚不可用，使用 CCXT
             if day_key in legacy_paths:
                 skipped_reasons["legacy_present"] += 1
-                continue  # legacy cache already covers this day
+                continue  # 旧版缓存已覆盖该天
 
-            # Only fetch archives for days missing or incomplete in primary.
-            # NOTE: Previously we skipped any day with an existing primary shard path.
-            # That can block archive healing if a prior CCXT run wrote a partial/incomplete day.
+            # 仅为主分片中缺失或不完整的天数获取归档。
+            # 注意：之前我们跳过任何已有主分片路径的天。
+            # 这可能阻止归档修复（如果先前 CCXT 运行写了部分/不完整的天数据）。
             if day_key in shard_paths:
                 meta = idx_shards.get(day_key) if isinstance(idx_shards, dict) else None
                 try:
                     if isinstance(meta, dict):
-                        # full UTC day coverage (inclusive endpoints)
+                        # 完整 UTC 日覆盖（包含两端点）
                         if (
                             int(meta.get("count") or -1) == 1440
                             and int(meta.get("min_ts") or 0) == int(day_start)
@@ -4580,8 +4569,8 @@ class CandlestickManager:
                             skipped_reasons["primary_complete"] += 1
                             continue
                     else:
-                        # No index metadata but file exists - verify by loading the shard
-                        # to avoid redundant re-downloads of already complete files.
+                        # 无索引元数据但文件存在 - 通过加载分片验证
+                        # 以避免冗余重新下载已完整的文件。
                         try:
                             arr = self._load_shard(shard_paths[day_key])
                             if (
@@ -4590,7 +4579,7 @@ class CandlestickManager:
                                 and int(arr["ts"][0]) == int(day_start)
                                 and int(arr["ts"][-1]) == int(day_end)
                             ):
-                                # File is complete - update index with metadata and skip
+                                # 文件完整 - 更新索引元数据并跳过
                                 crc = int(zlib.crc32(arr.tobytes()) & 0xFFFFFFFF)
                                 idx_shards[day_key] = {
                                     "path": shard_paths[day_key],
@@ -4602,15 +4591,15 @@ class CandlestickManager:
                                 skipped_reasons["verified_from_disk"] += 1
                                 continue
                         except Exception:
-                            # Load failed - proceed to re-download
+                            # 加载失败 - 继续重新下载
                             pass
                 except Exception:
-                    # If meta is missing/corrupt, treat as incomplete and allow archive fetch.
+                    # 如果元数据缺失/损坏，视为不完整并允许归档获取。
                     pass
 
             days_to_fetch.append((day_key, day_start, day_end))
 
-        # If we verified any files from disk, persist the index updates
+        # 如果从磁盘验证了任何文件，持久化索引更新
         if skipped_reasons["verified_from_disk"] > 0:
             try:
                 idx["shards"] = idx_shards
@@ -4626,8 +4615,8 @@ class CandlestickManager:
                 pass
 
         if not days_to_fetch:
-            # Surface why archive prefetch didn't run (useful when large gaps exist but
-            # they are not eligible for full-day archive materialization).
+            # 说明为何归档预取未运行（当存在大缺口但不符合
+            # 全天归档物化条件时有参考价值）。
             try:
                 self._emit_remote_fetch(
                     {
@@ -4670,11 +4659,11 @@ class CandlestickManager:
 
         last_progress_emit = 0.0
 
-        # Semaphore to limit concurrent fetches
+        # 限制并发获取的信号量
         sem = asyncio.Semaphore(max(1, parallel_days))
 
         def _format_archive_exc(exc: BaseException) -> Tuple[str, str]:
-            """Return (error_type, error_repr) for logging."""
+            """返回用于日志记录的 (error_type, error_repr)。"""
             try:
                 return (type(exc).__name__, repr(exc))
             except Exception:
@@ -4683,7 +4672,7 @@ class CandlestickManager:
         async def fetch_single_day(
             day_info: Tuple[str, int, int],
         ) -> Tuple[str, Optional[np.ndarray], Optional[Tuple[str, str]]]:
-            """Fetch a single day's archive data. Returns (day_key, array or None, (err_type, err_repr) or None)."""
+            """获取单天的归档数据。返回 (day_key, array 或 None, (err_type, err_repr) 或 None)。"""
             day_key, day_start, day_end = day_info
             async with sem:
                 try:
@@ -4694,14 +4683,14 @@ class CandlestickManager:
                     return (day_key, None, _format_archive_exc(e))
 
         try:
-            # Process in batches matching semaphore limit to avoid task queuing
+            # 按信号量限制批量处理以避免任务排队
             batch_size = max(1, parallel_days)  # Match semaphore for optimal throughput
 
             for batch_start in range(0, total_days, batch_size):
                 batch = days_to_fetch[batch_start : batch_start + batch_size]
                 batch_start_time = time.monotonic()
 
-                # Throttled progress log (every ~10 seconds)
+                # 节流进度日志（约每 10 秒）
                 self._progress_log(
                     (symbol, "1m", "archive"),
                     "archive_prefetch_progress",
@@ -4733,11 +4722,11 @@ class CandlestickManager:
                 except Exception:
                     pass
 
-                # Fetch batch in parallel
+                # 并行获取批次
                 tasks = [fetch_single_day(d) for d in batch]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                # Process results and persist (with deferred index writes)
+                # 处理结果并持久化（带延迟索引写入）
                 batch_had_saves = False
                 for i, result in enumerate(results):
                     day_key = batch[i][0]
@@ -4768,8 +4757,8 @@ class CandlestickManager:
                         skipped += 1
                     else:
                         arr = result[1]
-                        # Defer index write - we'll flush once at the end of the batch
-                        # Skip memory retention to preserve full historical data for backtesting
+                        # 延迟索引写入 - 在批次结束时一次性刷新
+                        # 跳过内存保留以保留完整的历史数据用于回测
                         self._persist_batch(
                             symbol,
                             arr,
@@ -4800,14 +4789,14 @@ class CandlestickManager:
                         elapsed_s=batch_elapsed,
                     )
         except Exception:
-            # Re-raise, but ensure we still log completion below
+            # 重新抛出，但确保下面仍然记录完成日志
             raise
 
-        # Flush deferred index writes once after all batches complete
+        # 所有批次完成后一次性刷新延迟的索引写入
         if completed > 0:
             self.flush_deferred_index(symbol, tf="1m")
 
-        # Log completion summary
+        # 记录完成摘要
         total_elapsed = round(time.monotonic() - start_time, 1)
         self._log(
             "info",
@@ -4846,28 +4835,27 @@ class CandlestickManager:
         skip_historical_gap_fill: bool = False,
         max_lookback_candles: Optional[int] = None,
     ) -> np.ndarray:
-        """Return candles in inclusive range [start_ts, end_ts].
+        """返回包含范围 [start_ts, end_ts] 内的 K 线。
 
-        - If `end_ts` is None: floor(now/1m)*1m + 1m
-        - If `start_ts` is None: last `default_window_candles` minutes
-        - If `end_ts` provided but `start_ts` is None: end_ts - window
-        - If `max_age_ms` == 0: force refresh (no-op when exchange is None)
-        - Negative `max_age_ms` raises ValueError
-        - Applies gap standardization (1m only)
-        - If `force_refetch_gaps` is True: clears known gaps in the requested range
-          before fetching, forcing a retry of all gaps regardless of retry count
-        - If `fill_leading_gaps` is True: synthesize zero-candles even before the
-          first real data point (useful for EMA calculation)
-        - If `skip_historical_gap_fill` is True: do not attempt to fetch/fill gaps
-          in historical data older than 1 day. Useful for live bot warmup where
-          recent data is sufficient and filling old gaps wastes time.
-        - If `max_lookback_candles` is set: clamp start_ts so the request spans
-          at most that many candles ending at end_ts (per timeframe).
+        - 如果 `end_ts` 为 None：floor(now/1m)*1m + 1m
+        - 如果 `start_ts` 为 None：最后 `default_window_candles` 分钟
+        - 如果提供了 `end_ts` 但 `start_ts` 为 None：end_ts - window
+        - 如果 `max_age_ms` == 0：强制刷新（exchange 为 None 时无操作）
+        - 负数的 `max_age_ms` 抛出 ValueError
+        - 应用缺口标准化（仅 1m）
+        - 如果 `force_refetch_gaps` 为 True：在获取前清除请求范围内的已知缺口，
+          强制重试所有缺口，无论重试次数
+        - 如果 `fill_leading_gaps` 为 True：在第一个真实数据点之前也合成零成交 K 线
+          （适用于 EMA 计算）
+        - 如果 `skip_historical_gap_fill` 为 True：不尝试获取/填充超过 1 天的历史缺口。
+          适用于实盘机器人预热，仅需要近期数据，填充旧缺口浪费时间。
+        - 如果设置了 `max_lookback_candles`：裁剪 start_ts 使请求跨越的 K 线数
+          不超过该值（按时间周期计算）。
         """
         if max_age_ms is not None and max_age_ms < 0:
             raise ValueError("max_age_ms cannot be negative")
 
-        # Force refetch: clear known gaps in the requested range
+        # 强制重新获取：清除请求范围内的已知缺口
         if force_refetch_gaps:
             # Compute actual range first
             now = _utc_now_ms()
@@ -4888,11 +4876,11 @@ class CandlestickManager:
                     gaps_cleared=cleared,
                 )
 
-        # When a higher timeframe is requested, fetch it directly from the exchange
-        # and bypass the 1m cache/standardization logic.
+        # 当请求高级别时间周期时，直接从交易所获取
+        # 并绕过 1m 缓存/标准化逻辑。
         out_tf = timeframe or tf
         if out_tf is not None:
-            # parse timeframe to ms (bucket size)
+            # 解析时间周期为毫秒（桶大小）
             period_ms = _tf_to_ms(out_tf)
             if period_ms > ONE_MIN_MS and self.exchange is not None:
                 now = _utc_now_ms()
@@ -4903,7 +4891,7 @@ class CandlestickManager:
                     end_ts = min((int(end_ts) // period_ms) * period_ms, finalized_end)
 
                 if start_ts is None:
-                    # default window expressed in number of requested-tf buckets
+                    # 默认窗口以所请求时间周期的桶数表示
                     start_ts = int(end_ts) - self.default_window_candles * period_ms
                 start_ts = (int(start_ts) // period_ms) * period_ms
 
@@ -4919,7 +4907,7 @@ class CandlestickManager:
                 if start_ts > end_ts:
                     return np.empty((0,), dtype=CANDLE_DTYPE)
 
-                # Hyperliquid special case: max 5000 candles from current time for any tf
+                # Hyperliquid 特殊情况：任何时间周期从当前时间起最多 5000 根 K 线
                 try:
                     exid = (self._ex_id or "").lower() if isinstance(self._ex_id, str) else ""
                 except Exception:
@@ -4927,19 +4915,19 @@ class CandlestickManager:
                 if "hyperliquid" in exid:
                     earliest = int(finalized_end - period_ms * (5000 - 1))
                     if start_ts < earliest:
-                        # Mark older part as known gap to avoid repeated fetch attempts
+                        # 将较旧部分标记为已知缺口以避免重复获取尝试
                         gap_end = min(end_ts, earliest - period_ms)
                         if start_ts <= gap_end:
                             self._add_known_gap(symbol, int(start_ts), int(gap_end))
                         start_ts = max(start_ts, earliest)
 
-                # Load from disk shards for this TF (if present) before resorting to network
+                # 在求助于网络之前，先从磁盘分片加载该时间周期的数据
                 try:
                     disk_arr = self._load_from_disk(symbol, start_ts, end_ts, timeframe=out_tf)
                 except Exception:
                     disk_arr = None
 
-                # Check in-memory TF range cache first (LRU)
+                # 首先检查内存中的时间周期范围缓存（LRU）
                 cache_key = (str(out_tf), int(start_ts), int(end_ts))
                 sym_cache = self._tf_range_cache.setdefault(symbol, OrderedDict())
                 if cache_key in sym_cache:
@@ -4955,7 +4943,7 @@ class CandlestickManager:
                     ):
                         return arr_cached
 
-                # If disk has full coverage for this TF window, serve it without network
+                # 如果磁盘对该时间周期窗口有完整覆盖，不通过网络直接返回
                 if isinstance(disk_arr, np.ndarray) and disk_arr.size:
                     out_disk = self._slice_ts_range(disk_arr, start_ts, end_ts)
                     if out_disk.size:
@@ -5069,10 +5057,10 @@ class CandlestickManager:
 
         now = _utc_now_ms()
         if end_ts is None:
-            # Use last completed minute as inclusive end (exclude current in-progress minute)
+            # 使用最后已结束的分钟作为包含端（排除当前进行中的分钟）
             end_ts = _floor_minute(now) - ONE_MIN_MS
         else:
-            # Clamp to last completed minute
+            # 裁剪到最后已结束的分钟
             end_ts = min(_floor_minute(int(end_ts)), _floor_minute(now) - ONE_MIN_MS)
 
         if start_ts is None:
@@ -5092,7 +5080,7 @@ class CandlestickManager:
         if start_ts > end_ts:
             return np.empty((0,), dtype=CANDLE_DTYPE)
 
-        # Optionally refresh if range touches the latest finalized minute
+        # 可选：如果范围触及最新已结束分钟则刷新
         allow_fetch_present = True
         skip_present_fetch_due_to_ttl = False
         latest_finalized = _floor_minute(now) - ONE_MIN_MS
@@ -5125,12 +5113,10 @@ class CandlestickManager:
                 )
                 need_refresh = last_ref == 0 or (now - last_ref) > int(max_age_ms)
                 if not need_refresh:
-                    # Only force refresh if cached data lags by MORE than 1 candle
-                    # period.  Being exactly 1 minute behind is normal when a new
-                    # minute boundary crosses (e.g. right after warmup).  The TTL
-                    # alone governs refresh timing in that case — avoiding a
-                    # thundering-herd where all symbols refresh simultaneously on
-                    # minute transitions.
+                    # 仅当缓存数据落后超过 1 根 K 线周期时才强制刷新。
+                    # 恰好落后 1 分钟是正常的（如刚完成预热后的分钟边界跨越）。
+                    # 在这种情况下由 TTL 单独控制刷新时机 — 避免所有交易对
+                    # 在分钟边界同时刷新产生的惊群效应。
                     if last_final and (int(end_ts) - int(last_final)) > ONE_MIN_MS:
                         need_refresh = True
                 if need_refresh:
@@ -5139,17 +5125,17 @@ class CandlestickManager:
                     allow_fetch_present = False
                     skip_present_fetch_due_to_ttl = True
 
-        # Try to load from disk shards for this range before slicing memory
+        # 在切分内存之前，尝试从磁盘分片加载该范围
         try:
             self._load_from_disk(symbol, start_ts, end_ts, timeframe="1m")
         except Exception:  # pragma: no cover - best effort
             pass
 
-        # Get in-memory cached candles for the symbol and slice to requested range
+        # 获取交易对的内存缓存 K 线并切分到请求范围
         arr = _ensure_dtype(self._cache.get(symbol, np.empty((0,), dtype=CANDLE_DTYPE)))
         sub = self._slice_ts_range(arr, start_ts, end_ts) if arr.size else arr
 
-        # Determine if the requested historical window is fully covered in memory
+        # 确定请求的历史窗口是否在内存中完全覆盖
         def _is_fully_covered(a: np.ndarray, s_ts: int, e_ts: int) -> bool:
             if a.size == 0:
                 return False
@@ -5166,8 +5152,8 @@ class CandlestickManager:
 
         fully_covered = _is_fully_covered(sub, start_ts, end_ts)
         if skip_present_fetch_due_to_ttl and not fully_covered:
-            # TTL says data is fresh, but coverage is incomplete for requested range.
-            # Allow present fetch/gap fill to try and repair missing spans.
+            # TTL 表示数据新鲜，但请求范围的覆盖不完整。
+            # 允许即时获取/缺口填充尝试修复缺失区间。
             allow_fetch_present = True
             try:
                 missing_now = self._missing_spans(sub, start_ts, end_ts)
@@ -5184,14 +5170,14 @@ class CandlestickManager:
             except Exception:
                 pass
 
-        # For historical ranges, if we don't have shards for all days yet, fetch
-        # exactly the range and persist shards for future calls.
+        # 对于历史范围，如果尚无所有天的分片，则精确获取该范围
+        # 并持久化分片以供后续调用。
         end_finalized = latest_finalized
 
-        # Large span prefetch: If the request spans more than 2 days and is not fully
-        # covered, trigger archive prefetch for the historical portion even if end_ts
-        # touches the present. This fixes warmup requests that span 31 days but were
-        # previously skipping archive fetch because end_ts == latest_finalized.
+        # 大范围预取：如果请求跨越超过 2 天且未完全覆盖，
+        # 即使 end_ts 接近当前时间也触发历史部分的归档预取。
+        # 这修复了跨 31 天的预热请求之前因 end_ts == latest_finalized
+        # 而跳过归档获取的问题。
         span_minutes = (end_ts - start_ts) // ONE_MIN_MS
         large_span_threshold = 2 * 24 * 60  # 2 days in minutes
         archive_supported = self._archive_supported()
@@ -5212,9 +5198,8 @@ class CandlestickManager:
             and not fully_covered
             and archive_supported
         ):
-            # Prefetch archives for the historical portion (up to 2 days ago, since
-            # archives typically lag by 1-2 days). Also respect the user's requested
-            # end_ts to avoid fetching beyond the requested date range.
+            # 预取历史部分的归档（最多到 2 天前，因为归档通常滞后 1-2 天）。
+            # 同时尊重用户请求的 end_ts 以避免获取超出请求日期范围的数据。
             archive_end_ts = min(end_finalized - 2 * 24 * 60 * ONE_MIN_MS, end_ts)
             if start_ts < archive_end_ts:
                 self._log(
@@ -5226,7 +5211,7 @@ class CandlestickManager:
                     archive_end_ts=archive_end_ts,
                 )
                 await self._prefetch_archives_for_range(symbol, start_ts, archive_end_ts)
-                # Reload from disk after archive fetch
+                # 从磁盘重新加载归档获取后的数据
                 try:
                     self._load_from_disk(symbol, start_ts, end_ts, timeframe="1m")
                 except Exception:
@@ -5235,10 +5220,10 @@ class CandlestickManager:
                 sub = self._slice_ts_range(arr, start_ts, end_ts) if arr.size else arr
                 fully_covered = _is_fully_covered(sub, start_ts, end_ts)
 
-        # Treat ranges ending exactly at the latest finalized minute as present-touching
-        # UNLESS the span is large (>2 days) and not fully covered - then treat as historical
-        # to trigger gap filling via CCXT. This fixes warmup requests that span 31 days but
-        # were skipping gap detection because end_ts == latest_finalized.
+        # 将恰好结束于最新已结束分钟的范围视为触及当前时间，
+        # 除非跨度大（>2 天）且未完全覆盖 - 此时视为历史范围
+        # 以触发通过 CCXT 填充缺口。这修复了跨 31 天的预热请求
+        # 之前因 end_ts == latest_finalized 而跳过缺口检测的问题。
         historical = end_ts < end_finalized
         if (
             not historical
@@ -5255,12 +5240,12 @@ class CandlestickManager:
             )
             historical = True
         if self.exchange is not None and historical and not skip_historical_gap_fill:
-            # If the requested historical window is not fully covered in memory,
-            # attempt to fetch unknown missing spans, regardless of shard presence.
-            # Skip this if skip_historical_gap_fill is set (e.g., live warmup where
-            # we only need recent data and old gaps don't matter).
+            # 如果请求的历史窗口在内存中未完全覆盖，
+            # 尝试获取未知的缺失区间，无论分片是否存在。
+            # 如果设置了 skip_historical_gap_fill 则跳过（例如实盘预热仅需要
+            # 近期数据，旧缺口无关紧要）。
             if not fully_covered:
-                # Hyperliquid special case: cap lookback to last 5000 minutes
+                # Hyperliquid 特殊情况：限制回看长度为最后 5000 分钟
                 try:
                     exid = (self._ex_id or "").lower() if isinstance(self._ex_id, str) else ""
                 except Exception:
@@ -5299,21 +5284,21 @@ class CandlestickManager:
                             self._gateio_recent_window_clip_warned.add(symbol)
                         adj_start_ts = max(adj_start_ts, earliest)
 
-                # Skip fetch if all missing spans are already known persistent gaps
+                # 如果所有缺失区间都已是已知的持久缺口则跳过获取
                 missing_before = self._missing_spans(sub, start_ts, end_ts)
 
                 def span_in_persistent_gap(s: int, e: int) -> bool:
-                    """Check if span is fully contained in a persistent (max retries) gap.
+                    """检查区间是否完全包含在一个持久（已达最大重试次数）缺口中。
 
-                    NOTE: We reload gaps fresh each call to avoid stale closures when
-                    _add_known_gap() is called within the same function context.
+                    注意：每次调用重新加载缺口以避免在同一函数上下文中
+                    调用 _add_known_gap() 时的过期闭包。
                     """
                     known_enhanced = self._get_known_gaps_enhanced(symbol)
                     for gap in known_enhanced:
                         if s >= gap["start_ts"] and e <= gap["end_ts"]:
                             # Only consider it "known" if it's persistent (max retries reached)
                             if not self._should_retry_gap(gap):
-                                return True
+                                return True  # 仅当达到最大重试次数时视为"已知"
                     return False
 
                 unknown_missing = [
@@ -5337,7 +5322,7 @@ class CandlestickManager:
                                 (s, e) for (s, e) in missing_after if not span_in_persistent_gap(s, e)
                             ]
                             if unknown_after:
-                                # Only attempt archive prefetch for genuinely missing full days.
+                                # 仅对真正缺失的完整天尝试归档预取。
                                 await self._prefetch_archives_for_range(symbol, adj_start_ts, end_ts)
                                 try:
                                     self._load_from_disk(symbol, start_ts, end_ts, timeframe="1m")
@@ -5362,7 +5347,7 @@ class CandlestickManager:
                                     nonlocal persisted_batches, deferred_index_any
                                     persisted_batches = True
                                     deferred_index_any = True
-                                    # Skip memory retention to preserve full historical data
+                                    # 跳过内存保留以保留完整的历史数据
                                     self._persist_batch(
                                         symbol,
                                         batch,
@@ -5382,8 +5367,8 @@ class CandlestickManager:
                                     last_end_ts=int(unknown_after[-1][1]),
                                 )
 
-                                # Coalesce many small missing spans into per-day fetch windows.
-                                # This avoids thousands of tiny CCXT requests when gaps are fragmented.
+                                # 将许多小缺失区间合并为按天的获取窗口。
+                                # 这避免了缺口碎片化时产生数千个微小的 CCXT 请求。
                                 spans_to_fetch: List[Tuple[int, int]] = list(unknown_after)
                                 try:
                                     day_windows: Dict[str, Tuple[int, int]] = {}
@@ -5421,7 +5406,7 @@ class CandlestickManager:
                                 except Exception:
                                     spans_to_fetch = list(unknown_after)
 
-                                # Fetch only the missing spans (not the whole historical range).
+                                # 仅获取缺失区间（而非整个历史范围）。
                                 for s, e in spans_to_fetch:
                                     s2 = max(int(s), int(adj_start_ts))
                                     e2 = int(e)
@@ -5448,7 +5433,7 @@ class CandlestickManager:
                                             self.flush_deferred_index(symbol, tf="1m")
                                         except (
                                             Exception
-                                        ) as exc:  # best-effort; keep fetching even if index update fails
+                                        ) as exc:  # 尽力而为；即使索引更新失败也继续获取
                                             if not flush_failed_once:
                                                 try:
                                                     err_type = type(exc).__name__
@@ -5467,7 +5452,7 @@ class CandlestickManager:
                                                 flush_failed_once = True
                                         deferred_index_any = False
                                     if fetched.size and not persisted_batches:
-                                        # Skip memory retention to preserve full historical data
+                                        # 跳过内存保留以保留完整的历史数据
                                         self._persist_batch(
                                             symbol,
                                             fetched,
@@ -5481,7 +5466,7 @@ class CandlestickManager:
                                             self.flush_deferred_index(symbol, tf="1m")
                                         except (
                                             Exception
-                                        ) as exc:  # best-effort; keep fetching even if index update fails
+                                        ) as exc:  # 尽力而为；即使索引更新失败也继续获取
                                             if not flush_failed_once:
                                                 try:
                                                     err_type = type(exc).__name__
@@ -5532,7 +5517,7 @@ class CandlestickManager:
                                             increment_retry=True,
                                         )
         elif self.exchange is not None and allow_fetch_present:
-            # Range touches present (end at or beyond current minute); fetch up to current minute inclusive
+            # 范围触及当前时间（end 在或超过当前分钟）；获取到当前分钟（包含）
             end_current = _floor_minute(now)
             end_excl = min(end_ts + ONE_MIN_MS, end_current + ONE_MIN_MS)
             if start_ts < end_excl:
@@ -5619,10 +5604,9 @@ class CandlestickManager:
                         )
                         sub = self._slice_ts_range(arr, start_ts, end_ts) if arr.size else arr
 
-        # Best-effort tail completion (present-only): if we still miss trailing
-        # minutes within the requested window, attempt one more fetch from the
-        # last available ts. Skip for historical ranges to avoid redundant calls
-        # when exchanges have permanent holes.
+        # 尽力尾部补全（仅当前时间）：如果仍缺失请求窗口内的尾部分钟，
+        # 从最后一个可用 ts 尝试一次额外获取。跳过历史范围以避免交易所有
+        # 永久性空洞时的冗余调用。
         if self.exchange is not None and allow_fetch_present and not historical:
             end_current = _floor_minute(now)
             end_excl_range = (
@@ -5693,17 +5677,17 @@ class CandlestickManager:
                     arr = np.sort(self._cache[symbol], order="ts")
                     sub = self._slice_ts_range(arr, start_ts, end_ts)
 
-        # Gap-oriented fetch and tagging (present-only): try filling internal
-        # gaps once; mark remaining as known gaps. Skip for pure historical
-        # windows; those are handled above with known-gap marking.
+        # 缺口导向的获取和标记（仅当前时间）：尝试填充内部缺口一次；
+        # 将剩余的标记为已知缺口。跳过纯历史窗口；这些在上方已通过
+        # 已知缺口标记处理。
         if self.exchange is not None and allow_fetch_present and not historical:
             end_current = _floor_minute(now)
             inclusive_end = end_ts if historical else min(end_ts, end_current)
             missing = self._missing_spans(sub, start_ts, inclusive_end)
             if missing:
-                # Helper to test if a span is fully inside any persistent known gap
+                # 辅助函数：测试区间是否完全在某个持久已知缺口内
                 def span_in_persistent_gap_present(s: int, e: int) -> bool:
-                    """Check if span is in persistent gap. Reloads gaps to avoid stale data."""
+                    """检查区间是否在持久缺口内。重新加载缺口以避免过期数据。"""
                     known_enhanced_present = self._get_known_gaps_enhanced(symbol)
                     for gap in known_enhanced_present:
                         if s >= gap["start_ts"] and e <= gap["end_ts"]:
@@ -5711,7 +5695,7 @@ class CandlestickManager:
                                 return True
                     return False
 
-                # Attempt limited targeted fetches for unknown spans
+                # 对未知区间尝试有限的目标获取
                 attempts = 0
                 max_attempts = 10 if self._ccxt_since_exclusive else 3
                 attempted: List[Tuple[int, int]] = []
@@ -5775,17 +5759,17 @@ class CandlestickManager:
                             sub = self._slice_ts_range(arr, start_ts, end_ts, assume_sorted=True)
                         else:
                             noresult.append((s, e))
-                # After attempts, recompute missing and tag remaining as known gaps
+                # 尝试后，重新计算缺失并将剩余的标记为已知缺口
                 still_missing = self._missing_spans(sub, start_ts, inclusive_end)
-                # Only mark as known those attempted spans that still remain missing
+                # 仅将仍缺失的已尝试区间标记为已知
                 for s, e in noresult:
-                    # find overlapping portion with any still missing
+                    # 找到与仍缺失区间的重叠部分
                     for ms, me in still_missing:
                         if not (e < ms or s > me):
                             self._add_known_gap(symbol, max(s, ms), min(e, me))
 
-        # Present-touching runtime path: if there were no trades in completed minutes,
-        # materialize zero-volume candles in RAM (not persisted).
+        # 触及当前时间的运行时路径：如果已结束分钟内没有交易，
+        # 在内存中物化零成交量 K 线（不持久化）。
         if self.exchange is not None and not strict and end_ts >= latest_finalized:
             synth_through = min(int(end_ts), int(latest_finalized))
             if synth_through >= int(start_ts):
@@ -5794,9 +5778,9 @@ class CandlestickManager:
                     arr = _ensure_dtype(self._cache.get(symbol, np.empty((0,), dtype=CANDLE_DTYPE)))
                     sub = self._slice_ts_range(arr, start_ts, end_ts) if arr.size else arr
 
-        # Standardize gaps: synthesize zero-candles where missing.
-        # To help seed forward-fill, include one candle before start_ts if available.
-        # This ensures standardize_gaps has a prev_close even if sub starts after start_ts.
+        # 标准化缺口：为缺失的分钟合成零成交 K 线。
+        # 为帮助前向填充种子计算，如果可用则包含 start_ts 之前的一根 K 线。
+        # 这确保标准缺口操作有一个 prev_close，即使 sub 在 start_ts 之后开始。
         data_for_gaps = sub
         if sub.size == 0 or (sub.size > 0 and int(sub[0]["ts"]) > start_ts):
             full_arr = self._cache.get(symbol)
@@ -5821,28 +5805,28 @@ class CandlestickManager:
             symbol=symbol,
         )
 
-        # Log accumulated gap summaries (throttled)
+        # 记录累积的缺口摘要（节流）
         self._log_persistent_gap_summary()
         self._log_strict_gaps_summary()
 
         return result
 
     async def get_current_close(self, symbol: str, max_age_ms: Optional[int] = None) -> float:
-        """Return latest close of the current in-progress minute for `symbol`.
+        """返回交易对当前进行中分钟的最新收盘价。
 
-        Prefers candles over tickers:
-        - Cached current close within TTL
-        - Fresh in-memory current-minute candle
-        - get_candles for the current minute
-        - As last resort: fetch_ticker
-        - Fallback: last finalized cached close
+        优先使用 K 线而非行情：
+        - TTL 内的缓存当前收盘价
+        - 内存中新鲜的当前分钟 K 线
+        - 当前分钟的 get_candles
+        - 最后手段：fetch_ticker
+        - 兜底：最后已缓存的已结束收盘价
         """
         if max_age_ms is not None and max_age_ms < 0:
             raise ValueError("max_age_ms cannot be negative")
         now = _utc_now_ms()
         end_current = _floor_minute(now)
 
-        # 1) TTL cache
+        # 1) TTL 缓存
         if max_age_ms is not None and max_age_ms > 0:
             prev = self._current_close_cache.get(symbol)
             if prev is not None:
@@ -5853,7 +5837,7 @@ class CandlestickManager:
 
         price: Optional[float] = None
 
-        # 2) In-memory current-minute candle fresh enough
+        # 2) 内存中足够新鲜的当前分钟 K 线
         try:
             arr = self._cache.get(symbol)
             if arr is not None and arr.size:
@@ -5872,7 +5856,7 @@ class CandlestickManager:
         except Exception:
             pass
 
-        # 3) Use candles API to get current minute
+        # 3) 使用 K 线 API 获取当前分钟
         got = None
         try:
             self._log(
@@ -5904,8 +5888,8 @@ class CandlestickManager:
                 last_ref = self._get_last_refresh_ms(symbol)
             except Exception:
                 last_ref = 0
-            # If we have a recent refresh (or TTL not enforced), fall back to last finalized candle
-            # to avoid redundant tail fetches. Treat max_age_ms=None as no TTL barrier.
+            # 如果有近期刷新（或未强制 TTL），回退到最后已结束的 K 线
+            # 以避免冗余尾部获取。将 max_age_ms=None 视为无 TTL 限制。
             ttl_ok = True
             if max_age_ms is not None and max_age_ms > 0:
                 ttl_ok = (now - int(last_ref)) <= int(max_age_ms)
@@ -5935,7 +5919,7 @@ class CandlestickManager:
                     except Exception:
                         pass
 
-        # 3b) Directly fetch a small tail window via OHLCV (with cross-process lock) and merge to cache
+        # 3b) 直接通过 OHLCV 获取小尾部窗口（带跨进程锁）并合并到缓存
         if self.exchange is not None:
             try:
                 async with self._acquire_fetch_lock(symbol, "1m"):
@@ -5943,7 +5927,7 @@ class CandlestickManager:
                     end_current_locked = _floor_minute(now_locked)
                     last_final_locked = end_current_locked - ONE_MIN_MS
 
-                    # Refresh cache from disk before deciding to fetch
+                    # 在决定获取前从磁盘刷新缓存
                     try:
                         self._load_from_disk(
                             symbol, last_final_locked, end_current_locked, timeframe="1m"
@@ -6021,7 +6005,7 @@ class CandlestickManager:
             except Exception:
                 pass
 
-        # 4) Last resort: ticker
+        # 4) 最后手段：行情
         if self.exchange is not None:
             try:
                 if hasattr(self.exchange, "fetch_ticker"):
@@ -6045,7 +6029,7 @@ class CandlestickManager:
             except Exception:
                 pass
 
-        # 5) Fallback to last cached finalized candle
+        # 5) 兜底：最后缓存的已结束 K 线
         if price is None:
             arr2 = self._cache.get(symbol)
             if arr2 is not None and arr2.size:
@@ -6060,20 +6044,20 @@ class CandlestickManager:
         return float(price)
 
     def set_current_close(self, symbol: str, price: float, timestamp_ms: int) -> None:
-        """Inject a price into the current-close cache (e.g. from a bulk API call)."""
+        """将价格注入当前收盘价缓存（例如来自批量 API 调用）。"""
         self._current_close_cache[symbol] = (float(price), int(timestamp_ms))
 
     def is_rate_limited(self) -> bool:
-        """Return True if a global rate-limit backoff is active."""
+        """如果全局速率限制退避处于活动状态则返回 True。"""
         return self._rate_limit_until > time.time()
 
-    # ----- EMA helpers -----
+    # ----- EMA 辅助方法 -----
 
     def _ema(self, values: np.ndarray, span: float) -> float:
         return float(self._ema_series(values, span)[-1])
 
     def _ema_series(self, values: np.ndarray, span: float) -> np.ndarray:
-        """Return bias-corrected EMA (pandas ewm adjust=True) over `values`."""
+        """返回 `values` 的偏差修正 EMA（pandas ewm adjust=True）。"""
 
         n = int(values.shape[0])
         if n == 0:
@@ -6103,7 +6087,7 @@ class CandlestickManager:
     ) -> Tuple[int, int]:
         span_candles = max(1, int(math.ceil(float(span))))
         now = _utc_now_ms()
-        # Align to timeframe buckets and exclude current in-progress bucket
+        # 对齐到时间周期桶并排除当前进行中的桶
         end_floor = (int(now) // int(period_ms)) * int(period_ms)
         end_ts = int(end_floor - period_ms)
         start_ts = int(end_ts - period_ms * (span_candles - 1))
@@ -6118,14 +6102,14 @@ class CandlestickManager:
         timeframe: Optional[str] = None,
         tf: Optional[str] = None,
     ) -> float:
-        """Return latest EMA of close over last `span` finalized candles.
+        """返回最后 `span` 根已结束 K 线的收盘价 EMA。
 
-        Supports higher timeframe via `tf`/`timeframe`.
+        支持通过 `tf`/`timeframe` 指定高级别时间周期。
         """
         out_tf = timeframe if timeframe is not None else tf
         period_ms = _tf_to_ms(out_tf)
         start_ts, end_ts = await self._latest_finalized_range(span, period_ms=period_ms)
-        # EMA result cache: reuse if end_ts unchanged and within TTL
+        # EMA 结果缓存：如果 end_ts 不变且在 TTL 内则复用
         now = _utc_now_ms()
         tf_key = str(period_ms)
         key = ("close", float(span), tf_key)
@@ -6141,7 +6125,7 @@ class CandlestickManager:
             return float("nan")
         closes = np.asarray(arr["c"], dtype=np.float64)
         res = float(self._ema(closes, span))
-        # Store in cache
+        # 存入缓存
         cache[key] = (res, int(end_ts), int(now))
         return res
 
@@ -6155,11 +6139,11 @@ class CandlestickManager:
         timeframe: Optional[str] = None,
         tf: Optional[str] = None,
     ) -> Tuple[float, float]:
-        """Return (lower, upper) bounds from EMAs at spans {span_0, span_1, span_2}.
+        """返回从 span {span_0, span_1, span_2} 的 EMA 计算的 (lower, upper) 边界。
 
-        span_2 = sqrt(span_0 * span_1). Spans are treated as floats (no rounding),
-        matching the canonical EMA-alpha formulation `2/(span+1)`.
-        Forwards timeframe and TTL to get_latest_ema_close and computes the three EMAs concurrently.
+        span_2 = sqrt(span_0 * span_1)。span 视为浮点数（不舍入），
+        匹配规范 EMA-alpha 公式 `2/(span+1)`。
+        将时间周期和 TTL 传递给 get_latest_ema_close 并并发计算三个 EMA。
         """
         from math import isfinite
 
@@ -6180,11 +6164,11 @@ class CandlestickManager:
         return float(min(vals)), float(max(vals))
 
     async def get_last_prices(self, symbols: List[str], max_age_ms: int = 10_000) -> Dict[str, float]:
-        """Return latest close for current minute per symbol.
+        """返回每个交易对当前分钟的最新收盘价。
 
-        Uses a cheap cache pass first, then one bulk ticker snapshot when safe,
-        and only falls back to per-symbol get_current_close for any leftovers.
-        Returns 0.0 on failure.
+        先使用廉价缓存遍历，然后在安全时使用一次批量行情快照，
+        最后仅对剩余交易对回退到逐个 get_current_close。
+        失败时返回 0.0。
         """
         out: Dict[str, float] = {}
         if not symbols:
@@ -6235,7 +6219,7 @@ class CandlestickManager:
         end_current_ms: int,
         max_age_ms: Optional[int],
     ) -> Optional[float]:
-        """Cheap non-fetching latest-price probe for bulk get_last_prices()."""
+        """廉价的非获取式最新价格探测，用于批量 get_last_prices()。"""
         try:
             if max_age_ms is not None and max_age_ms > 0:
                 prev = self._current_close_cache.get(symbol)
@@ -6268,7 +6252,7 @@ class CandlestickManager:
         return None
 
     def _bulk_last_price_tickers_allowed(self) -> bool:
-        """Return True when bulk ticker snapshot is a safe latest-price fallback."""
+        """当批量行情快照是安全的最新价格回退时返回 True。"""
         ex = str(getattr(self, "exchange_name", "") or getattr(self, "_ex_id", "") or "").lower()
         return ex not in {"hyperliquid"}
 
@@ -6278,7 +6262,7 @@ class CandlestickManager:
         *,
         now_ms: int,
     ) -> Dict[str, float]:
-        """Fetch latest prices for many symbols via one bulk ticker snapshot when safe."""
+        """在安全时通过一次批量行情快照获取多个交易对的最新价格。"""
         out: Dict[str, float] = {}
         if (
             len(symbols) <= 1
@@ -6348,9 +6332,9 @@ class CandlestickManager:
         timeframe: Optional[str] = None,
         tf: Optional[str] = None,
     ) -> Dict[str, Tuple[float, float]]:
-        """Return EMA bounds per symbol for a list of (symbol, span_0, span_1).
+        """返回多个交易对的 EMA 边界，输入为 (symbol, span_0, span_1) 列表。
 
-        Returns mapping symbol -> (lower, upper), using get_ema_bounds per symbol.
+        返回映射 symbol -> (lower, upper)，使用每个交易对的 get_ema_bounds。
         """
         out: Dict[str, Tuple[float, float]] = {}
         if not items:
@@ -6382,10 +6366,10 @@ class CandlestickManager:
         timeframe: Optional[str] = None,
         tf: Optional[str] = "1h",
     ) -> Dict[str, float]:
-        """Return latest log-range EMA for each (symbol, span) pair.
+        """返回每个 (symbol, span) 对的最新对数区间 EMA。
 
-        Each span is interpreted in candle units of the provided timeframe (`tf` defaults to 1h).
-        Returns 0.0 on failures or non-finite results.
+        每个 span 以所提供的时间周期（`tf` 默认为 1h）的 K 线数为单位。
+        失败或非有限结果时返回 0.0。
         """
         out: Dict[str, float] = {}
         if not items:
@@ -6437,11 +6421,11 @@ class CandlestickManager:
         timeframe: Optional[str] = None,
         tf: Optional[str] = None,
     ) -> float:
-        """Return latest EMA of quote volume over last `span` finalized candles.
+        """返回最后 `span` 根已结束 K 线的报价量 EMA。
 
-        Quote volume per candle is approximated as base_volume * typical_price,
-        where typical_price = (high + low + close) / 3. This is a common
-        approximation when trade-level VWAP is not available.
+        每根 K 线的报价量近似为 base_volume * typical_price，
+        其中 typical_price = (high + low + close) / 3。这是当逐笔
+        VWAP 不可用时的常用近似方法。
         """
         return await self._get_latest_ema_generic(
             symbol,
@@ -6472,10 +6456,10 @@ class CandlestickManager:
         metric_key: str,
         series_fn,
     ) -> float:
-        """Shared implementation for EMA helpers over a derived series.
+        """EMA 辅助方法的共享实现，基于派生序列计算。
 
-        series_fn: callable taking the candles ndarray and returning a 1-D float64 series.
-        metric_key: short key used in EMA cache to distinguish metrics (e.g., 'volume', 'qv').
+        series_fn: 接受 K 线 ndarray 并返回一维 float64 序列的可调用对象。
+        metric_key: 用于 EMA 缓存中区分指标的短键（如 'volume'、'qv'）。
         """
         out_tf = timeframe if timeframe is not None else tf
         period_ms = _tf_to_ms(out_tf)
@@ -6508,13 +6492,13 @@ class CandlestickManager:
         timeframe: Optional[str] = None,
         tf: Optional[str] = None,
     ) -> Dict[str, float]:
-        """Compute multiple latest-EMA metrics with a single candles fetch.
+        """通过单次 K 线获取计算多个最新 EMA 指标。
 
-        This is an optimization wrapper around get_candles() + EMA calculations. It preserves the
-        per-metric behavior of get_latest_ema_* helpers by:
-        - Using a single `get_candles()` call for the largest requested span.
-        - For 1m candles: applying gap standardization per metric window (same as get_candles()).
-        - Caching results in `self._ema_cache` per (metric, span, timeframe).
+        这是 get_candles() + EMA 计算的优化包装。它保留了
+        get_latest_ema_* 辅助方法的逐指标行为：
+        - 使用单次 `get_candles()` 调用获取最大请求 span 的超集窗口。
+        - 对于 1m K 线：按指标窗口应用缺口标准化（与 get_candles() 相同）。
+        - 将结果缓存在 `self._ema_cache` 中，按 (metric, span, timeframe) 键。
         """
         out: Dict[str, float] = {}
         if not spans_by_metric:
@@ -6522,7 +6506,7 @@ class CandlestickManager:
 
         out_tf = timeframe if timeframe is not None else tf
         period_ms = _tf_to_ms(out_tf)
-        # Use the largest span to fetch a superset window.
+        # 使用最大 span 获取超集窗口。
         max_span = max(float(s) for s in spans_by_metric.values())
         max_candles = max(1, int(math.ceil(max_span)))
         start_ts, end_ts = await self._latest_finalized_range(max_span, period_ms=period_ms)
@@ -6549,8 +6533,8 @@ class CandlestickManager:
         if not missing:
             return out
 
-        # Fetch raw candles for the superset range once.
-        # For 1m, we re-apply standardize_gaps per metric window to match per-call behavior.
+        # 一次获取超集范围的原始 K 线。
+        # 对于 1m，按指标窗口重新应用 standardize_gaps 以匹配逐调用行为。
         raw = await self.get_candles(
             symbol,
             start_ts=start_ts,
@@ -6590,12 +6574,12 @@ class CandlestickManager:
         for metric_key in missing:
             span = float(spans_by_metric[metric_key])
             span_candles = max(1, int(math.ceil(span)))
-            # Get window ending at end_ts. Prefer slicing by tail length; if data is short, use what we have.
+            # 获取以 end_ts 结尾的窗口。优先按尾部长度切分；如果数据短则用全部。
             tail = raw[-span_candles:] if raw.size > span_candles else raw
             if period_ms == ONE_MIN_MS:
-                # Re-apply gap standardization on the requested metric window.
-                # This matches get_candles(strict=False) behavior for the same [start,end] window.
-                # tail is a slice of sorted get_candles output, so assume_sorted=True
+                # 在请求的指标窗口重新应用缺口标准化。
+                # 这匹配同一 [start,end] 窗口的 get_candles(strict=False) 行为。
+                # tail 是已排序的 get_candles 输出的切片，因此 assume_sorted=True
                 metric_start_ts = int(end_ts - period_ms * (span_candles - 1))
                 tail = self.standardize_gaps(
                     tail, start_ts=metric_start_ts, end_ts=end_ts, strict=False, assume_sorted=True
@@ -6632,7 +6616,7 @@ class CandlestickManager:
             ),
         )
 
-    # ----- EMA series helpers -----
+    # ----- EMA 序列辅助方法 -----
 
     async def get_ema_close_series(
         self,
@@ -6711,21 +6695,21 @@ class CandlestickManager:
         out["ema"] = ema_vals.astype(np.float32, copy=False)
         return out
 
-    # ----- Warmup and refresh -----
+    # ----- 预热和刷新 -----
 
     async def warmup_since(self, symbols, since_ts: int) -> None:
-        """Backfill/warmup for symbols since a timestamp (no-op network in tests)."""
+        """从指定时间戳起回填/预热交易对（测试中网络操作为空操作）。"""
         tasks = [self.refresh(sym, through_ts=None) for sym in symbols]
-        # Do sequentially to match test monkeypatch expectations
+        # 按顺序执行以匹配测试 monkeypatch 预期
         for t in tasks:
             await t
 
     async def refresh(self, symbol: str, through_ts: Optional[int] = None) -> None:
-        """Fetch new candles and merge into cache.
+        """获取新 K 线并合并到缓存。
 
-        - Overlaps by `overlap_candles`
-        - Excludes current in-progress minute
-        - No-op if `self.exchange` is None
+        - 按 `overlap_candles` 重叠
+        - 排除当前进行中的分钟
+        - 如果 `self.exchange` 为 None 则无操作
         """
         if self.exchange is None:
             return None
@@ -6735,8 +6719,8 @@ class CandlestickManager:
         if through_ts is not None:
             end_exclusive = min(end_exclusive, _floor_minute(int(through_ts)) + ONE_MIN_MS)
 
-        # Refresh only needs to reconcile recent on-disk candles to avoid unnecessary
-        # full-history loads/sorts. Historical ranges are handled on-demand via get_candles().
+        # 刷新仅需要协调最近的磁盘 K 线以避免不必要的
+        # 全历史加载/排序。历史范围通过 get_candles() 按需处理。
         lookback_candles = max(int(self.default_window_candles), int(self.overlap_candles)) + 10
         disk_since = max(0, int(end_exclusive) - int(lookback_candles) * ONE_MIN_MS)
 
@@ -6775,7 +6759,7 @@ class CandlestickManager:
             return None
 
         async with self._acquire_fetch_lock(symbol, "1m"):
-            # Re-evaluate with lock in case another process already fetched.
+            # 加锁后重新评估，以防另一进程已经获取。
             try:
                 self._load_from_disk(symbol, disk_since, end_exclusive, timeframe="1m")
             except Exception:
@@ -6842,7 +6826,7 @@ class CandlestickManager:
             except TypeError:
                 new_arr = await self._fetch_ohlcv_paginated(symbol, since, end_exclusive)
             if new_arr.size == 0:
-                # Keep finalized runtime candles contiguous even if there were no fills.
+                # 即使没有填充也保持已结束的运行时 K 线连续。
                 self._materialize_runtime_synthetic_gap(symbol, end_exclusive - ONE_MIN_MS)
                 return None
             if not persisted_batches:
@@ -6855,7 +6839,7 @@ class CandlestickManager:
                 )
             return None
 
-    # ----- Persistence -----
+    # ----- 持久化 -----
 
     def _save_shard(
         self,
@@ -6867,18 +6851,18 @@ class CandlestickManager:
         tf: Optional[str] = None,
         defer_index: bool = False,
     ) -> None:
-        """Save shard as .npy and update index.json atomically.
+        """将分片保存为 .npy 并原子性更新 index.json。
 
-        Parameters
+        参数
         ----------
         symbol : str
-            Trading symbol.
+            交易对。
         date_key : str
-            YYYY-MM-DD string used as shard filename.
+            用作分片文件名的 YYYY-MM-DD 字符串。
         array : np.ndarray
-            Structured array of dtype CANDLE_DTYPE to write.
+            要写入的 dtype 为 CANDLE_DTYPE 的结构化数组。
         defer_index : bool
-            If True, skip writing index.json (caller must call flush_deferred_index later).
+            如果为 True，跳过写入 index.json（调用者必须稍后调用 flush_deferred_index）。
         """
         arr = _ensure_dtype(array)
         if arr.size == 0:
@@ -6890,15 +6874,15 @@ class CandlestickManager:
 
         tf_norm = self._normalize_timeframe_arg(timeframe, tf)
 
-        # If legacy already has a continuous 1m day shard, skip writing this primary shard.
-        # Primary should only fill legacy gaps.
+        # 如果旧版已有连续的 1m 日分片，跳过写入此主分片。
+        # 主分片仅用于填充旧版缺口。
         if tf_norm == "1m":
             try:
                 if self._legacy_day_is_complete(symbol, tf_norm, date_key):
                     return
             except (
                 Exception
-            ) as exc:  # best-effort; legacy cache may be unreadable, fall back to primary write
+            ) as exc:  # 尽力而为；旧版缓存可能不可读，回退到主分片写入
                 try:
                     err_type = type(exc).__name__
                     err_repr = repr(exc)
@@ -6916,8 +6900,8 @@ class CandlestickManager:
                 )
         shard_path = self._shard_path(symbol, date_key, tf=tf_norm)
         os.makedirs(os.path.dirname(shard_path), exist_ok=True)
-        # Write .npy content atomically
-        # Use numpy.save to ensure .npy format, writing to a temp path then replace
+        # 原子性写入 .npy 内容
+        # 使用 numpy.save 确保 .npy 格式，先写入临时路径再替换
         tmp_path = f"{shard_path}.tmp"
         with open(tmp_path, "wb") as f:
             np.save(f, arr)
@@ -6925,12 +6909,12 @@ class CandlestickManager:
             os.fsync(f.fileno())
         os.replace(tmp_path, shard_path)
 
-        # Update shard paths cache directly instead of invalidating (avoids re-scan)
+        # 直接更新分片路径缓存而非失效（避免重新扫描）
         cache_key = (symbol, tf_norm)
         if cache_key in self._shard_paths_cache:
             self._shard_paths_cache[cache_key][date_key] = shard_path
 
-        # Update in-memory index
+        # 更新内存索引
         idx = self._ensure_symbol_index(symbol, tf=tf_norm)
         shards = idx.setdefault("shards", {})
         shards[date_key] = {
@@ -6943,10 +6927,10 @@ class CandlestickManager:
         key = f"{symbol}::{tf_norm}"
         self._index[key] = idx
 
-        # Write index to disk unless deferred
+        # 除非延迟否则将索引写入磁盘
         if not defer_index:
             self._save_index(symbol, tf=tf_norm)
-            # Enforce disk retention per timeframe after writing this shard
+            # 写入此分片后按时间周期执行磁盘保留策略
             try:
                 self._enforce_disk_retention(symbol, tf=tf_norm)
             except Exception:
@@ -6959,7 +6943,7 @@ class CandlestickManager:
         timeframe: Optional[str] = None,
         tf: Optional[str] = None,
     ) -> None:
-        """Flush any deferred index updates for a symbol to disk."""
+        """将交易对的任何延迟索引更新刷新到磁盘。"""
         tf_norm = self._normalize_timeframe_arg(timeframe, tf)
         self._save_index(symbol, tf=tf_norm)
         try:
@@ -6967,25 +6951,25 @@ class CandlestickManager:
         except Exception:
             pass
 
-    # ----- Context manager and shutdown -----
+    # ----- 上下文管理器和关闭 -----
 
     async def aclose(self) -> None:
-        """Async close: flush and close resources including HTTP session."""
+        """异步关闭：刷新并关闭资源，包括 HTTP 会话。"""
         await self._close_http_session()
 
     def close(self) -> None:
-        """Sync close: attempt to close HTTP session if event loop is running."""
-        # Try to close HTTP session synchronously if possible
+        """同步关闭：如果事件循环正在运行则尝试关闭 HTTP 会话。"""
+        # 尝试同步关闭 HTTP 会话
         if self._http_session is not None and not self._http_session.closed:
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    # Schedule cleanup but don't wait
+                    # 安排清理但不等待
                     asyncio.create_task(self._close_http_session())
                 else:
                     loop.run_until_complete(self._close_http_session())
             except Exception:
-                pass  # Best effort cleanup
+                pass  # 尽力清理
 
     def __enter__(self):  # pragma: no cover - not exercised by tests
         return self

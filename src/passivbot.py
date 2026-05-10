@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import time
 
-# fix Crashes on Windows
+# 修复 Windows 上的崩溃问题
 from tools.event_loop_policy import set_windows_event_loop_policy
 
 set_windows_event_loop_policy()
@@ -110,12 +110,12 @@ import re
 
 NetworkError = ccxt_errors.NetworkError
 RateLimitExceeded = ccxt_errors.RateLimitExceeded
-# Some isolated tests stub ccxt.base.errors without RequestTimeout; treat it as a
-# NetworkError-class transient startup error when the dedicated symbol is absent.
+# 某些隔离测试在没有 RequestTimeout 的情况下 stub ccxt.base.errors；
+# 当专用符号不存在时，将其视为 NetworkError 类的瞬态启动错误。
 RequestTimeout = getattr(ccxt_errors, "RequestTimeout", NetworkError)
 
-# Orchestrator-only: ideal orders are computed via Rust orchestrator (JSON API).
-# Legacy Python order calculation paths are removed in this branch.
+# 仅编排器模式：理想订单通过 Rust 编排器（JSON API）计算。
+# 传统 Python 订单计算路径已在本分支中移除。
 
 FOREIGN_PASSIVBOT_LOOKBACK_MS = 24 * 60 * 60 * 1000
 FOREIGN_PASSIVBOT_GRACE_MS = 15_000
@@ -141,18 +141,18 @@ calc_order_price_diff = pbr.calc_order_price_diff
 DEFAULT_MAX_MEMORY_CANDLES_PER_SYMBOL = 20_000
 PARTIAL_FILL_MERGE_MAX_DELAY_MS = 60_000
 FILL_EVENT_FETCH_OVERLAP_COUNT = 20
-FILL_EVENT_FETCH_OVERLAP_MAX_MS = 86_400_000  # 24 hours
+FILL_EVENT_FETCH_OVERLAP_MAX_MS = 86_400_000  # 24 小时
 FILL_EVENT_FETCH_LIMIT_DEFAULT = 20
 
 
-# Match "...0xABCD..." anywhere (case-insensitive)
+# 匹配任意位置的 "...0xABCD..."（不区分大小写）
 _TYPE_MARKER_RE = re.compile(r"0x([0-9a-fA-F]{4})", re.IGNORECASE)
-# Leading pure-hex fallback: optional 0x then 4 hex at the very start
+# 前导纯十六进制回退：可选 0x 后跟 4 位十六进制，位于字符串起始处
 _LEADING_HEX4_RE = re.compile(r"^(?:0x)?([0-9a-fA-F]{4})", re.IGNORECASE)
 
 
 def _get_process_rss_bytes() -> Optional[int]:
-    """Return current process RSS in bytes or None if unavailable."""
+    """返回当前进程的 RSS 字节数，若不可用则返回 None。"""
     try:
         if psutil is not None:
             return int(psutil.Process(os.getpid()).memory_info().rss)
@@ -172,7 +172,7 @@ def _get_process_rss_bytes() -> Optional[int]:
 
 
 def clip_by_timestamp(xs, start_ts, end_ts):
-    # assumes xs is already sorted by timestamp
+    # 假设 xs 已按时间戳排序
     timestamps = [x["timestamp"] for x in xs]
     i0 = bisect.bisect_left(timestamps, start_ts) if start_ts else 0
     i1 = bisect.bisect_right(timestamps, end_ts) if end_ts else len(xs)
@@ -180,7 +180,7 @@ def clip_by_timestamp(xs, start_ts, end_ts):
 
 
 def custom_id_to_snake(custom_id) -> str:
-    """Translate a broker custom id into the snake_case order type name."""
+    """将经纪商自定义 ID 转换为 snake_case 订单类型名称。"""
     try:
         return snake_of(try_decode_type_id_from_custom_id(custom_id))
     except Exception as e:
@@ -189,13 +189,13 @@ def custom_id_to_snake(custom_id) -> str:
 
 
 def try_decode_type_id_from_custom_id(custom_id: str) -> int | None:
-    """Extract the 16-bit order type id encoded in a custom order id string."""
-    # 1) Preferred: look for "...0x<4-hex>..." anywhere
+    """从自定义订单 ID 字符串中提取编码的 16 位订单类型 ID。"""
+    # 1) 首选：在任意位置查找 "...0x<4-hex>..."
     m = _TYPE_MARKER_RE.search(custom_id)
     if m:
         return int(m.group(1), 16)
 
-    # 2) Fallback: if string is pure-hex style (no broker code), parse the leading 4
+    # 2) 回退：若字符串为纯十六进制风格（无经纪商代码），解析前导 4 位
     m = _LEADING_HEX4_RE.match(custom_id)
     if m:
         return int(m.group(1), 16)
@@ -204,7 +204,7 @@ def try_decode_type_id_from_custom_id(custom_id: str) -> int | None:
 
 
 def custom_id_has_explicit_passivbot_marker(custom_id) -> bool:
-    """Return True only when the custom id contains the explicit 0xABCD Passivbot marker."""
+    """仅当自定义 ID 包含显式 0xABCD Passivbot 标记时返回 True。"""
     try:
         return bool(_TYPE_MARKER_RE.search(str(custom_id)))
     except Exception:
@@ -212,25 +212,25 @@ def custom_id_has_explicit_passivbot_marker(custom_id) -> bool:
 
 
 def order_type_id_to_hex4(type_id: int) -> str:
-    """Return the four-hex-digit representation of an order type id."""
+    """返回订单类型 ID 的四位十六进制表示。"""
     return f"{type_id:04x}"
 
 
 def type_token(type_id: int, with_marker: bool = True) -> str:
-    """Return the printable order type marker, optionally prefixed with `0x`."""
+    """返回可打印的订单类型标记，可选添加 `0x` 前缀。"""
     h4 = order_type_id_to_hex4(type_id)
     return ("0x" + h4) if with_marker else h4
 
 
 def snake_of(type_id: int) -> str:
-    """Map an order type id to its snake_case string representation."""
+    """将订单类型 ID 映射为其 snake_case 字符串表示。"""
     try:
         return pbr.order_type_id_to_snake(type_id)
     except Exception:
         return "unknown"
 
 
-# Legacy EMA helper removed; CandlestickManager provides EMA utilities
+# 传统 EMA 辅助函数已移除；CandlestickManager 提供 EMA 工具
 
 
 def _trailing_bundle_tuple_to_dict(bundle_tuple: tuple[float, float, float, float]) -> dict:
@@ -260,7 +260,7 @@ def _trailing_bundle_from_arrays(highs: np.ndarray, lows: np.ndarray, closes: np
 
 
 def calc_pnl(position_side, entry_price, close_price, qty, inverse, c_mult):
-    """Calculate trade PnL by delegating to the appropriate Rust helper."""
+    """通过调用相应的 Rust 辅助函数计算交易 PnL。"""
     try:
         if isinstance(position_side, str):
             if position_side == "long":
@@ -268,15 +268,15 @@ def calc_pnl(position_side, entry_price, close_price, qty, inverse, c_mult):
             else:
                 return pbr.calc_pnl_short(entry_price, close_price, qty, c_mult)
         else:
-            # fallback: assume long
+            # 回退：假设为多头
             return pbr.calc_pnl_long(entry_price, close_price, qty, c_mult)
     except Exception:
-        # rethrow to preserve behavior
+        # 重新抛出以保持原有行为
         raise
 
 
 def order_market_diff(side: str, order_price: float, market_price: float) -> float:
-    """Return side-aware relative price diff between order and market."""
+    """返回订单与市价之间的方向感知相对价格差。"""
     return float(calc_order_price_diff(side, float(order_price), float(market_price)))
 
 
@@ -297,7 +297,7 @@ ONE_MIN_MS = 60_000
 
 
 def signal_handler(sig, frame):
-    """Handle SIGINT by signalling the running bot to stop gracefully."""
+    """处理 SIGINT 信号，指示正在运行的机器人优雅停止。"""
     print("\nReceived shutdown signal. Stopping bot...")
     bot = globals().get("bot")
     try:
@@ -320,17 +320,17 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 def get_function_name():
-    """Return the caller function name one frame above the current scope."""
+    """返回当前作用域上一层的调用者函数名。"""
     return inspect.currentframe().f_back.f_code.co_name
 
 
 def get_caller_name():
-    """Return the caller name two frames above the current scope."""
+    """返回当前作用域上两层的调用者名称。"""
     return inspect.currentframe().f_back.f_back.f_code.co_name
 
 
 def or_default(f, *args, default=None, **kwargs):
-    """Execute `f` safely, returning `default` if an exception is raised."""
+    """安全执行 `f`，若抛出异常则返回 `default`。"""
     try:
         return f(*args, **kwargs)
     except:
@@ -338,7 +338,7 @@ def or_default(f, *args, default=None, **kwargs):
 
 
 def orders_matching(o0, o1, tolerance_qty=0.01, tolerance_price=0.002):
-    """Return True if two orders are equivalent within the supplied tolerances."""
+    """若两个订单在指定容差范围内等价则返回 True。"""
     for k in ["symbol", "side", "position_side"]:
         if o0[k] != o1[k]:
             return False
@@ -358,7 +358,7 @@ def orders_matching(o0, o1, tolerance_qty=0.01, tolerance_price=0.002):
 
 
 def order_has_match(order, orders, tolerance_qty=0.01, tolerance_price=0.002):
-    """Return the first matching order in `orders` or False if none match."""
+    """返回 `orders` 中第一个匹配的订单，若无匹配则返回 False。"""
     for elm in orders:
         if orders_matching(order, elm, tolerance_qty, tolerance_price):
             return elm
@@ -376,7 +376,7 @@ def compute_live_warmup_windows(
     span_buffer: Optional[float] = None,
     large_span_threshold: int = 2 * 24 * 60,
 ) -> Tuple[Dict[str, int], Dict[str, int], Dict[str, bool]]:
-    """Return per-symbol warmup windows for 1m/1h candles."""
+    """返回每个交易对的 1m/1h K线预热窗口。"""
     symbols: set = set()
     for symset in symbols_by_side.values():
         symbols.update(symset or set())
@@ -478,8 +478,10 @@ def compute_live_warmup_windows(
 
 
 class Passivbot:
+    """Passivbot 交易机器人核心类，负责配置加载、状态管理、订单编排与执行。"""
+
     def __init__(self, config: dict):
-        """Initialise the bot with configuration, user context, and runtime caches."""
+        """初始化机器人：加载配置、用户上下文和运行时缓存。"""
         self.config = config
         try:
             lvl_raw = get_optional_config_value(config, "logging.level", 1)
@@ -528,12 +530,12 @@ class Passivbot:
         self.balance_hysteresis_snap_pct = float(
             get_optional_live_value(self.config, "balance_hysteresis_snap_pct", 0.02)
         )
-        # hedge_mode controls whether simultaneous long/short on same coin is allowed.
-        # This is the config-level setting; exchange-specific bots may override
-        # self.hedge_mode to False if the exchange doesn't support two-way mode.
-        # Effective hedge_mode = config setting AND exchange capability.
+        # hedge_mode 控制同一币种是否允许同时做多做空。
+        # 此为配置层设置；交易所特定的子类可将 self.hedge_mode 覆盖为 False，
+        # 若交易所不支持双向模式。
+        # 有效 hedge_mode = 配置设置 AND 交易所能力。
         self._config_hedge_mode = bool(get_optional_live_value(self.config, "hedge_mode", True))
-        self.hedge_mode = True  # Exchange capability, may be overridden by subclass
+        self.hedge_mode = True  # 交易所能力，子类可覆盖
         self.inverse = False
         self.active_symbols = []
         self.fetched_positions = []
@@ -549,20 +551,20 @@ class Passivbot:
         self.max_leverage = {}
         self.pside_int_map = {"long": 0, "short": 1}
         self.PB_modes = {"long": {}, "short": {}}
-        # Legacy pnls_cache_filepath removed; FillEventsManager handles caching
+        # 传统 pnls_cache_filepath 已移除；FillEventsManager 处理缓存
         self.quote = "USDT"
 
         self.minimum_market_age_millis = (
             float(require_live_value(config, "minimum_coin_age_days")) * 24 * 60 * 60 * 1000
         )
-        # Legacy EMA caches removed; use CandlestickManager EMA helpers
-        # Legacy ohlcvs_1m fields removed in favor of CandlestickManager
+        # 传统 EMA 缓存已移除；使用 CandlestickManager EMA 辅助函数
+        # 传统 ohlcvs_1m 字段已移除，改用 CandlestickManager
         self.stop_signal_received = False
         self.cca = None
         self.ccp = None
         self.create_ccxt_sessions()
         self.debug_mode = False
-        self.balance_threshold = 1.0  # don't create orders if balance is less than threshold
+        self.balance_threshold = 1.0  # 余额低于阈值时不创建订单
         self.hyst_pct = 0.02
         self.state_change_detected_by_symbol = set()
         self.recent_order_executions = []
@@ -756,7 +758,7 @@ class Passivbot:
             "short": "graceful_stop" if auto_gs else "manual",
         }
 
-        # FillEventsManager for PnL tracking (replaces legacy self.pnls list)
+        # FillEventsManager 用于 PnL 跟踪（替代传统 self.pnls 列表）
         self._pnls_manager: Optional[FillEventsManager] = None
         self._pnls_initialized = False
 
@@ -770,7 +772,7 @@ class Passivbot:
         self._health_ws_reconnects = 0
         self._health_rate_limits = 0
         self._health_last_summary_ms = 0
-        self._health_summary_interval_ms = 15 * 60 * 1000  # 15 minutes
+        self._health_summary_interval_ms = 15 * 60 * 1000  # 15 分钟
         self._last_loop_duration_ms = 0
 
         raw_silence_watchdog = get_optional_config_value(
@@ -796,13 +798,13 @@ class Passivbot:
         self._log_silence_watchdog_task: Optional[asyncio.Task] = None
         self._bot_ready = False
 
-        # Unstuck logging throttle
+        # Unstuck 日志节流
         self._unstuck_last_log_ms = 0
-        self._unstuck_log_interval_ms = 5 * 60 * 1000  # 5 minutes
+        self._unstuck_log_interval_ms = 5 * 60 * 1000  # 5 分钟
 
-        # Realized-loss gate logging throttle
+        # 已实现亏损门限日志节流
         self._loss_gate_last_log_ms = {}
-        self._loss_gate_log_interval_ms = 5 * 60 * 1000  # 5 minutes
+        self._loss_gate_log_interval_ms = 5 * 60 * 1000  # 5 分钟
         self._orchestrator_prev_close_ema = {}
         self._orchestrator_close_ema_fallback_counts = {}
         self.hsl = self._parse_hsl_config()
@@ -872,6 +874,7 @@ class Passivbot:
             self._log_silence_watchdog_stage = str(stage)
 
     def _maybe_log_silence_watchdog(self, *, now_monotonic: Optional[float] = None) -> bool:
+        """检测日志静默期，若超过阈值则发出警告。"""
         threshold = float(getattr(self, "_log_silence_watchdog_seconds", 0.0) or 0.0)
         if threshold <= 0.0:
             return False
@@ -978,6 +981,7 @@ class Passivbot:
         )
 
     async def _calc_upnl_sum_strict(self) -> float:
+        """严格计算未实现盈亏总和，确保持仓数据已刷新。"""
         if not self.fetched_positions:
             return 0.0
         symbols = {x["symbol"] for x in self.fetched_positions}
@@ -1004,6 +1008,7 @@ class Passivbot:
 
     @staticmethod
     def _equity_hard_stop_fee_cost(fill: Any) -> float:
+        """从成交记录中提取手续费成本。"""
         if fill is None:
             return 0.0
         if isinstance(fill, dict):
@@ -1066,6 +1071,7 @@ class Passivbot:
         realized_pnl: float,
         unrealized_pnl: float,
     ) -> dict:
+        """将新的权益快照应用到 HSL 状态机，计算当前风险等级。"""
         if not math.isfinite(balance) or balance <= 0.0:
             raise ValueError(f"balance must be finite and > 0, got {balance}")
         if not math.isfinite(realized_pnl):
@@ -1136,6 +1142,7 @@ class Passivbot:
         return metrics
 
     def _equity_hard_stop_log_transition(self, metrics: dict, prev_tier: str) -> None:
+        """记录 HSL 风险等级转换日志。"""
         logging.info(
             "[risk] equity hard stop tier transition %s -> %s | balance=%.6f equity=%.6f "
             "peak_strategy_equity=%.6f drawdown_raw=%.6f drawdown_ema=%.6f drawdown_score=%.6f "
@@ -1174,6 +1181,7 @@ class Passivbot:
         no_restart_latched: bool,
         cooldown_until_ms: Optional[int],
     ) -> dict:
+        """构建 HSL 锁存事件的负载字典，用于持久化和日志记录。"""
         return {
             "triggered_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "exchange": str(self.exchange),
@@ -1212,6 +1220,7 @@ class Passivbot:
         }
 
     async def _equity_hard_stop_compute_stop_event(self, stop_event_ts_ms: int) -> dict:
+        """计算止损事件的综合指标并返回锁存负载。"""
         balance = float(self.get_raw_balance())
         unrealized_pnl = float(await self._calc_upnl_sum_strict())
         realized_pnl = float(self._equity_hard_stop_realized_pnl_now())
@@ -1310,6 +1319,7 @@ class Passivbot:
         self._runtime_forced_modes = forced
 
     async def _equity_hard_stop_refresh_cooldown_after_repanic(self, now_ms: int) -> None:
+        """在红色恐慌重启后刷新冷却计时器。"""
         cooldown_minutes = float(self.equity_hard_stop_loss["cooldown_minutes_after_red"])
         cooldown_ms = int(round(cooldown_minutes * 60_000.0)) if cooldown_minutes > 0.0 else 0
         cooldown_until_ms = now_ms + cooldown_ms if cooldown_ms > 0 else None
@@ -1345,6 +1355,7 @@ class Passivbot:
         )
 
     async def _equity_hard_stop_handle_position_during_cooldown(self, now_ms: int) -> bool:
+        """在红色冷却期间管理持仓，检测是否需要重新恐慌。"""
         if not self._equity_hard_stop_halted or self._equity_hard_stop_no_restart_latched:
             return False
         cooldown_until_ms = self._equity_hard_stop_halted_until_ms
@@ -1398,6 +1409,7 @@ class Passivbot:
         return False
 
     async def _equity_hard_stop_initialize_from_history(self) -> None:
+        """从历史数据初始化 HSL 状态机，回放过去的权益快照以确定初始风险等级。"""
         if not self._equity_hard_stop_enabled():
             return
         self._equity_hard_stop_reset_state()
@@ -1553,6 +1565,7 @@ class Passivbot:
             self._equity_hard_stop_pending_red_since_ms = int(current_metrics["timestamp_ms"])
 
     async def _equity_hard_stop_check(self) -> Optional[dict]:
+        """检查权益硬止损条件，返回止损事件负载或 None。"""
         if not self._equity_hard_stop_enabled():
             return None
         if not self._equity_hard_stop_runtime_initialized():
@@ -1649,6 +1662,7 @@ class Passivbot:
         nonpanic_close_orders: int,
         flat_confirmations: int,
     ) -> None:
+        """记录红色止损期间的持仓缩减进度。"""
         progress = (n_positions, entry_orders, nonpanic_close_orders, flat_confirmations)
         if progress == self._equity_hard_stop_last_red_progress:
             return
@@ -1663,6 +1677,7 @@ class Passivbot:
         )
 
     async def _equity_hard_stop_finalize_red_stop(self, stop_event: Optional[dict] = None) -> None:
+        """执行红色止损：平掉所有持仓并进入冷却期。"""
         stop_ts_ms = int(self.get_exchange_time())
         if stop_event is None:
             stop_event = await self._equity_hard_stop_compute_stop_event(stop_ts_ms)
@@ -1731,6 +1746,7 @@ class Passivbot:
         return
 
     async def _equity_hard_stop_run_red_supervisor(self) -> None:
+        """红色止损期间的后台监控，等待全部持仓平仓后结束冻结状态。"""
         if self._equity_hard_stop_supervisor_running:
             return
         self._equity_hard_stop_supervisor_running = True
@@ -1784,6 +1800,7 @@ class Passivbot:
             self._equity_hard_stop_supervisor_running = False
 
     def _apply_equity_hard_stop_orange_overlay(self) -> None:
+        """在橙色风险等级下覆盖交易模式，限制开仓行为。"""
         if not self._equity_hard_stop_enabled():
             return
         if self._equity_hard_stop_runtime_red_latched() or self._equity_hard_stop_runtime_tier() != "orange":
@@ -1867,11 +1884,11 @@ class Passivbot:
     _apply_equity_hard_stop_orange_overlay = pb_hsl._apply_equity_hard_stop_orange_overlay
 
     def _filter_approved_symbols(self, pside: str, symbols: set[str]) -> set[str]:
-        """Hook: exchange-specific filtering for approved symbols used for new entries."""
+        """钩子：交易所特定的已批准交易对过滤，用于新开仓。"""
         return symbols
 
     def _assert_supported_live_state(self) -> None:
-        """Hook: exchange-specific startup/runtime validation for unsupported live state."""
+        """钩子：交易所特定的启动/运行时验证，用于检测不支持的实盘状态。"""
         return None
 
     def _build_ccxt_options(self, overrides: Optional[dict] = None) -> dict:
@@ -1889,14 +1906,14 @@ class Passivbot:
         return options
 
     def _log_startup_banner(self) -> None:
-        """Log a startup banner with key configuration info."""
+        """记录包含关键配置信息的启动横幅。"""
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         user = self.user
         exchange = self.exchange
 
-        # Determine enabled sides
+        # 确定已启用的方向
         long_enabled = float(self.bot_value("long", "total_wallet_exposure_limit") or 0.0) > 0.0
         short_enabled = float(self.bot_value("short", "total_wallet_exposure_limit") or 0.0) > 0.0
         if long_enabled and short_enabled:
@@ -1925,13 +1942,13 @@ class Passivbot:
         else:
             twel_str = "0%"
 
-        # Build content lines and calculate width dynamically
+        # 构建内容行并动态计算宽度
         line1 = f"  PASSIVBOT  │  {exchange}:{user}  │  {now}  "
         line2 = f"  Mode: {mode}  │  Positions: {n_pos}  │  TWEL: {twel_str}  "
-        width = max(len(line1), len(line2), 50)  # minimum 50 chars
+        width = max(len(line1), len(line2), 50)  # 最小 50 字符
         border = "═" * width
 
-        # Pad lines to match width
+        # 填充行以匹配宽度
         line1 = line1.ljust(width)
         line2 = line2.ljust(width)
 
@@ -1942,7 +1959,7 @@ class Passivbot:
         logging.info("╚%s╝", border)
 
     def _format_duration(self, ms: int) -> str:
-        """Format milliseconds as human-readable duration (e.g., '2d5h15m')."""
+        """将毫秒格式化为可读的持续时间（如 '2d5h15m'）。"""
         total_seconds = ms // 1000
         days, remainder = divmod(total_seconds, 86400)
         hours, remainder = divmod(remainder, 3600)
@@ -1956,7 +1973,7 @@ class Passivbot:
         return f"{seconds}s"
 
     def _maybe_log_health_summary(self) -> None:
-        """Log periodic health summary if interval has elapsed."""
+        """若间隔已到期，记录周期性健康摘要。"""
         now_ms = utc_ms()
         if (now_ms - self._health_last_summary_ms) < self._health_summary_interval_ms:
             return
@@ -1964,12 +1981,12 @@ class Passivbot:
         self._log_health_summary()
 
     def _log_health_summary(self) -> None:
-        """Log a health summary with uptime and counters."""
+        """记录包含运行时间和计数器的健康摘要。"""
         now_ms = utc_ms()
         uptime_ms = now_ms - self._health_start_ms
         uptime_str = self._format_duration(uptime_ms)
 
-        # Count current positions
+        # 统计当前持仓
         n_long = 0
         n_short = 0
         for symbol, pos_data in self.positions.items():
@@ -1984,25 +2001,25 @@ class Passivbot:
         if abs(balance_raw - balance_snapped) > 1e-9:
             balance_str += f" (snap {balance_snapped:.2f})"
 
-        # Build fills string with PnL if fills > 0
+        # 若有成交则构建包含 PnL 的成交字符串
         if self._health_fills > 0:
             pnl_sign = "+" if self._health_pnl >= 0 else ""
             fills_str = f"fills={self._health_fills} (pnl={pnl_sign}{self._health_pnl:.2f})"
         else:
             fills_str = "fills=0"
 
-        # Loop timing
+        # 循环计时
         loop_ms = getattr(self, "_last_loop_duration_ms", 0)
         loop_str = f"{loop_ms / 1000:.1f}s" if loop_ms > 0 else "n/a"
 
-        # Error budget: count of errors in last hour vs max
+        # 错误预算：最近一小时的错误数 vs 上限
         error_counts = getattr(self, "error_counts", [])
         now = utc_ms()
         recent_errors = len([x for x in error_counts if x > now - 1000 * 60 * 60])
         max_errors = 10
         error_budget_str = f"{recent_errors}/{max_errors}"
 
-        # Memory usage
+        # 内存使用
         try:
             import resource
 
@@ -2029,7 +2046,7 @@ class Passivbot:
         )
 
     def _calc_unstuck_allowance_for_logging(self, pside: str) -> dict:
-        """Calculate raw unstuck allowance values for logging (including negative)."""
+        """计算用于日志的原始解套额度值（包含负值）。"""
         twel = float(self.bot_value(pside, "total_wallet_exposure_limit") or 0.0)
         if twel <= 0.0:
             return {"status": "disabled"}
@@ -2051,7 +2068,7 @@ class Passivbot:
         balance_raw = self.get_raw_balance()
         balance_peak = balance_raw + (pnls_cumsum_max - pnls_cumsum_last)
         pct_from_peak = (balance_raw / balance_peak - 1.0) * 100.0
-        # Raw allowance WITHOUT .max(0.0) - can be negative
+        # 不带 .max(0.0) 的原始额度 — 可能为负值
         allowance_raw = balance_peak * (pct * twel + pct_from_peak / 100.0)
 
         return {
@@ -2062,7 +2079,7 @@ class Passivbot:
         }
 
     def _log_unstuck_status(self) -> None:
-        """Log unstuck allowance budget for both sides."""
+        """记录双向解套额度预算。"""
         parts = []
         for pside in ["long", "short"]:
             info = self._calc_unstuck_allowance_for_logging(pside)
@@ -2088,7 +2105,7 @@ class Passivbot:
         logging.info("[unstuck] %s", " | ".join(parts))
 
     def _maybe_log_unstuck_status(self) -> None:
-        """Log periodic unstuck status if interval has elapsed."""
+        """若间隔已到期，记录周期性解套状态。"""
         now_ms = utc_ms()
         if (now_ms - self._unstuck_last_log_ms) < self._unstuck_log_interval_ms:
             return
@@ -2096,7 +2113,7 @@ class Passivbot:
         self._log_unstuck_status()
 
     async def start_bot(self):
-        """Initialise state, warm cached data, and launch background loops."""
+        """初始化状态，预热缓存数据，并启动后台循环。"""
         self._log_startup_banner()
         self._bot_ready = False
         logging.info("[boot] starting bot %s...", self.exchange)
@@ -2115,8 +2132,8 @@ class Passivbot:
                 ts=int(self.start_time_ms),
             )
 
-            # Random boot stagger to spread API load when multiple bots start simultaneously.
-            # Applies BEFORE init_markets() so even the first API calls are staggered.
+            # 随机启动错峰以分散多个机器人同时启动时的 API 负载。
+            # 在 init_markets() 之前应用，确保首批 API 调用也错峰。
             boot_stage = "boot_stagger"
             boot_stagger = get_optional_live_value(self.config, "boot_stagger_seconds", None)
             if boot_stagger is None:
@@ -2145,7 +2162,7 @@ class Passivbot:
             boot_stage = "init_markets"
             await self.init_markets()
             await self._monitor_flush_snapshot(force=True, ts=utc_ms())
-            # Staggered warmup of candles for approved symbols (large sets handled gracefully)
+            # 已批准交易对的交错式 K线预热（大集合也能平稳处理）
             boot_stage = "warmup_candles_staggered"
             try:
                 await self.warmup_candles_staggered()
@@ -2201,15 +2218,14 @@ class Passivbot:
             raise
 
     async def init_markets(self, verbose=True):
-        """Load exchange market metadata and refresh approval lists."""
-        # called at bot startup and once an hour thereafter
+        """加载交易所市场元数据并刷新审批列表。"""
+        # 在机器人启动时和之后每小时调用一次
         self.init_markets_last_update_ms = utc_ms()
-        # Retry on transient network errors (TCP + TLS handshake on a fresh
-        # aiohttp session can time out; also called hourly so transient errors
-        # should not abort the refresh cycle).
+        # 对瞬态网络错误重试（新 aiohttp 会话的 TCP + TLS 握手可能超时；
+        # 同时每小时调用，瞬态错误不应中断刷新周期）。
         for _attempt in range(1, 4):
             try:
-                await self.update_exchange_config()  # set hedge mode
+                await self.update_exchange_config()  # 设置 hedge mode
                 break
             except (RequestTimeout, NetworkError) as e:
                 if _attempt == 3:
@@ -2221,21 +2237,21 @@ class Passivbot:
                     5 * _attempt,
                 )
                 await asyncio.sleep(5 * _attempt)
-        # Reuse existing ccxt session when available (ensures shared options such as fetchMarkets types).
+        # 复用已有的 ccxt 会话（确保共享选项如 fetchMarkets 类型）。
         cc_instance = getattr(self, "cca", None)
         self.markets_dict = await load_markets(
             self.exchange, 0, verbose=False, cc=cc_instance, quote=self.quote
         )
         if hasattr(self, "refresh_and_log_user_abstraction_state"):
             await self.refresh_and_log_user_abstraction_state()
-        # ineligible symbols cannot open new positions
+        # 不合格的交易对无法开新仓
         eligible, _, reasons = filter_markets(
             self.markets_dict, self.exchange, quote=self.quote, verbose=verbose
         )
         self.eligible_symbols = set(eligible)
         self.ineligible_symbols = reasons
         self.set_market_specific_settings()
-        # for prettier printing
+        # 用于更美观的打印
         self.max_len_symbol = max([len(s) for s in self.markets_dict])
         self.sym_padding = max(self.sym_padding, self.max_len_symbol + 1)
         # await self.init_flags()
@@ -2249,7 +2265,7 @@ class Passivbot:
         await self.update_open_orders()
         self._assert_supported_live_state()
         await self.update_effective_min_cost()
-        # Legacy: no 1m OHLCV REST maintenance; CandlestickManager handles caching
+        # 传统：不再进行 1m OHLCV REST 维护；CandlestickManager 处理缓存
         if self.is_forager_mode():
             await self.update_first_timestamps()
 
@@ -2268,30 +2284,30 @@ class Passivbot:
         last_prices: dict,
         symbols: list,
     ) -> None:
-        """Log when entries are blocked due to EMA distance gating.
+        """记录因 EMA 距离门控导致的入场被阻断情况。
 
-        For symbols in normal mode with no position, if there's no initial entry order,
-        check if price is beyond the EMA entry threshold and log the reason.
+        对于处于正常模式且无持仓的交易对，若没有初始入场订单，
+        检查价格是否超出 EMA 入场阈值并记录原因。
         """
         if not hasattr(self, "_ema_gating_last_log_ms"):
             self._ema_gating_last_log_ms = {}
-        ema_gating_throttle_ms = 300_000  # 5 minutes between logs per symbol/pside
+        ema_gating_throttle_ms = 300_000  # 每个交易对/方向每 5 分钟记录一次
         now_ms = utc_ms()
 
         for symbol in symbols:
             for pside in ("long", "short"):
-                # Check if mode is normal (not graceful_stop, manual, etc.)
+                # 检查模式是否为 normal（非 graceful_stop、manual 等）
                 mode = self.PB_modes.get(symbol, {}).get(pside)
                 if mode != "normal":
                     continue
 
-                # Check if we have a position already
+                # 检查是否已有持仓
                 pos = self.positions.get(symbol, {}).get(pside, {})
                 pos_size = abs(pos.get("size", 0.0))
                 if pos_size > 0:
                     continue
 
-                # Check if there's an initial entry order for this symbol/pside
+                # 检查该交易对/方向是否有初始入场订单
                 symbol_orders = ideal_orders.get(symbol, [])
                 has_initial_entry = any(
                     f"entry_initial" in (o[2] if len(o) > 2 else "")
@@ -2301,7 +2317,7 @@ class Passivbot:
                 if has_initial_entry:
                     continue
 
-                # No initial entry - check if EMA gating is the reason
+                # 无初始入场 — 检查是否因 EMA 门控
                 try:
                     span0 = float(self.bp(pside, "ema_span_0", symbol))
                     span1 = float(self.bp(pside, "ema_span_1", symbol))
@@ -2326,7 +2342,7 @@ class Passivbot:
                     if current_price <= 0:
                         continue
 
-                    # Calculate EMA entry threshold and check if gated
+                    # 计算 EMA 入场阈值并检查是否被门控
                     if pside == "long":
                         ema_entry_price = ema_lower * (1.0 - ema_dist)
                         is_gated = current_price > ema_entry_price
@@ -2335,7 +2351,7 @@ class Passivbot:
                             if ema_entry_price > 0
                             else 0
                         )
-                    else:  # short
+                    else:  # 空头
                         ema_entry_price = ema_upper * (1.0 + ema_dist)
                         is_gated = current_price < ema_entry_price
                         dist_pct = (
@@ -2344,7 +2360,7 @@ class Passivbot:
                             else 0
                         )
 
-                    if is_gated and abs(dist_pct) > 0.1:  # Only log if meaningfully gated
+                    if is_gated and abs(dist_pct) > 0.1:  # 仅在有意义的门控时记录
                         throttle_key = f"{symbol}:{pside}"
                         last_log_ms = self._ema_gating_last_log_ms.get(throttle_key, 0)
                         if (now_ms - last_log_ms) < ema_gating_throttle_ms:
@@ -2361,15 +2377,15 @@ class Passivbot:
                             dist_pct,
                         )
                 except Exception:
-                    pass  # Silently skip on any calculation errors
+                    pass  # 任何计算错误时静默跳过
 
     def debug_print(self, *args):
-        """Emit debug output only when the instance is in debug mode."""
+        """仅在实例处于调试模式时输出调试信息。"""
         if hasattr(self, "debug_mode") and self.debug_mode:
             print(*args)
 
     def _log_memory_snapshot(self, *, now_ms: Optional[int] = None) -> None:
-        """Log process RSS and key cache metrics for observability."""
+        """记录进程 RSS 和关键缓存指标以供可观测性。"""
         if now_ms is None:
             now_ms = utc_ms()
         rss = _get_process_rss_bytes()
@@ -2487,7 +2503,7 @@ class Passivbot:
             self._mem_log_prev["cm_cache_bytes"] = cache_bytes
 
     def init_coin_overrides(self):
-        """Populate coin override map keyed by symbols for quick lookup."""
+        """填充以交易对为键的币种覆盖映射，便于快速查找。"""
         self.coin_overrides = {
             s: v
             for k, v in self.config.get("coin_overrides", {}).items()
@@ -2501,7 +2517,7 @@ class Passivbot:
 
     def config_get(self, path: [str], symbol=None):
         """
-        Retrieve a configuration value, preferring per-symbol overrides when provided.
+        获取配置值，当提供交易对时优先使用逐交易对覆盖。
         """
         log_key = None
         if symbol and symbol in self.coin_overrides:
@@ -2521,7 +2537,7 @@ class Passivbot:
                     self._override_hits_logged.add(log_key)
                 return d
 
-        # fallback to global config
+        # 回退到全局配置
         d = self.config
         for p in path:
             if isinstance(d, dict) and p in d:
@@ -2532,7 +2548,7 @@ class Passivbot:
 
     def bp(self, pside, key, symbol=None):
         """
-        condensed helper function (bp = bot param) for config_get(['bot', pside, key], symbol)
+        精简辅助函数（bp = bot param），封装 config_get(['bot', pside, key], symbol)
         """
         return self.config_get(["bot", pside, key], symbol)
 
@@ -2542,10 +2558,11 @@ class Passivbot:
         ema_bounds_short: Dict[str, Tuple[float, float]],
         entry_volatility_logrange_ema_1h: Dict[str, Dict[str, float]],
     ) -> None:
+        """按条件输出 EMA 调试日志，显示各交易对的 EMA 边界和波动率指标。"""
 
         ema_debug_logging_enabled = False
 
-        """Emit a throttled log of EMA inputs so toggling visibility stays simple."""
+        """以节流方式输出 EMA 输入日志，使切换可见性保持简单。"""
         if not ema_debug_logging_enabled:
             return
         self._ema_debug_log_interval_ms = 30_000
@@ -2595,16 +2612,16 @@ class Passivbot:
         window_candles: int | None = None,
         ttl_ms: int = 300_000,
     ) -> None:
-        """Warm up recent candles for all approved symbols in a staggered way.
+        """以交错方式预热所有已批准交易对的近期 K线。
 
         - concurrency: max in-flight symbols; if None, uses config or exchange-specific default
         - window_candles: number of 1m candles to warm; defaults to CandlestickManager.default_window_candles
         - ttl_ms: skip refresh if data newer than this TTL exists
 
-        Logs a minimal countdown when warming >20 symbols.
+        预热超过 20 个交易对时输出精简倒计时日志。
         """
-        # Build symbol set: lazy warmup. If slots are open, warm eligible symbols for that side.
-        # If slots are full, warm only symbols with positions.
+        # 构建交易对集合：惰性预热。若有空位，预热该方向的合格交易对。
+        # 若仓位已满，仅预热有持仓的交易对。
         if not hasattr(self, "approved_coins_minus_ignored_coins"):
             return
         symbols_by_side: Dict[str, set] = {}
@@ -2634,7 +2651,7 @@ class Passivbot:
         if not symbols:
             return
 
-        # Determine concurrency: explicit arg > config > exchange-specific default
+        # 确定并发数：显式参数 > 配置 > 交易所特定默认值
         if concurrency is None:
             cfg_concurrency = get_optional_live_value(self.config, "warmup_concurrency", 0)
             try:
@@ -2644,7 +2661,7 @@ class Passivbot:
             if cfg_concurrency > 0:
                 concurrency = cfg_concurrency
             else:
-                # Exchange-specific defaults: Hyperliquid has stricter rate limits
+                # 交易所特定默认值：Hyperliquid 具有更严格的速率限制
                 exchange_lower = self.exchange.lower() if self.exchange else ""
                 if exchange_lower == "hyperliquid":
                     concurrency = 1
@@ -2652,7 +2669,7 @@ class Passivbot:
                     concurrency = 8
         concurrency = max(1, int(concurrency))
 
-        # Random jitter delay to prevent API rate limit storms when multiple bots start simultaneously
+        # 随机抖动延迟，防止多个机器人同时启动时引发 API 速率限制风暴
         max_jitter = get_optional_live_value(self.config, "warmup_jitter_seconds", 30.0)
         try:
             max_jitter = float(max_jitter)
@@ -2666,7 +2683,7 @@ class Passivbot:
                     jitter,
                     max_jitter,
                 )
-                # For longer waits, log progress every 10 seconds
+                # 对于较长的等待，每 10 秒记录一次进度
                 waited = 0.0
                 while waited < jitter:
                     sleep_chunk = min(10.0, jitter - waited)
@@ -2681,8 +2698,8 @@ class Passivbot:
         n = len(symbols)
         now = utc_ms()
         end_final = (now // ONE_MIN_MS) * ONE_MIN_MS - ONE_MIN_MS
-        # Determine window per symbol based on actual EMA needs (lazy & frugal).
-        # Fetch max-span * (1 + warmup_ratio) to give EMAs enough runway without overfetching.
+        # 根据实际 EMA 需求确定每个交易对的窗口（惰性且节省）。
+        # 获取 max-span * (1 + warmup_ratio)，为 EMA 提供足够的运行空间而不过度抓取。
         default_win = int(getattr(self.cm, "default_window_candles", 120))
         try:
             warmup_ratio = float(get_optional_live_value(self.config, "warmup_ratio", 0.0))
@@ -2694,7 +2711,7 @@ class Passivbot:
             )
         except Exception:
             max_warmup_minutes = 0
-        large_span_threshold = 2 * 24 * 60  # minutes; match CandlestickManager large-span logic
+        large_span_threshold = 2 * 24 * 60  # 分钟；匹配 CandlestickManager 大跨度逻辑
 
         per_symbol_win, per_symbol_h1_hours, per_symbol_skip_historical = compute_live_warmup_windows(
             symbols_by_side,
@@ -2722,7 +2739,7 @@ class Passivbot:
         started_ms = utc_ms()
         last_log_ms = started_ms
 
-        # Informative kickoff log
+        # 信息性启动日志
         if n > 0:
             wmins = [per_symbol_win[s] for s in symbols]
             wmin, wmax = (min(wmins), max(wmins)) if wmins else (default_win, default_win)
@@ -2773,14 +2790,15 @@ class Passivbot:
                 )
             except Exception:
                 pass
-            # Enable batch mode for zero-candle synthesis warnings during warmup
+                # 启用批量模式以减少预热期间的零 K线合成警告
             self.cm.start_synth_candle_batch()
-            # Enable batch mode for candle replacement logs during warmup
+                # 启用批量模式以减少预热期间的 K线替换日志
             self.cm.start_candle_replace_batch()
 
         fetch_delay_s = self._get_fetch_delay_seconds()
 
         async def one(sym: str):
+            """获取单个交易对的 K 线预热数据。"""
             nonlocal completed, last_log_ms
             async with sem:
                 try:
@@ -2793,7 +2811,7 @@ class Passivbot:
                         end_ts=None,
                         max_age_ms=ttl_ms,
                         strict=False,
-                        skip_historical_gap_fill=skip_hist,  # allow gap fill on large warmup spans
+                        skip_historical_gap_fill=skip_hist,  # 允许对大跨度预热进行缺口填充
                         max_lookback_candles=win,
                     )
                 except Exception:
@@ -2802,7 +2820,7 @@ class Passivbot:
                     if fetch_delay_s > 0:
                         await asyncio.sleep(fetch_delay_s)
                     completed += 1
-                    # Time-based throttle: log every ~2s or on completion
+                        # 基于时间的节流：每约 2 秒或完成时记录
                     if n > 20:
                         now_ms = utc_ms()
                         if (completed == n) or (now_ms - last_log_ms >= 2000) or completed == 1:
@@ -2818,10 +2836,11 @@ class Passivbot:
 
         await asyncio.gather(*(one(s) for s in symbols))
 
-        # Warm 1h candles for grid log-range EMAs
+        # 预热 1h K线用于网格对数范围 EMA
         hour_sem = asyncio.Semaphore(max(1, int(concurrency)))
 
         async def warm_hour(sym: str):
+            """获取单个交易对的小时级预热数据。"""
             async with hour_sem:
                 warm_hours = int(per_symbol_h1_hours.get(sym, 0) or 0)
                 if warm_hours <= 0:
@@ -2835,7 +2854,7 @@ class Passivbot:
                         max_age_ms=ttl_ms,
                         timeframe="1h",
                         strict=False,
-                        skip_historical_gap_fill=True,  # Live warmup: don't waste time on old gaps
+                        skip_historical_gap_fill=True,  # 实盘预热：不浪费时间处理旧缺口
                         max_lookback_candles=warm_hours,
                     )
                 except Exception:
@@ -2846,9 +2865,9 @@ class Passivbot:
 
         await asyncio.gather(*(warm_hour(s) for s in symbols))
 
-        # Flush batched zero-candle synthesis warnings
+        # 刷新批量零 K线合成警告
         self.cm.flush_synth_candle_batch()
-        # Flush batched candle replacement logs
+        # 刷新批量 K线替换日志
         self.cm.flush_candle_replace_batch()
 
     async def rebuild_required_candle_indices(
@@ -2859,7 +2878,7 @@ class Passivbot:
         end_final: int,
         end_final_hour: int,
     ) -> None:
-        """Rebuild candle index metadata for the required warmup ranges."""
+        """为所需预热范围重建 K 线索引元数据。"""
         if not getattr(self, "cm", None):
             return
 
@@ -2873,6 +2892,7 @@ class Passivbot:
         )
 
         def _rebuild_sync() -> Tuple[int, int]:
+            """同步重建 K 线索引，返回更新和移除的计数。"""
             updated_total = 0
             removed_total = 0
             for sym in symbols:
@@ -2912,7 +2932,7 @@ class Passivbot:
         )
 
     async def update_first_timestamps(self, symbols=[]):
-        """Fetch and cache first trade timestamps for the provided symbols."""
+        """获取并缓存指定交易对的首笔交易时间戳。"""
         if not hasattr(self, "first_timestamps"):
             self.first_timestamps = {}
         symbols = sorted(set(symbols + flatten(self.approved_coins_minus_ignored_coins.values())))
@@ -2934,14 +2954,14 @@ class Passivbot:
     async def audit_required_candle_disk_coverage(
         self, symbols: Optional[Iterable[str]] = None
     ) -> None:
-        """Check disk coverage for required candle ranges and log missing spans."""
+        """检查所需 K线范围的磁盘覆盖情况并记录缺失区间。"""
         try:
             if self.cm is None:
                 return
         except Exception:
             return
 
-        # Only log for symbols that are actively relevant to the live bot.
+        # 仅记录与实盘机器人活跃相关的交易对。
         def _should_log_symbol(sym: str) -> bool:
             try:
                 if sym in getattr(self, "active_symbols", []):
@@ -3043,14 +3063,14 @@ class Passivbot:
                 )
 
     def get_first_timestamp(self, symbol):
-        """Return the cached first tradable timestamp for `symbol`, populating defaults."""
+        """返回 `symbol` 缓存的首个可交易时间戳，填充默认值。"""
         if symbol not in self.first_timestamps:
             logging.info(f"warning: {symbol} missing from first_timestamps. Setting to zero.")
             self.first_timestamps[symbol] = 0.0
         return self.first_timestamps[symbol]
 
     def coin_to_symbol(self, coin, verbose=True):
-        """Map a coin identifier to the exchange-specific trading symbol."""
+        """将币种标识映射到交易所特定的交易对。"""
         if coin == "":
             return ""
         if not hasattr(self, "coin_to_symbol_map"):
@@ -3066,7 +3086,7 @@ class Passivbot:
         return result
 
     def order_to_order_tuple(self, order):
-        """Convert an order dictionary into a normalized tuple for comparisons."""
+        """将订单字典转换为用于比较的标准化元组。"""
         return (
             order["symbol"],
             order["side"],
@@ -3076,7 +3096,7 @@ class Passivbot:
         )
 
     def has_open_unstuck_order(self) -> bool:
-        """Return True if an unstuck order is currently live on the exchange."""
+        """若交易所当前挂有解套订单则返回 True。"""
         for orders in getattr(self, "open_orders", {}).values():
             for order in orders or []:
                 custom_id = order.get("custom_id") if isinstance(order, dict) else None
@@ -3094,7 +3114,7 @@ class Passivbot:
         return False
 
     async def run_execution_loop(self):
-        """Main execution loop coordinating order generation and exchange interaction."""
+        """主执行循环，协调订单生成和交易所交互。"""
         failed_update_pos_oos_pnls_ohlcvs_count = 0
         max_n_fails = 10
         if self._equity_hard_stop_enabled() and not all(
@@ -3138,9 +3158,9 @@ class Passivbot:
                     return res
                 if self.stop_signal_received:
                     break
-                # Track loop duration for health reporting
+                # 跟踪循环耗时用于健康报告
                 self._last_loop_duration_ms = utc_ms() - loop_start_ms
-                # Periodic health summary
+                # 周期性健康摘要
                 self._maybe_log_health_summary()
                 self._maybe_log_unstuck_status()
                 self._set_log_silence_watchdog_context(phase="runtime", stage="flush_snapshot")
@@ -3154,7 +3174,7 @@ class Passivbot:
                         break
                     await asyncio.sleep(0.1)
             except RestartBotException:
-                raise  # Propagate restart without incrementing error count
+                raise  # 传播重启请求，不增加错误计数
             except FatalBotException:
                 raise
             except RateLimitExceeded as e:
@@ -3183,6 +3203,7 @@ class Passivbot:
                 await asyncio.sleep(1.0)
 
     async def shutdown_gracefully(self):
+        """优雅关闭：停止维护器、关闭连接、清空持仓。"""
         if getattr(self, "_shutdown_in_progress", False):
             return
         self._shutdown_in_progress = True
@@ -3226,7 +3247,7 @@ class Passivbot:
             publisher.close()
 
     async def update_pos_oos_pnls_ohlcvs(self) -> bool:
-        """Refresh positions, open orders, realised PnL, and 1m candles."""
+        """刷新持仓、挂单、已实现 PnL 和 1m K线。"""
         if self.stop_signal_received:
             return False
         balance_ok, positions_ok = await self.update_positions_and_balance()
@@ -3248,11 +3269,11 @@ class Passivbot:
         return True
 
     def add_to_recent_order_cancellations(self, order):
-        """Record a recently cancelled order to throttle repeated cancellations."""
+        """记录最近取消的订单以节流重复取消操作。"""
         self.recent_order_cancellations.append({**order, **{"execution_timestamp": utc_ms()}})
 
     def order_was_recently_cancelled(self, order, max_age_ms=15_000) -> float:
-        """Return remaining throttle delay if the order was cancelled within `max_age_ms`."""
+        """若订单在 `max_age_ms` 内被取消，返回剩余节流延迟。"""
         age_limit = utc_ms() - max_age_ms
         self.recent_order_cancellations = [
             x for x in self.recent_order_cancellations if x["execution_timestamp"] > age_limit
@@ -3264,11 +3285,11 @@ class Passivbot:
         return 0.0
 
     def add_to_recent_order_executions(self, order):
-        """Track newly created orders to limit duplicate submissions."""
+        """跟踪新创建的订单以限制重复提交。"""
         self.recent_order_executions.append({**order, **{"execution_timestamp": utc_ms()}})
 
     def order_was_recently_updated(self, order, max_age_ms=15_000) -> float:
-        """Return throttle delay if the order was placed within `max_age_ms`."""
+        """若订单在 `max_age_ms` 内被下单，返回节流延迟。"""
         age_limit = utc_ms() - max_age_ms
         self.recent_order_executions = [
             x for x in self.recent_order_executions if x["execution_timestamp"] > age_limit
@@ -3278,7 +3299,7 @@ class Passivbot:
         return 0.0
 
     def _extract_order_custom_id(self, order: dict) -> str:
-        """Return the first normalized client/custom order id from unified or raw fields."""
+        """从统一或原始字段中返回第一个标准化的客户/自定义订单 ID。"""
         if not isinstance(order, dict):
             return ""
         candidates = (
@@ -3303,7 +3324,7 @@ class Passivbot:
         return ""
 
     def _extract_order_exchange_id(self, order: dict) -> str:
-        """Return the exchange-assigned order id from unified or raw fields."""
+        """从统一或原始字段中返回交易所分配的订单 ID。"""
         if not isinstance(order, dict):
             return ""
         candidates = ("id", "order_id", "orderId", "orderID", "ordId")
@@ -3317,7 +3338,7 @@ class Passivbot:
         return ""
 
     def _canonical_passivbot_custom_id(self, custom_id: str) -> str:
-        """Normalize broker/exchange wrappers around Passivbot custom ids."""
+        """规范化 Passivbot 自定义 ID 的经纪商/交易所封装。"""
         if not custom_id:
             return ""
         custom_id = str(custom_id)
@@ -3360,6 +3381,7 @@ class Passivbot:
         return None
 
     def _order_identity_fingerprint(self, order: dict, pb_type: str) -> Optional[dict]:
+        """生成订单的身份指纹字典，用于匹配和去重。"""
         if not isinstance(order, dict) or not pb_type or pb_type == "unknown":
             return None
         reduce_only = Passivbot._extract_order_reduce_only(self, order)
@@ -3398,7 +3420,7 @@ class Passivbot:
         return record
 
     def _emitted_order_records(self) -> list[dict]:
-        """Return recent emitted order records, upgrading legacy custom-id maps if needed."""
+        """返回最近发出的订单记录，必要时升级传统自定义 ID 映射。"""
         records = getattr(self, "orders_emitted_to_exchange", [])
         if isinstance(records, dict):
             upgraded = []
@@ -3424,7 +3446,7 @@ class Passivbot:
         return records
 
     def _prune_emitted_order_custom_ids(self, now_ts: int) -> None:
-        """Drop emitted order records outside the foreign-writer lookback window."""
+        """丢弃超出外部写入者回看窗口的已发出订单记录。"""
         cutoff_ts = int(now_ts) - FOREIGN_PASSIVBOT_LOOKBACK_MS
         self.orders_emitted_to_exchange = [
             record
@@ -3433,7 +3455,7 @@ class Passivbot:
         ]
 
     def _prune_foreign_passivbot_seen(self, now_ts: int) -> None:
-        """Drop old foreign Passivbot detections outside the rolling stop window."""
+        """丢弃超出滚动停止窗口的旧外部 Passivbot 检测记录。"""
         cutoff_ts = int(now_ts) - FOREIGN_PASSIVBOT_WINDOW_MS
         self.foreign_passivbot_seen = {
             cid: ts
@@ -3442,7 +3464,7 @@ class Passivbot:
         }
 
     def _record_emitted_order_custom_id(self, order: dict, emitted_ts: Optional[int] = None) -> None:
-        """Remember a successfully acknowledged create so later refreshes can adopt it."""
+        """记录成功确认的创建订单，以便后续刷新可以识别。"""
         if emitted_ts is None:
             emitted_ts = (
                 int(self.get_exchange_time()) if hasattr(self, "get_exchange_time") else utc_ms()
@@ -3474,6 +3496,7 @@ class Passivbot:
         order_ts: int,
         consumed_record_indices: set[int],
     ) -> bool:
+        """检查订单是否与最近发出的订单记录匹配。"""
         exchange_id = Passivbot._extract_order_exchange_id(self, order)
         canonical_custom_id = Passivbot._canonical_passivbot_custom_id(self, custom_id)
         fingerprint = Passivbot._order_identity_fingerprint(self, order, pb_type)
@@ -3507,7 +3530,7 @@ class Passivbot:
     async def _stop_for_foreign_passivbot_orders(
         self, detections: list[tuple[dict, str, str, int]], unique_count: int
     ) -> None:
-        """Stop the bot after repeated evidence of a competing Passivbot writer."""
+        """在反复发现竞争性 Passivbot 写入者后停止机器人。"""
         if getattr(self, "_foreign_passivbot_stop_requested", False):
             return
         self._foreign_passivbot_stop_requested = True
@@ -3532,7 +3555,7 @@ class Passivbot:
         raise Exception("foreign Passivbot writer detected; stopping bot")
 
     async def _detect_foreign_passivbot_orders(self, open_orders: list[dict]) -> None:
-        """Detect newer Passivbot-managed open orders not emitted by this running bot instance."""
+        """检测非本机器人实例发出的较新 Passivbot 管理的挂单。"""
         now_ts = int(self.get_exchange_time())
         bot_start_ts = int(getattr(self, "bot_start_exchange_ts", now_ts))
         self._prune_emitted_order_custom_ids(now_ts)
@@ -3589,13 +3612,13 @@ class Passivbot:
             )
 
     async def execute_to_exchange(self):
-        """Run one execution cycle including config sync and order placement/cancellation."""
+        """运行一个执行周期，包括配置同步和订单下达/取消。"""
         await self.execution_cycle()
         # await self.update_EMAs()
         await self.update_exchange_configs()
         to_cancel, to_create = await self.calc_orders_to_cancel_and_create()
 
-        # debug duplicates
+        # 调试重复项
         seen = set()
         for elm in to_cancel:
             key = str(elm["price"]) + str(elm["qty"])
@@ -3609,7 +3632,7 @@ class Passivbot:
             if key in seen:
                 logging.debug("duplicate create candidate: %s", elm)
             seen.add(key)
-        # format custom_id
+        # 格式化 custom_id
         if self.debug_mode:
             if to_cancel:
                 print(f"would cancel {len(to_cancel)} order{'s' if len(to_cancel) > 1 else ''}")
@@ -3654,7 +3677,7 @@ class Passivbot:
             try:
                 res = await self.execute_orders_parent(to_create_mod)
             except RestartBotException:
-                raise  # Propagate restart without incrementing error count
+                raise  # 传播重启请求，不增加错误计数
             except Exception as e:
                 logging.error(f"error executing orders {to_create_mod} {e}")
                 print_async_exception(res)
@@ -3666,7 +3689,7 @@ class Passivbot:
             return to_cancel, to_create
 
     async def execute_orders_parent(self, orders: [dict]) -> [dict]:
-        """Submit a batch of orders after throttling and bookkeeping."""
+        """在节流和记账后提交一批订单。"""
         orders = orders[: int(self.live_value("max_n_creations_per_batch"))]
         grouped_orders: dict[str, list[dict]] = defaultdict(list)
         emitted_ts = int(self.get_exchange_time()) if hasattr(self, "get_exchange_time") else utc_ms()
@@ -3722,10 +3745,10 @@ class Passivbot:
         return to_return
 
     async def execute_cancellations_parent(self, orders: [dict]) -> [dict]:
-        """Submit a batch of cancellations, prioritising reduce-only orders."""
+        """提交一批取消请求，优先处理减仓订单。"""
         max_cancellations = int(self.live_value("max_n_cancellations_per_batch"))
         if len(orders) > max_cancellations:
-            # prioritize cancelling reduce-only orders
+            # 优先取消减仓订单
             try:
                 reduce_only_orders = [
                     x for x in orders if x.get("reduce_only") or x.get("reduceOnly")
@@ -3798,7 +3821,7 @@ class Passivbot:
         context: str | None = None,
         delta: dict | None = None,
     ):
-        """Log a structured message describing an order action."""
+        """记录描述订单操作的结构化消息。"""
         pb_order_type = self._resolve_pb_order_type(order)
 
         def _fmt(val):
@@ -3835,7 +3858,7 @@ class Passivbot:
         logging.log(level, msg)
 
     def _log_order_action_summary(self, grouped_orders: dict[str, list[dict]], action: str) -> None:
-        """Emit condensed INFO summaries for batched order actions, skipping repeats."""
+        """为批量订单操作输出精简的 INFO 摘要，跳过重复。"""
         max_entries = 4
         for symbol, orders in grouped_orders.items():
             if not orders:
@@ -3889,7 +3912,7 @@ class Passivbot:
             logging.info("[order] %6s %s | %s%s", action, coin, display, reason_str)
 
     def _resolve_pb_order_type(self, order) -> str:
-        """Best-effort decoding of Passivbot order type for logging."""
+        """尽力解码 Passivbot 订单类型用于日志。"""
         if not isinstance(order, dict):
             return "unknown"
         pb_type = order.get("pb_order_type")
@@ -3923,6 +3946,7 @@ class Passivbot:
     def _decode_pb_type_from_ids(
         self, order: dict, candidate_ids: Optional[list] = None
     ) -> Optional[str]:
+        """从候选 ID 列表中解码订单的 Passivbot 类型。"""
         ids = candidate_ids
         if ids is None:
             ids = [
@@ -3944,25 +3968,25 @@ class Passivbot:
         return None
 
     def did_create_order(self, executed) -> bool:
-        """Return True if the exchange acknowledged order creation."""
+        """若交易所确认订单创建则返回 True。"""
         try:
             return "id" in executed and executed["id"] is not None
         except:
             return False
-        # further tests defined in child class
+        # 更多测试在子类中定义
 
     def did_cancel_order(self, executed, order=None) -> bool:
-        """Return True when the exchange response confirms cancellation."""
+        """当交易所响应确认取消时返回 True。"""
         if isinstance(executed, list) and len(executed) == 1:
             return self.did_cancel_order(executed[0], order)
         try:
             return "id" in executed and executed["id"] is not None
         except:
             return False
-        # further tests defined in child class
+        # 更多测试在子类中定义
 
     def is_forager_mode(self, pside=None):
-        """Return True when the configuration allows forager grid deployment for the side."""
+        """当配置允许该方向部署 forager 网格时返回 True。"""
         if pside is None:
             return self.is_forager_mode("long") or self.is_forager_mode("short")
         if self.bot_value(pside, "total_wallet_exposure_limit") <= 0.0:
@@ -3977,11 +4001,11 @@ class Passivbot:
         return True
 
     def pad_sym(self, symbol):
-        """Return the symbol left-aligned to the configured log width."""
+        """返回左对齐到配置日志宽度的交易对字符串。"""
         return f"{symbol: <{self.sym_padding}}"
 
     def _apply_endpoint_override(self, client) -> None:
-        """Apply configured REST endpoint overrides to a ccxt client."""
+        """将配置的 REST 端点覆盖应用到 ccxt 客户端。"""
         if client is None:
             return
         apply_rest_overrides_to_ccxt(client, self.endpoint_override)
@@ -3989,14 +4013,13 @@ class Passivbot:
     def _compute_fetch_budget_ttls(
         self, syms: list, max_age_ms: Optional[int], max_network_fetches: Optional[int]
     ) -> Tuple[Dict[str, int], set]:
-        """Compute per-symbol TTLs with fetch budget, return (per_sym_ttl, cache_only_never_fetched).
+        """计算带抓取预算的逐交易对 TTL，返回 (per_sym_ttl, cache_only_never_fetched)。
 
-        Symbols within the fetch budget get the real max_age_ms; symbols over the
-        budget get a huge TTL so they only use cached data.  Symbols assigned
-        cache-only TTL that have never been fetched are collected into a skip set
-        (get_candles treats last_refresh_ms==0 as "needs refresh" regardless of TTL).
+        抓取预算内的交易对使用真实 max_age_ms；超出预算的交易对获得巨大 TTL
+        以仅使用缓存数据。被分配仅缓存 TTL 且从未抓取过的交易对收集到跳过集合中
+        （get_candles 将 last_refresh_ms==0 视为"需要刷新"，无论 TTL 如何）。
         """
-        CACHE_ONLY_TTL = 365 * 24 * 3600 * 1000  # ~1 year – effectively cache-only
+        CACHE_ONLY_TTL = 365 * 24 * 3600 * 1000  # 约 1 年 — 实质上仅使用缓存
         per_sym_ttl: Dict[str, int] = {}
         if max_network_fetches is not None and max_network_fetches >= 0 and max_age_ms is not None:
             now = utc_ms()
@@ -4007,7 +4030,7 @@ class Passivbot:
                 except Exception:
                     last_ref = 0
                 staleness.append((s, int(now - last_ref) if last_ref > 0 else now))
-            staleness.sort(key=lambda x: x[1], reverse=True)  # most stale first
+            staleness.sort(key=lambda x: x[1], reverse=True)  # 最陈旧的优先
             fetch_set = set(s for s, _ in staleness[:max_network_fetches])
             for s in syms:
                 per_sym_ttl[s] = int(max_age_ms) if s in fetch_set else CACHE_ONLY_TTL
@@ -4027,11 +4050,11 @@ class Passivbot:
         return per_sym_ttl, cache_only_never_fetched
 
     def _get_fetch_delay_seconds(self) -> float:
-        """Return configured per-fetch delay in seconds.
+        """返回配置的每次抓取延迟秒数。
 
-        Default 200ms for Bybit and Hyperliquid (strict IP-based rate limits),
-        0ms for all others.
-        Override via live.warmup_fetch_delay_ms in config.
+        Bybit 和 Hyperliquid 默认 200ms（严格的基于 IP 的速率限制），
+        其他交易所默认 0ms。
+        可通过配置中的 live.warmup_fetch_delay_ms 覆盖。
         """
         fetch_delay_ms = get_optional_live_value(self.config, "warmup_fetch_delay_ms", None)
         try:
@@ -4044,7 +4067,7 @@ class Passivbot:
         return max(0.0, float(fetch_delay_ms) / 1000.0)
 
     def stop_data_maintainers(self, verbose=True):
-        """Cancel background candle/orderbook tasks and log the outcome."""
+        """取消后台 K线/订单簿任务并记录结果。"""
         if not hasattr(self, "maintainers"):
             return
         res = {}
@@ -4069,7 +4092,7 @@ class Passivbot:
         return res
 
     def has_position(self, pside=None, symbol=None):
-        """Return True if the bot currently holds a position for the given side and symbol."""
+        """若机器人当前持有指定方向和交易对的仓位则返回 True。"""
         if pside is None:
             return self.has_position("long", symbol) or self.has_position("short", symbol)
         if symbol is None:
@@ -4077,7 +4100,7 @@ class Passivbot:
         return symbol in self.positions and self.positions[symbol][pside]["size"] != 0.0
 
     def is_trailing(self, symbol, pside=None):
-        """Return True when trailing logic is active for the given symbol and side."""
+        """若指定交易对和方向的追踪逻辑处于活跃状态则返回 True。"""
         if pside is None:
             return self.is_trailing(symbol, "long") or self.is_trailing(symbol, "short")
         return (
@@ -4086,7 +4109,7 @@ class Passivbot:
         )
 
     def get_last_position_changes(self, symbol=None):
-        """Return the most recent fill timestamp per symbol/side for trailing logic."""
+        """返回每个交易对/方向最近成交时间戳，用于追踪逻辑。"""
         last_position_changes = defaultdict(dict)
         if self._pnls_manager is None:
             return last_position_changes
@@ -4105,43 +4128,42 @@ class Passivbot:
                             logging.error(f"Error in get_last_position_changes: {e}")
         return last_position_changes
 
-    # Legacy: wait_for_ohlcvs_1m_to_update removed (CandlestickManager handles freshness)
+    # 传统：wait_for_ohlcvs_1m_to_update 已移除（CandlestickManager 处理新鲜度）
 
-    # Legacy: get_ohlcvs_1m_filepath removed
+    # 传统：get_ohlcvs_1m_filepath 已移除
 
-    # Legacy: trim_ohlcvs_1m removed
+    # 传统：trim_ohlcvs_1m 已移除
 
-    # Legacy: dump_ohlcvs_1m_to_cache removed
+    # 传统：dump_ohlcvs_1m_to_cache 已移除
 
     async def update_trailing_data(self) -> None:
-        """Update trailing price metrics using CandlestickManager candles.
+        """使用 CandlestickManager K线更新追踪价格指标。
 
-        For each symbol and side with a trailing position, iterate candles since the
-        last position change and compute:
-        - max_since_open: highest high since open
-        - min_since_max: lowest low after the most recent new high
-        - min_since_open: lowest low since open
-        - max_since_min: highest high (or close per legacy) after the most recent new low
-        Fetches per-symbol candles concurrently to reduce latency.
+        对每个有追踪仓位的交易对和方向，自上次仓位变动起遍历 K线并计算：
+        - max_since_open：开仓以来最高价
+        - min_since_max：最近新高后的最低价
+        - min_since_open：开仓以来最低价
+        - max_since_min：最近新低后的最高价（或按传统的收盘价）
+        并发获取逐交易对 K线以减少延迟。
         """
         if not hasattr(self, "trailing_prices"):
             self.trailing_prices = {}
         last_position_changes = self.get_last_position_changes()
         symbols = set(self.trailing_prices) | set(last_position_changes) | set(self.active_symbols)
 
-        # Initialize containers for all symbols first
+        # 先初始化所有交易对的容器
         for symbol in symbols:
             self.trailing_prices[symbol] = {
                 "long": _trailing_bundle_default_dict(),
                 "short": _trailing_bundle_default_dict(),
             }
 
-        # Build concurrent fetches per symbol that has position changes
+        # 为有仓位变动的交易对构建并发抓取
         fetch_plan = {}
         for symbol in symbols:
             if symbol not in last_position_changes:
                 continue
-            # Determine earliest start among sides to avoid duplicate fetches
+            # 确定方向中最早的起始时间以避免重复抓取
             starts = [last_position_changes[symbol][ps] for ps in last_position_changes[symbol]]
             if not starts:
                 continue
@@ -4161,7 +4183,7 @@ class Passivbot:
                 logging.debug("failed to fetch candles for trailing %s: %s", sym, e)
                 results[sym] = None
 
-        # Compute trailing metrics per symbol/side
+        # 计算每个交易对/方向的追踪指标
         for symbol, arr in results.items():
             if arr is None or arr.size == 0:
                 continue
@@ -4180,16 +4202,16 @@ class Passivbot:
                     logging.debug("failed to compute trailing bundle for %s %s: %s", symbol, pside, e)
 
     def symbol_is_eligible(self, symbol):
-        """Return True when the symbol passes exchange-specific eligibility rules."""
+        """当交易对通过交易所特定的资格规则时返回 True。"""
         return True
 
     def set_market_specific_settings(self):
-        """Initialise per-symbol market metadata (steps, ids, multipliers)."""
+        """初始化逐交易对市场元数据（步长、ID、乘数）。"""
         self.symbol_ids = {symbol: self.markets_dict[symbol]["id"] for symbol in self.markets_dict}
         self.symbol_ids_inv = {v: k for k, v in self.symbol_ids.items()}
 
     def get_symbol_id(self, symbol):
-        """Return the exchange-native identifier for `symbol`, caching defaults."""
+        """返回 `symbol` 的交易所原生标识符，缓存默认值。"""
         try:
             return self.symbol_ids[symbol]
         except:
@@ -4198,7 +4220,7 @@ class Passivbot:
             return symbol
 
     def to_ccxt_symbol(self, symbol: str) -> str:
-        """Convert to ccxt standardized symbol"""
+        """转换为 ccxt 标准化的交易对"""
         candidates = []
         try:
             candidates.append(self.get_symbol_id_inv(symbol))
@@ -4214,7 +4236,7 @@ class Passivbot:
             logging.info(f"failed to convert {symbol} to ccxt symbol. Using {symbol} as is.")
 
     def get_symbol_id_inv(self, symbol):
-        """Return the human-friendly symbol for an exchange-native identifier."""
+        """返回交易所原生标识符对应的人可读交易对。"""
         try:
             if symbol in self.symbol_ids_inv:
                 return self.symbol_ids_inv[symbol]
@@ -4226,7 +4248,7 @@ class Passivbot:
             return symbol
 
     def is_approved(self, pside, symbol) -> bool:
-        """Return True when a symbol is approved, not ignored, and old enough for trading."""
+        """当交易对已批准、未忽略且足够年代可交易时返回 True。"""
         if symbol not in self.approved_coins_minus_ignored_coins[pside]:
             return False
         if symbol in self.ignored_coins[pside]:
@@ -4236,7 +4258,7 @@ class Passivbot:
         return True
 
     async def update_exchange_configs(self):
-        """Ensure exchange-specific settings are initialised for all active symbols."""
+        """确保所有活跃交易对的交易所特定设置已初始化。"""
         if not hasattr(self, "already_updated_exchange_config_symbols"):
             self.already_updated_exchange_config_symbols = set()
         if not hasattr(self, "_exchange_config_retry_attempts"):
@@ -4302,17 +4324,17 @@ class Passivbot:
         return 0.05
 
     async def update_exchange_config_by_symbols(self, symbols):
-        """Exchange-specific hook to refresh config for the given symbols."""
-        # defined by each exchange child class
+        """交易所特定钩子，刷新指定交易对的配置。"""
+        # 由各交易所子类定义
         pass
 
     async def update_exchange_config(self):
-        """Exchange-specific hook to refresh global config state."""
-        # defined by each exchange child class
+        """交易所特定钩子，刷新全局配置状态。"""
+        # 由各交易所子类定义
         pass
 
     def is_old_enough(self, pside, symbol):
-        """Return True if the market age exceeds the configured minimum for forager mode."""
+        """若市场年龄超过 forager 模式配置的最低要求则返回 True。"""
         if self.is_forager_mode(pside) and self.minimum_market_age_millis > 0:
             first_timestamp = self.get_first_timestamp(symbol)
             if first_timestamp:
@@ -4323,7 +4345,7 @@ class Passivbot:
             return True
 
     async def update_tickers(self):
-        """Fetch latest ticker data and fill in missing bid/ask/last values."""
+        """获取最新行情数据并填充缺失的买/卖/最新价。"""
         if not hasattr(self, "tickers"):
             self.tickers = {}
         tickers = None
@@ -4344,7 +4366,7 @@ class Passivbot:
             logging.error(f"Error with {get_function_name()} {e}")
 
     async def execution_cycle(self):
-        """Prepare bot state before talking to the exchange in an execution loop."""
+        """在执行循环中与交易所交互前准备机器人状态。"""
         await self.update_effective_min_cost()
         self.refresh_approved_ignored_coins_lists()
         self.set_wallet_exposure_limits()
@@ -4364,19 +4386,19 @@ class Passivbot:
         await self.update_trailing_data()
 
     def _log_mode_changes(self, res: dict, previous_PB_modes: dict) -> None:
-        """Log mode changes with DEBUG for all details and INFO for user-relevant events.
+        """记录模式变更，DEBUG 级别记录全部详情，INFO 级别记录用户相关事件。
 
-        DEBUG: All mode changes (full detail, no throttling)
-        INFO: Selective logging:
-          - "added" with "normal" -> forager selection (with slot context)
-          - "added" with "graceful_stop" -> only on startup
-          - "removed" -> coin exiting (useful)
-          - "changed" normal<->graceful_stop -> suppress (oscillation noise)
-          - "changed" to/from tp_only/manual/panic -> significant, always log
+        DEBUG：所有模式变更（完整详情，无节流）
+        INFO：选择性记录：
+          - "added" 且为 "normal" -> forager 选中（含槽位上下文）
+          - "added" 且为 "graceful_stop" -> 仅在首次运行时
+          - "removed" -> 币种退出（有价值）
+          - "changed" normal<->graceful_stop -> 抑制（振荡噪音）
+          - "changed" 到/从 tp_only/manual/panic -> 重要，始终记录
         """
         is_first_run = previous_PB_modes is None
 
-        # Collect slot info for context
+        # 收集槽位信息作为上下文
         slot_info = {}
         for pside in ["long", "short"]:
             try:
@@ -4387,31 +4409,31 @@ class Passivbot:
             except Exception:
                 slot_info[pside] = {"max": 0, "current": 0, "open": False}
 
-        # Initialize throttle cache if needed (for INFO level only)
+        # 如需要则初始化节流缓存（仅用于 INFO 级别）
         if not hasattr(self, "_mode_change_last_log_ms"):
             self._mode_change_last_log_ms = {}
-        mode_change_throttle_ms = 300_000  # 5 minutes for INFO-level throttle
+        mode_change_throttle_ms = 300_000  # INFO 级别节流间隔 5 分钟
         now_ms = utc_ms()
 
         for change_type, changes in res.items():
             for elm in changes:
-                # Always log at DEBUG (full detail)
+                # DEBUG 级别始终记录（完整详情）
                 logging.debug("[mode] %s %s", change_type, elm)
 
-                # Determine if this should be logged at INFO
+                # 确定是否应在 INFO 级别记录
                 should_log_info = False
                 info_suffix = ""
 
                 try:
-                    # Parse element: "long.XRP/USDT:USDT: normal" or "long.XRP/USDT:USDT: old -> new"
+                    # 解析元素："long.XRP/USDT:USDT: normal" 或 "long.XRP/USDT:USDT: old -> new"
                     parts = elm.split(".")
                     pside = parts[0] if parts else "long"
                     pside_info = slot_info.get(pside, {"max": 0, "current": 0, "open": False})
 
                     if change_type == "added":
-                        # New coin entering mode system
+                        # 新币种进入模式系统
                         if ": normal" in elm:
-                            # Forager selection - always useful
+                            # Forager 选中 — 始终有价值
                             should_log_info = True
                             if pside_info["open"]:
                                 info_suffix = (
@@ -4420,32 +4442,32 @@ class Passivbot:
                             else:
                                 info_suffix = f" (slot {pside_info['current']}/{pside_info['max']})"
                         elif is_first_run:
-                            # First run - show all modes for visibility
+                            # 首次运行 — 显示所有模式以提高可见性
                             should_log_info = True
-                        # else: "added" with graceful_stop when not first run -> skip INFO
+                        # 否则："added" 且为 graceful_stop 但非首次运行 -> 跳过 INFO
 
                     elif change_type == "removed":
-                        # Coin exiting - always useful
+                        # 币种退出 — 始终有价值
                         should_log_info = True
 
                     elif change_type == "changed":
-                        # Mode changed - check if it's oscillation or significant
+                        # 模式变更 — 检查是振荡还是重要变更
                         is_oscillation = (
                             "normal -> graceful_stop" in elm or "graceful_stop -> normal" in elm
                         )
                         if is_oscillation:
-                            # Oscillation - suppress at INFO (already logged at DEBUG)
+                            # 振荡 — 在 INFO 级别抑制（已在 DEBUG 级别记录）
                             should_log_info = False
                         else:
-                            # Significant mode change (tp_only, manual, panic, etc.)
+                            # 重要模式变更（tp_only、manual、panic 等）
                             should_log_info = True
 
                 except Exception:
-                    # On parse error, log at INFO to be safe
+                    # 解析错误时在 INFO 级别记录以确保安全
                     should_log_info = True
 
                 if should_log_info:
-                    # Apply throttle for INFO level
+                    # 对 INFO 级别应用节流
                     try:
                         symbol_part = elm.split(":")[0]
                         throttle_key = f"info:{change_type}:{symbol_part}"
@@ -4460,20 +4482,20 @@ class Passivbot:
     async def get_filtered_coins(
         self, pside: str, *, max_network_fetches: Optional[int] = None
     ) -> List[str]:
-        """Select ideal coins for a side using EMA-based volume and log-range filters.
+        """使用基于 EMA 的成交量和对数范围过滤选择某方向的理想币种。
 
-        Steps (for forager mode):
-        - Filter by age and effective min cost
-        - Rank by 1m EMA quote volume
-        - Drop the lowest filter_volume_drop_pct fraction
-        - Rank remaining by 1m EMA log range
-        - Return up to n_positions most volatile symbols
-        For non-forager mode, returns all approved candidates.
+        步骤（forager 模式）：
+        - 按年龄和有效最小成本过滤
+        - 按 1m EMA 报价成交量排序
+        - 去除最低的 filter_volume_drop_pct 比例
+        - 对剩余按 1m EMA 对数范围排序
+        - 返回最多 n_positions 个最波动的交易对
+        非 forager 模式返回所有已批准候选项。
         """
-        # filter coins by age
-        # filter coins by min effective cost
-        # filter coins by relative volume
-        # filter coins by log range
+        # 按年龄过滤币种
+        # 按有效最小成本过滤
+        # 按相对成交量过滤
+        # 按对数范围过滤
         if self.get_forced_PB_mode(pside):
             return []
         candidates = self.approved_coins_minus_ignored_coins[pside]
@@ -4488,7 +4510,7 @@ class Passivbot:
         except Exception:
             slots_open = False
         if self.is_forager_mode(pside):
-            # filter coins by relative volume and log range
+            # 按相对成交量和对数范围过滤
             clip_pct = self.bot_value(pside, "forager_volume_drop_pct")
             if not clip_pct:
                 clip_pct = self.bot_value(pside, "filter_volume_drop_pct")
@@ -4501,7 +4523,7 @@ class Passivbot:
                     "volatility": 1.0,
                 }
             max_n_positions = self.get_max_n_positions(pside)
-            # Apply max_ohlcv_fetches_per_minute in all cases (slots open or full).
+            # 在所有情况下应用 max_ohlcv_fetches_per_minute（无论槽位是否开放）。
             max_calls = get_optional_live_value(self.config, "max_ohlcv_fetches_per_minute", 0)
             try:
                 max_calls = int(max_calls) if max_calls is not None else 0
@@ -4509,12 +4531,12 @@ class Passivbot:
                 max_calls = 0
             if slots_open:
                 rate_limit_age_ms = self._forager_target_staleness_ms(len(candidates), max_calls)
-                # Respect rate limit even with open slots; floor at 60s for responsiveness.
+                # 即使有开放槽位也尊重速率限制；响应性最低设为 60s。
                 max_age_ms = max(60_000, rate_limit_age_ms) if max_calls > 0 else 60_000
             else:
                 max_age_ms = self._forager_target_staleness_ms(len(candidates), max_calls)
-            # Use pre-computed per-side budget from caller if available;
-            # otherwise fall back to computing it here (for backward compat).
+            # 使用调用方预计算的每方向预算（若可用）；
+            # 否则在此处计算（向后兼容）。
             if max_network_fetches is None:
                 fetch_budget = self._forager_refresh_budget(max_calls) if max_calls > 0 else None
             else:
@@ -4579,7 +4601,7 @@ class Passivbot:
                 if self.live_value("filter_by_min_effective_cost"):
                     self.warn_on_high_effective_min_cost(pside)
                 return []
-            # all approved coins are selected, no filtering by volume and log range
+            # 所有已批准的币种均被选中，不过滤成交量和日志范围
             ideal_coins = sorted(eligible)
         return ideal_coins
 
@@ -4591,14 +4613,13 @@ class Passivbot:
         max_age_ms: Optional[int] = 60_000,
         max_network_fetches: Optional[int] = None,
     ) -> Tuple[Dict[str, float], Dict[str, float]]:
-        """Compute 1m EMA quote volume and 1m EMA log range per symbol with one candles fetch.
+        """通过一次 K线抓取计算每个交易对的 1m EMA 报价成交量和 1m EMA 对数范围。
 
-        This uses CandlestickManager.get_latest_ema_metrics() to avoid calling get_candles() twice
-        per symbol (once for volume and once for log range).
+        使用 CandlestickManager.get_latest_ema_metrics() 来避免每个交易对调用两次
+        get_candles()（一次获取成交量，一次获取对数范围）。
 
-        If *max_network_fetches* is set, at most that many symbols will be allowed to
-        trigger a network fetch.  The remaining symbols receive a very large TTL so they
-        return cached data (or 0.0 if nothing is cached) without hitting the API.
+        若设置了 *max_network_fetches*，最多允许指定数量的交易对
+        触发网络抓取。剩余交易对获得非常大的 TTL，仅返回缓存数据（若未缓存则返回 0.0）而不访问 API。
         """
         span_volume = int(round(self.bot_value(pside, "forager_volume_ema_span")))
         span_volatility = int(round(self.bot_value(pside, "forager_volatility_ema_span")))
@@ -4627,6 +4648,7 @@ class Passivbot:
         )
 
         async def one(symbol: str):
+            """获取单个交易对的最新 OHLCV 数据。"""
             try:
                 if symbol in cache_only_never_fetched:
                     return (0.0, 0.0)
@@ -4669,8 +4691,8 @@ class Passivbot:
             volumes[sym] = float(vol)
             log_ranges[sym] = float(lr)
 
-        # Throttle EMA ranking logs to at most once per 5 minutes per metric.
-        # Log only when rankings have changed since last logged snapshot.
+        # EMA 排名日志节流：每个指标最多每 5 分钟记录一次。
+        # 仅在排名发生变化时记录。
         elapsed_s = max(0.001, (utc_ms() - started_ms) / 1000.0)
         now_ms = utc_ms()
         ema_log_throttle_ms = (
@@ -4688,7 +4710,7 @@ class Passivbot:
             cache_key = (pside, span_volume)
             last_top = self._volume_top_cache.get(cache_key)
             last_log_ms = self._volume_top_last_log_ms.get(cache_key, 0)
-            # Require both: rankings changed AND enough time has passed
+            # 同时满足：排名变化 AND 足够时间已过
             if last_top != top_syms and (now_ms - last_log_ms) >= ema_log_throttle_ms:
                 self._volume_top_cache[cache_key] = top_syms
                 self._volume_top_last_log_ms[cache_key] = now_ms
@@ -4707,7 +4729,7 @@ class Passivbot:
             cache_key = (pside, span_volatility)
             last_top = self._log_range_top_cache.get(cache_key)
             last_log_ms = self._log_range_top_last_log_ms.get(cache_key, 0)
-            # Require both: rankings changed AND enough time has passed
+            # 同时满足：排名变化 AND 足够时间已过
             if last_top != top_syms and (now_ms - last_log_ms) >= ema_log_throttle_ms:
                 self._log_range_top_cache[cache_key] = top_syms
                 self._log_range_top_last_log_ms[cache_key] = now_ms
@@ -4719,7 +4741,7 @@ class Passivbot:
         return volumes, log_ranges
 
     def warn_on_high_effective_min_cost(self, pside):
-        """Log a warning if min effective cost filtering removes every candidate."""
+        """若有效最小成本过滤移除了所有候选则发出警告。"""
         if not self.live_value("filter_by_min_effective_cost"):
             return
         if not self.is_pside_enabled(pside):
@@ -4737,7 +4759,7 @@ class Passivbot:
             )
 
     def get_max_n_positions(self, pside):
-        """Return the configured maximum number of concurrent positions for a side."""
+        """返回该方向配置的最大并发持仓数。"""
         max_n_positions = min(
             self.bot_value(pside, "n_positions"),
             len(self.approved_coins_minus_ignored_coins[pside]),
@@ -4745,7 +4767,7 @@ class Passivbot:
         return max(0, int(round(max_n_positions)))
 
     def get_current_n_positions(self, pside):
-        """Count open positions for the side, excluding inactive forced modes."""
+        """统计该方向的未平仓位数，排除非活跃强制模式。"""
         n_positions = 0
         for symbol in self.positions:
             if self.positions[symbol][pside]["size"] != 0.0:
@@ -4757,7 +4779,7 @@ class Passivbot:
         return n_positions
 
     def get_forced_PB_mode(self, pside, symbol=None):
-        """Return an explicitly forced mode for the side or symbol, if configured."""
+        """返回方向或交易对的显式强制模式（若已配置）。"""
         if self._equity_hard_stop_enabled(pside):
             state = self._hsl_state(pside)
             if self._equity_hard_stop_runtime_red_latched(pside) and not state["halted"]:
@@ -4778,7 +4800,7 @@ class Passivbot:
         return None
 
     def set_wallet_exposure_limits(self):
-        """Recalculate wallet exposure limits for both sides and per-symbol overrides."""
+        """重新计算双向的钱包敞口限制和逐交易对覆盖。"""
         for pside in ["long", "short"]:
             self.config["bot"][pside]["wallet_exposure_limit"] = self.get_wallet_exposure_limit(pside)
             for symbol in self.coin_overrides:
@@ -4789,7 +4811,7 @@ class Passivbot:
                     )
 
     def get_wallet_exposure_limit(self, pside, symbol=None):
-        """Return side WEL from fixed config denominator, honoring per-symbol overrides."""
+        """从固定配置分母返回方向 WEL，遵循逐交易对覆盖。"""
         if symbol:
             fwel = (
                 self.coin_overrides.get(symbol, {})
@@ -4808,14 +4830,14 @@ class Passivbot:
         return round(twel / n_positions, 8)
 
     def is_pside_enabled(self, pside):
-        """Return True if trading is enabled for the given side in the current config."""
+        """若当前配置中启用了指定方向的交易则返回 True。"""
         return (
             self.bot_value(pside, "total_wallet_exposure_limit") > 0.0
             and self.bot_value(pside, "n_positions") > 0.0
         )
 
     def effective_min_cost_is_low_enough(self, pside, symbol):
-        """Check whether the symbol meets the effective minimum cost requirement."""
+        """检查交易对是否满足有效最小成本要求。"""
         if not self.live_value("filter_by_min_effective_cost"):
             return True
         base_limit = self.get_wallet_exposure_limit(pside, symbol)
@@ -4830,30 +4852,31 @@ class Passivbot:
         )
 
     def get_hysteresis_snapped_balance(self) -> float:
-        """Return hysteresis-snapped balance used for sizing."""
+        """返回用于仓位计算的滞后吸附余额。"""
         return float(getattr(self, "balance", 0.0) or 0.0)
 
     def get_raw_balance(self) -> float:
-        """Return raw wallet balance (fallback to snapped for legacy test stubs)."""
+        """返回原始钱包余额（对于传统测试桩回退到吸附值）。"""
         if hasattr(self, "balance_raw"):
             return float(getattr(self, "balance_raw", 0.0) or 0.0)
         return self.get_hysteresis_snapped_balance()
 
     def add_new_order(self, order, source="WS"):
-        """No-op placeholder; subclasses update open orders through REST synchronisation."""
-        return  # only add new orders via REST in self.update_open_orders()
+        """空操作占位；子类通过 REST 同步更新挂单。"""
+        return  # 仅通过 self.update_open_orders() 中的 REST 添加新订单
 
     def remove_order(self, order: dict, source="WS", reason="cancelled"):
-        """No-op placeholder; subclasses remove open orders through REST synchronisation."""
-        return  # only remove orders via REST in self.update_open_orders()
+        """空操作占位；子类通过 REST 同步移除挂单。"""
+        return  # 仅通过 self.update_open_orders() 中的 REST 移除订单
 
     def handle_order_update(self, upd_list):
-        """Mark the execution loop dirty when websocket order updates arrive."""
+        """当 websocket 订单更新到来时标记执行循环为脏。"""
         if upd_list:
             self.execution_scheduled = True
         return
 
     async def handle_balance_update(self, source="REST"):
+        """处理余额更新事件，重新计算权益硬止损指标。"""
         if not hasattr(self, "_previous_balance_raw"):
             self._previous_balance_raw = 0.0
         if not hasattr(self, "_previous_balance_snapped"):
@@ -4906,7 +4929,7 @@ class Passivbot:
                 self.execution_scheduled = True
 
     async def calc_upnl_sum(self):
-        """Compute unrealised PnL across fetched positions using latest prices."""
+        """使用最新价格计算所有已获取持仓的未实现 PnL。"""
         upnl_sum = 0.0
         last_prices = await self.cm.get_last_prices(
             set([x["symbol"] for x in self.fetched_positions]), max_age_ms=60_000
@@ -4930,20 +4953,20 @@ class Passivbot:
         return upnl_sum
 
     async def init_pnls(self):
-        """Initialize FillEventsManager for PnL tracking."""
+        """初始化 FillEventsManager 用于 PnL 跟踪。"""
         if self._pnls_initialized:
             return
 
         try:
             logging.debug("[fills] initializing FillEventsManager")
 
-            # Extract symbol pool from config
+            # 从配置中提取交易对池
             symbol_pool = _extract_symbol_pool(self.config, None)
 
-            # Build the fetcher for this bot
+            # 构建此机器人的抓取器
             fetcher = _build_fetcher_for_bot(self, symbol_pool)
 
-            # Create the FillEventsManager with its own cache path
+            # 创建带有独立缓存路径的 FillEventsManager
             cache_path = Path(f"caches/fill_events/{self.exchange}/{self.user}")
 
             self._pnls_manager = FillEventsManager(
@@ -4953,10 +4976,10 @@ class Passivbot:
                 cache_path=cache_path,
             )
 
-            # Load cached events
+            # 加载缓存的事件
             await self._pnls_manager.ensure_loaded()
 
-            # Bybit cache doctor runs by default on startup to self-heal known duplicate-fill issues.
+            # Bybit 缓存医生默认在启动时运行，自行修复已知的重复成交问题。
             doctor_mode = str(os.getenv("PASSIVBOT_FILL_EVENTS_DOCTOR", "")).strip().lower()
             if self.exchange == "bybit":
                 if doctor_mode not in ("0", "false", "off", "disable", "disabled"):
@@ -4989,24 +5012,24 @@ class Passivbot:
             raise
 
     async def update_pnls(self):
-        """Fetch latest fills using FillEventsManager and update the cache."""
+        """使用 FillEventsManager 获取最新成交并更新缓存。"""
         if self.stop_signal_received:
             return False
 
-        await self.init_pnls()  # will do nothing if already initiated
+        await self.init_pnls()  # 若已初始化则无操作
 
         if self._pnls_manager is None:
             return False
 
         try:
-            # Use the same lookback window
+            # 使用相同的回看窗口
             lookback = parse_pnls_max_lookback_days(
                 self.live_value("pnls_max_lookback_days"),
                 field_name="live.pnls_max_lookback_days",
             )
             age_limit = lookback.fill_cache_age_limit_ms(self.get_exchange_time())
 
-            # Get existing event IDs and source IDs before refresh
+            # 刷新前获取现有事件 ID 和源 ID
             existing_ids: set[str] = set()
             existing_source_ids: set[str] = set()
             for ev in self._pnls_manager.get_events():
@@ -5018,7 +5041,7 @@ class Passivbot:
                 elif getattr(ev, "id", None):
                     existing_source_ids.add(ev.id)
 
-            # Check if we need a full refresh (cache empty or too old)
+            # 检查是否需要全量刷新（缓存为空或过旧）
             events = self._pnls_manager.get_events()
             needs_full_refresh = not events
             history_scope = self._pnls_manager.get_history_scope()
@@ -5033,9 +5056,9 @@ class Passivbot:
                     )
             elif events and age_limit is not None:
                 oldest_event_ts = events[0].timestamp
-                if oldest_event_ts > age_limit + 1000 * 60 * 60 * 24:  # > 1 day newer than limit
+                if oldest_event_ts > age_limit + 1000 * 60 * 60 * 24:  # 比限制新超过 1 天
                     needs_full_refresh = True
-                    # Log once per session to avoid spam
+                    # 每个会话仅记录一次以避免刷屏
                     cache_key = "_fills_full_refresh_logged"
                     if not getattr(self, cache_key, False):
                         setattr(self, cache_key, True)
@@ -5046,7 +5069,7 @@ class Passivbot:
                         )
 
             if needs_full_refresh:
-                # Full refresh with proper lookback window
+                # 全量刷新，使用合适的回看窗口
                 if not getattr(self, "_fills_full_refresh_logged", False):
                     if age_limit is None:
                         logging.debug("[fills] Performing full refresh from full available history")
@@ -5060,10 +5083,10 @@ class Passivbot:
                 )
                 self._pnls_manager.set_history_scope("all" if lookback.is_all else "window")
             else:
-                # Incremental refresh
+                # 增量刷新
                 await self._pnls_manager.refresh_latest(overlap=20)
 
-            # Find and log new events (those not in cache before refresh)
+            # 查找并记录新事件（刷新前不在缓存中的）
             all_events = self._pnls_manager.get_events()
             new_events = []
             seen_new_source_ids: set[str] = set()
@@ -5108,25 +5131,25 @@ class Passivbot:
             raise
 
     # -------------------------------------------------------------------------
-    # FillEventsManager Helpers
+    # FillEventsManager 辅助方法
     # -------------------------------------------------------------------------
 
     def _log_fill_event(self, event) -> str:
-        """Format a FillEvent for logging.
+        """格式化 FillEvent 用于日志。
 
-        Format: [fill] BTC long entry +0.001 @ 100000.00 id=abc123
-        For closes: [fill] BTC long close -0.001 @ 100500.00, pnl=+5.50 USDT id=abc123
-        For unknown orders: [fill] BTC long unknown -0.2 @ 2.05, pnl=-0.005 USDT (coid=abc123) id=xyz789
+        格式：[fill] BTC long entry +0.001 @ 100000.00 id=abc123
+        平仓：[fill] BTC long close -0.001 @ 100500.00, pnl=+5.50 USDT id=abc123
+        未知订单：[fill] BTC long unknown -0.2 @ 2.05, pnl=-0.005 USDT (coid=abc123) id=xyz789
         """
         coin = symbol_to_coin(event.symbol, verbose=False) or event.symbol
         pside = event.position_side.lower()
         order_type = event.pb_order_type.lower() if event.pb_order_type else "fill"
 
-        # Format qty with sign (+ for buys, - for sells)
+        # 格式化数量符号（买入为 +，卖出为 -）
         qty_sign = "+" if event.side.lower() == "buy" else "-"
         qty_str = f"{qty_sign}{abs(event.qty):.6g}"
 
-        # Include timestamp to make historical fills obvious in logs
+        # 包含时间戳使历史成交在日志中一目了然
         fill_ts = ""
         if getattr(event, "timestamp", 0):
             fill_ts = ts_to_date(event.timestamp)[:19]
@@ -5138,37 +5161,37 @@ class Passivbot:
         else:
             msg = f"[fill] {coin} {pside} {order_type} {qty_str} @ {event.price:.2f}"
 
-        # Add pnl for close orders (always show, even if 0.0)
-        # Close orders have "close" in their type (e.g., close_grid_long, close_unstuck_long)
+        # 为平仓订单添加 pnl（始终显示，即使为 0.0）
+        # 平仓订单的类型中包含 "close"（如 close_grid_long、close_unstuck_long）
         is_close = "close" in order_type
         if is_close or event.pnl != 0.0:
             pnl_sign = "+" if event.pnl >= 0 else ""
             msg += f", pnl={pnl_sign}{round_dynamic(event.pnl, 3)} USDT"
 
-        # Add client_order_id for unknown orders
+        # 为未知订单添加 client_order_id
         if order_type == "unknown" and event.client_order_id:
             msg += f" (coid={event.client_order_id})"
 
-        # Always add fill ID at the end for traceability
+        # 始终在末尾添加成交 ID 以便追踪
         fill_id = getattr(event, "id", None)
         if fill_id:
-            # Truncate long IDs for readability (show first 12 chars)
+            # 截断长 ID 以提高可读性（显示前 12 个字符）
             short_id = str(fill_id)[:12] if len(str(fill_id)) > 12 else str(fill_id)
             msg += f" id={short_id}"
 
         return msg
 
     def _log_new_fill_events(self, new_events: list) -> None:
-        """Log new fill events. Truncates to summary if > 20 events."""
+        """记录新成交事件。超过 20 个则截断为摘要。"""
         if not new_events:
             return
 
-        # Track fills and PnL for health summary
+        # 跟踪成交和 PnL 用于健康摘要
         self._health_fills += len(new_events)
         self._health_pnl += sum(ev.pnl for ev in new_events)
 
         if len(new_events) > 20:
-            # Truncate to summary
+            # 截断为摘要
             total_pnl = sum(ev.pnl for ev in new_events)
             pnl_sign = "+" if total_pnl >= 0 else ""
             logging.info(
@@ -5178,7 +5201,7 @@ class Passivbot:
                 round_dynamic(total_pnl, 3),
             )
         else:
-            # Log each event
+            # 记录每个事件
             for event in sorted(new_events, key=lambda e: e.timestamp):
                 logging.info(self._log_fill_event(event))
         for event in sorted(new_events, key=lambda e: e.timestamp):
@@ -5193,7 +5216,7 @@ class Passivbot:
             )
 
     def _calc_unstuck_allowances(self, allow_new_unstuck: bool) -> dict[str, float]:
-        """Calculate unstuck allowances using FillEventsManager data."""
+        """使用 FillEventsManager 数据计算解套额度。"""
         if not allow_new_unstuck or self._pnls_manager is None:
             return {"long": 0.0, "short": 0.0}
 
@@ -5221,7 +5244,7 @@ class Passivbot:
         return out
 
     def _get_realized_pnl_cumsum_stats(self) -> dict[str, float]:
-        """Return gross realized pnl cumsum peak/current from FillEventsManager history."""
+        """从 FillEventsManager 历史返回总已实现 PnL 累积峰值/当前值。"""
         if self._pnls_manager is None:
             return {"max": 0.0, "last": 0.0}
         events = self._get_effective_pnl_events()
@@ -5231,7 +5254,7 @@ class Passivbot:
         return {"max": float(pnls_cumsum.max()), "last": float(pnls_cumsum[-1])}
 
     def _log_realized_loss_gate_blocks(self, out: dict, idx_to_symbol: dict[int, str]) -> None:
-        """Emit visible warnings for close orders blocked by realized-loss gate."""
+        """为被已实现亏损门限阻止的平仓订单发出可见警告。"""
         diagnostics = out.get("diagnostics", {}) if isinstance(out, dict) else {}
         blocks = diagnostics.get("loss_gate_blocks", [])
         if not isinstance(blocks, list) or not blocks:
@@ -5269,12 +5292,12 @@ class Passivbot:
                 max_loss_pct,
             )
 
-    # Legacy init_fill_events, update_fill_events, etc. removed - using FillEventsManager
+    # 传统 init_fill_events、update_fill_events 等已移除 - 使用 FillEventsManager
 
     async def get_balance_equity_history(
         self, fill_events: Optional[List[dict]] = None, current_balance: Optional[float] = None
     ) -> Dict[str, Any]:
-        """Replay canonical fill events to produce historical balance/equity curves."""
+        """回放标准成交事件以生成历史余额/权益曲线。"""
         await self.init_pnls()
 
         def _safe_float(val: Any, default: float = 0.0) -> float:
@@ -5320,6 +5343,7 @@ class Passivbot:
             return "increase" if side == "sell" else "decrease"
 
         def _extract_events(source: List[dict]) -> List[dict]:
+            """从原始成交记录中提取并规范化事件数据。"""
             out = []
             for fill in source:
                 ts_raw = fill.get("timestamp")
@@ -5592,6 +5616,7 @@ class Passivbot:
             )
 
         def _apply_event(evt: dict):
+            """将单个事件应用到仓位追踪状态。"""
             slot = _ensure_slot(positions, evt["symbol"])[evt["pside"]]
             qty = evt["qty"]
             price = evt["price"]
@@ -5760,7 +5785,7 @@ class Passivbot:
         }
 
     async def update_open_orders(self):
-        """Refresh open orders from the exchange and reconcile the local cache."""
+        """从交易所刷新挂单并协调本地缓存。"""
         if not hasattr(self, "open_orders"):
             self.open_orders = {}
         if self.stop_signal_received:
@@ -5786,9 +5811,9 @@ class Passivbot:
             else:
                 for order in removed_orders:
                     if not self.order_was_recently_cancelled(order):
-                        # means order is no longer in open orders, but wasn't cancelled by bot
-                        # possible fill
-                        # force another update_positions
+                        # 订单不再在挂单中，但不是被机器人取消的
+                        # 可能有成交
+                        # 强制再次更新仓位
                         schedule_update_positions = True
                         self.log_order_action(
                             order, "missing order", "fetch_open_orders", level=logging.INFO
@@ -5828,11 +5853,11 @@ class Passivbot:
             raise
 
     def get_exchange_time(self):
-        """Return current exchange time in milliseconds."""
+        """返回当前交易所时间（毫秒）。"""
         return utc_ms()
 
     async def log_position_changes(self, positions_old, positions_new, rd=6):
-        """Log position transitions for debugging when differences are detected."""
+        """检测到差异时记录仓位变更用于调试。"""
         psold = {
             (x["symbol"], x["position_side"]): {k: x[k] for k in ["size", "price"]}
             for x in positions_old
@@ -5843,9 +5868,9 @@ class Passivbot:
         }
 
         if psold == psnew:
-            return  # No changes
+            return  # 无变更
 
-        # Ensure both dicts have all keys
+        # 确保两个字典包含所有键
         for k in psnew:
             if k not in psold:
                 psold[k] = {"size": 0.0, "price": 0.0}
@@ -5861,7 +5886,7 @@ class Passivbot:
         if not changed:
             return
 
-        # Pre-calculate total WE per side for TWEL% display
+        # 预计算每方向总 WE 用于 TWEL% 显示
         total_we_by_pside = {"long": 0.0, "short": 0.0}
         balance_raw = self.get_raw_balance()
         for pos in positions_new:
@@ -5872,7 +5897,7 @@ class Passivbot:
             if sz != 0 and balance_raw > 0 and sym in self.c_mults:
                 total_we_by_pside[ps] += pbr.qty_to_cost(sz, px, self.c_mults[sym]) / balance_raw
 
-        # Create PrettyTable for aligned output
+        # 创建 PrettyTable 用于对齐输出
         table = PrettyTable()
         table.border = False
         table.header = False
@@ -5882,7 +5907,7 @@ class Passivbot:
             old = psold[(symbol, pside)]
             new = psnew[(symbol, pside)]
 
-            # classify action ------------------------------------------------
+            # 分类操作 ------------------------------------------------
             if old["size"] == 0.0 and new["size"] != 0.0:
                 action = "    new"
             elif new["size"] == 0.0:
@@ -5894,7 +5919,7 @@ class Passivbot:
             else:
                 action = "unknown"
 
-            # Compute metrics for new pos
+            # 计算新仓位的指标
             wallet_exposure = (
                 pbr.qty_to_cost(new["size"], new["price"], self.c_mults[symbol]) / balance_raw
                 if new["size"] != 0 and balance_raw > 0
@@ -5903,7 +5928,7 @@ class Passivbot:
             wel = float(self.bp(pside, "wallet_exposure_limit", symbol))
             allowance_pct = float(self.bp(pside, "risk_we_excess_allowance_pct", symbol))
             effective_wel = wel * (1.0 + max(0.0, allowance_pct))
-            # WEL% = ratio against base WEL, WELe% = ratio against effective WEL (with excess allowance)
+            # WEL% = 相对于基础 WEL 的比率，WELe% = 相对于有效 WEL（含超额额度）的比率
             WEL_ratio = wallet_exposure / wel if wel > 0.0 else 0.0
             WELe_ratio = wallet_exposure / effective_wel if effective_wel > 0.0 else 0.0
 
@@ -5934,10 +5959,10 @@ class Passivbot:
                 upnl = 0.0
 
             coin = symbol_to_coin(symbol, verbose=False) or symbol
-            # Format WEL percentages with padding for alignment
+            # 格式化 WEL 百分比并填充以便对齐
             wel_pct = round(WEL_ratio * 100)
             wele_pct = round(WELe_ratio * 100)
-            # TWEL% = total WE for this side / TWEL
+            # TWEL% = 该方向总 WE / TWEL
             twel = float(self.bot_value(pside, "total_wallet_exposure_limit") or 0.0)
             twel_pct = round(total_we_by_pside[pside] / twel * 100) if twel > 0.0 else 0
             wel_str = f"| {wel_pct:3d}% WEL, {wele_pct:3d}% WELe, {twel_pct:3d}% TWEL |"
@@ -5964,18 +5989,18 @@ class Passivbot:
                 ]
             )
 
-        # Print aligned table with [pos] prefix
+        # 打印带 [pos] 前缀的对齐表格
         for line in table.get_string().splitlines():
             logging.info("[pos] %s", line)
 
     async def _fetch_and_apply_positions(self):
-        """Fetch raw positions, apply them to local state and return snapshots.
+        """获取原始仓位，应用到本地状态并返回快照。
 
-        Returns:
-            Tuple of (success: bool, old_positions, new_positions).
+        返回：
+            (成功: bool, 旧仓位, 新仓位) 的元组。
 
-        Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+        抛出：
+            Exception：API 错误（调用方通过 restart_bot_on_too_many_errors 处理）。
         """
         if not hasattr(self, "positions"):
             self.positions = {}
@@ -6005,7 +6030,7 @@ class Passivbot:
         return True, fetched_positions_old, self.fetched_positions
 
     async def update_positions(self, *, log_changes: bool = True):
-        """Fetch positions, update local caches, and optionally log any changes."""
+        """获取仓位，更新本地缓存，可选记录变更。"""
         ok, fetched_positions_old, fetched_positions_new = await self._fetch_and_apply_positions()
         if not ok:
             return False
@@ -6017,13 +6042,13 @@ class Passivbot:
         return True
 
     async def update_balance(self):
-        """Fetch and apply the latest wallet balance.
+        """获取并应用最新的钱包余额。
 
-        Returns:
-            bool: True on success, False if balance_override is used but invalid.
+        返回：
+            bool：成功为 True，balance_override 无效时为 False。
 
-        Raises:
-            Exception: On API errors (caller handles via restart_bot_on_too_many_errors).
+        抛出：
+            Exception：API 错误（调用方通过 restart_bot_on_too_many_errors 处理）。
         """
         if not hasattr(self, "balance_override"):
             self.balance_override = None
@@ -6049,7 +6074,7 @@ class Passivbot:
                 return False
             balance_raw = await self.fetch_balance()
 
-        # Only accept numeric balances; keep previous value on failure
+        # 仅接受数值余额；失败时保留先前值
         if balance_raw is None:
             logging.warning("balance fetch returned None; keeping previous balance")
             return False
@@ -6076,15 +6101,15 @@ class Passivbot:
         return True
 
     def _reconcile_balance_after_open_orders_refresh(self) -> bool:
-        """Exchange hook: adjust balance after fresh open-order state if needed."""
+        """交易所钩子：若需要在刷新挂单后调整余额。"""
         return False
 
     def _reconcile_balance_after_positions_and_balance_refresh(self) -> bool:
-        """Exchange hook: adjust balance after fresh positions+balance state if needed."""
+        """交易所钩子：若需要在刷新仓位和余额后调整余额。"""
         return False
 
     async def update_positions_and_balance(self):
-        """Convenience helper to refresh both positions and balance concurrently."""
+        """同时刷新仓位和余额的便捷助手。"""
         balance_task = asyncio.create_task(self.update_balance())
         positions_task = asyncio.create_task(self._fetch_and_apply_positions())
         try:
@@ -6107,7 +6132,7 @@ class Passivbot:
         return balance_ok, positions_ok
 
     def _calc_effective_min_cost_at_price(self, symbol: str, price: float) -> float:
-        """Return executable min order cost at the given price for filter/gating logic."""
+        """返回给定价格处的可执行最小订单成本，用于过滤/门控逻辑。"""
         qty_step = float(self.qty_steps[symbol])
         min_qty = float(self.min_qtys[symbol])
         min_cost = float(self.min_costs[symbol])
@@ -6128,7 +6153,7 @@ class Passivbot:
         return float(pbr.qty_to_cost(min_entry_qty, price, c_mult))
 
     async def update_effective_min_cost(self, symbol=None):
-        """Update the effective minimum order cost for one or all symbols."""
+        """更新一个或所有交易对的有效最小订单成本。"""
         if not hasattr(self, "effective_min_cost"):
             self.effective_min_cost = {}
         if symbol is None:
@@ -6146,19 +6171,19 @@ class Passivbot:
                 traceback.print_exc()
 
     async def calc_ideal_orders(self):
-        """Compute desired entry and exit orders for every active symbol."""
+        """计算每个活跃交易对的期望入场和出场订单。"""
         return await self.calc_ideal_orders_orchestrator()
 
     def _bot_params_to_rust_dict(self, pside: str, symbol: str | None) -> dict:
-        """Build a dict matching Rust `BotParams` for JSON orchestrator input."""
-        # Values which are configured globally (not per symbol) live under bot_value.
+        """构建匹配 Rust `BotParams` 的字典用于 JSON 编排器输入。"""
+        # 全局配置的值（非逐交易对）位于 bot_value 下。
         global_keys = {
             "n_positions",
             "total_wallet_exposure_limit",
             "risk_twel_enforcer_threshold",
             "unstuck_loss_allowance_pct",
         }
-        # Maintain 1:1 field coverage with `passivbot-rust/src/types.rs BotParams`.
+        # 与 `passivbot-rust/src/types.rs BotParams` 保持 1:1 字段覆盖。
         fields = [
             "close_grid_markup_end",
             "close_grid_markup_start",
@@ -6306,6 +6331,7 @@ class Passivbot:
         idx_to_symbol: dict[int, str],
         explicit_overrides: dict[str, dict[str, Optional[str]]],
     ) -> None:
+        """将编排器返回的交易对状态应用到 PB_modes 和模式覆盖配置。"""
         previous_PB_modes = deepcopy(self.PB_modes) if hasattr(self, "PB_modes") else None
         symbol_states = diagnostics.get("symbol_states", []) if isinstance(diagnostics, dict) else []
         if not symbol_states:
@@ -6342,6 +6368,7 @@ class Passivbot:
         self._log_mode_changes(res, previous_PB_modes)
 
     def _orchestrator_mode_override(self, pside: str, symbol: str) -> Optional[str]:
+        """获取编排器对指定交易对的模式覆盖设置。"""
         if self._equity_hard_stop_enabled(pside):
             state = self._hsl_state(pside)
             if self._equity_hard_stop_runtime_red_latched(pside) and not state["halted"]:
@@ -6395,12 +6422,13 @@ class Passivbot:
         return overrides
 
     def _calc_unstuck_allowances_live(self, allow_new_unstuck: bool) -> dict[str, float]:
-        """Calculate unstuck allowances using FillEventsManager."""
+        """使用 FillEventsManager 计算 unstuck 限额。"""
         return self._calc_unstuck_allowances(allow_new_unstuck)
 
     async def calc_ideal_orders_orchestrator_from_snapshot(
         self, snapshot: dict, *, return_snapshot: bool
     ):
+        """从快照数据计算编排器理想订单，包括仓位同步和模式覆盖应用。"""
         symbols = snapshot["symbols"]
         last_prices = snapshot["last_prices"]
         Passivbot._monitor_record_price_ticks(self, last_prices, ts=utc_ms(), source="orchestrator_snapshot")
@@ -6421,8 +6449,8 @@ class Passivbot:
             "long": self._bot_params_to_rust_dict("long", None),
             "short": self._bot_params_to_rust_dict("short", None),
         }
-        # Effective hedge_mode = config setting AND exchange capability.
-        # If either is False, we block same-coin hedging in the orchestrator.
+        # 有效 hedge_mode = 配置设置 AND 交易所能力。
+        # 若任一为 False，则在编排器中阻止同币种对冲。
         effective_hedge_mode = self._config_hedge_mode and self.hedge_mode
         input_dict = {
             "balance": self.get_hysteresis_snapped_balance(),
@@ -6470,6 +6498,7 @@ class Passivbot:
                 effective_min_cost = self._calc_effective_min_cost_at_price(symbol, mprice)
 
             def side_input(pside: str) -> dict:
+                """构建指定方向和交易对的编排器输入数据。"""
                 mode = Passivbot._mode_override_to_orchestrator_mode(
                     self, mode_overrides[pside].get(symbol)
                 )
@@ -6564,7 +6593,7 @@ class Passivbot:
             tup = (float(o["qty"]), float(o["price"]), order_type, order_type_id, execution_type)
             ideal_orders.setdefault(symbol, []).append(tup)
 
-        # Log unstuck coin selection
+        # 记录解套币种选择
         for o in orders:
             order_type_str = o.get("order_type", "")
             if "close_unstuck" in order_type_str:
@@ -6592,9 +6621,9 @@ class Passivbot:
                         price_diff_pct,
                         allowance,
                     )
-                break  # Only one unstuck order per cycle
+                break  # 每个周期仅一个解套订单
 
-        # Log EMA gating for symbols in normal mode with no position and no initial entry
+        # 记录正常模式无持仓且无初始入场交易对的 EMA 门控
         self._log_ema_gating(ideal_orders, m1_close_emas, last_prices, symbols)
 
         ideal_orders_f, _wel_blocked = self._to_executable_orders(ideal_orders, last_prices)
@@ -6622,17 +6651,17 @@ class Passivbot:
         dict[str, float],
         dict[str, float],
     ]:
-        """Fetch the EMA values required by the Rust orchestrator for the given symbols.
+        """获取 Rust 编排器所需的指定交易对的 EMA 值。
 
-        Returns:
-        - m1_close_emas[symbol][span] = ema_close
-        - m1_volume_emas[symbol][span] = ema_quote_volume
-        - m1_log_range_emas[symbol][span] = ema_log_range (1m)
-        - h1_log_range_emas[symbol][span] = ema_log_range (1h)
-        - volumes_long[symbol], log_ranges_long[symbol] (for convenience)
+        返回：
+        - m1_close_emas[交易对][span] = ema_close
+        - m1_volume_emas[交易对][span] = ema_quote_volume
+        - m1_log_range_emas[交易对][span] = ema_log_range (1m)
+        - h1_log_range_emas[交易对][span] = ema_log_range (1h)
+        - volumes_long[交易对], log_ranges_long[交易对]（便利值）
         """
-        # Gather full EMA context for the live symbol universe.
-        # Python should provide the market-state bundle; Rust decides which branches use it.
+        # 收集实盘交易对全集的 EMA 上下文。
+        # Python 提供市场状态数据包；Rust 决定使用哪些分支。
         need_close_spans: dict[str, set[float]] = {s: set() for s in symbols}
         need_h1_lr_spans: dict[str, set[float]] = {s: set() for s in symbols}
 
@@ -6648,7 +6677,7 @@ class Passivbot:
                 if h1_span > 0.0 and math.isfinite(h1_span):
                     need_h1_lr_spans[symbol].add(h1_span)
 
-        # Forager metrics use global spans (per side); include them for all symbols.
+        # Forager 指标使用全局 span（按方向）；为所有交易对包含它们。
         vol_span_long = float(self.bot_value("long", "forager_volume_ema_span") or 0.0)
         lr_span_long = float(self.bot_value("long", "forager_volatility_ema_span") or 0.0)
         vol_span_short = float(self.bot_value("short", "forager_volume_ema_span") or 0.0)
@@ -6665,6 +6694,7 @@ class Passivbot:
             self._orchestrator_close_ema_fallback_counts = {}
 
         async def fetch_map(symbol: str, spans: list[float], fn, ema_type: str):
+            """获取指定交易对多种跨度 EMA 指标的映射。"""
             out: dict[float, float] = {}
             if not spans:
                 return out
@@ -6695,6 +6725,7 @@ class Passivbot:
             return out
 
         async def fetch_required_map(symbol: str, spans: list[float], fn, ema_type: str):
+            """获取必需跨度 EMA 指标的映射（省略可选指标）。"""
             out: dict[float, float] = {}
             if not spans:
                 return out
@@ -6724,6 +6755,7 @@ class Passivbot:
             return out
 
         async def fetch_close_map(symbol: str, spans: list[float]) -> dict[float, float]:
+            """获取收盘价 EMA 映射。"""
             out: dict[float, float] = {}
             if not spans:
                 return out
@@ -6788,7 +6820,7 @@ class Passivbot:
             return out
 
         async def ema_close(symbol: str, span: float) -> float:
-            # 1m candles finalize once/min; 60s TTL avoids redundant network fetches.
+            # 1m K线每分钟定稿一次；60s TTL 避免冗余网络抓取。
             return float(await self.cm.get_latest_ema_close(symbol, span=span, max_age_ms=60_000))
 
         async def ema_qv(symbol: str, span: float) -> float:
@@ -6813,9 +6845,8 @@ class Passivbot:
             lr1m = await fetch_map(sym, m1_lr_spans, ema_lr_1m, "m1_log_range")
             return close, vol, lr1m, h1
 
-        # Ordering: symbols with open positions first (they need EMA data
-        # for correct order calculation), remaining symbols shuffled to
-        # avoid alphabetic starvation.
+        # 排序：有持仓的交易对优先（它们需要 EMA 数据进行正确的订单计算），
+        # 剩余交易对随机打乱以避免字母顺序饥饿。
         symbols_with_pos = [s for s in symbols if self.has_position(symbol=s)]
         symbols_without_pos = [s for s in symbols if s not in symbols_with_pos]
         random.shuffle(symbols_without_pos)
@@ -6829,8 +6860,8 @@ class Passivbot:
         else:
             fetch_delay_s = 0.0
         if fetch_delay_s > 0:
-            # Strict exchanges benefit from pacing expensive 1h refreshes when
-            # all symbol TTLs expire at the same hour boundary.
+            # 严格的交易所在所有交易对 TTL 同时到小时边界时，
+            # 受益于节奏化高代价的 1h 刷新。
             symbol_results = []
             for sym in ordered_symbols:
                 try:
@@ -6867,7 +6898,7 @@ class Passivbot:
                 )
             raise errors[0][1]
 
-        # Convenience: compute the single-span values used by legacy forager logging.
+        # 便利：计算传统 forager 日志使用的单 span 值。
         volumes_long = {s: m1_volume_emas[s].get(vol_span_long, 0.0) for s in symbols}
         log_ranges_long = {s: m1_log_range_emas[s].get(lr_span_long, 0.0) for s in symbols}
 
@@ -6881,7 +6912,7 @@ class Passivbot:
         )
 
     async def calc_ideal_orders_orchestrator(self, *, return_snapshot: bool = False):
-        """Compute desired orders using Rust orchestrator (JSON API)."""
+        """使用 Rust 编排器（JSON API）计算期望订单。"""
         symbols = sorted(set(getattr(self, "active_symbols", []) or self._build_live_symbol_universe()))
         if not symbols:
             return ({}, None) if return_snapshot else {}
@@ -6897,7 +6928,7 @@ class Passivbot:
         )
         Passivbot._monitor_record_price_ticks(self, last_prices, ts=utc_ms(), source=monitor_source)
 
-        # Ensure effective min cost is up to date.
+        # 确保有效最小成本是最新的。
         if not hasattr(self, "effective_min_cost") or not self.effective_min_cost:
             await self.update_effective_min_cost()
 
@@ -6920,8 +6951,8 @@ class Passivbot:
             "long": self._bot_params_to_rust_dict("long", None),
             "short": self._bot_params_to_rust_dict("short", None),
         }
-        # Effective hedge_mode = config setting AND exchange capability.
-        # If either is False, we block same-coin hedging in the orchestrator.
+        # 有效 hedge_mode = 配置设置 AND 交易所能力。
+        # 若任一为 False，则在编排器中阻止同币种对冲。
         effective_hedge_mode = self._config_hedge_mode and self.hedge_mode
         input_dict = {
             "balance": self.get_hysteresis_snapped_balance(),
@@ -6967,6 +6998,7 @@ class Passivbot:
                 effective_min_cost = self._calc_effective_min_cost_at_price(symbol, mprice)
 
             def side_input(pside: str) -> dict:
+                """构建指定方向的编排器输入。"""
                 mode = self._mode_override_to_orchestrator_mode(mode_overrides[pside].get(symbol))
                 pos = self.positions.get(symbol, {}).get(pside, {"size": 0.0, "price": 0.0})
                 trailing = self.trailing_prices.get(symbol, {}).get(pside)
@@ -6986,7 +7018,7 @@ class Passivbot:
                     "bot_params": self._bot_params_to_rust_dict(pside, symbol),
                 }
 
-            # Build EMA bundle for this symbol.
+            # 构建此交易对的 EMA 数据包。
             m1_close_pairs = [[float(k), float(v)] for k, v in sorted(m1_close_emas[symbol].items())]
             m1_volume_pairs = [
                 [float(k), float(v)] for k, v in sorted(m1_volume_emas[symbol].items())
@@ -7069,7 +7101,7 @@ class Passivbot:
             tup = (float(o["qty"]), float(o["price"]), order_type, order_type_id, execution_type)
             ideal_orders.setdefault(symbol, []).append(tup)
 
-        # Log unstuck coin selection
+        # 记录解套币种选择
         for o in orders:
             order_type_str = o.get("order_type", "")
             if "close_unstuck" in order_type_str:
@@ -7097,9 +7129,9 @@ class Passivbot:
                         price_diff_pct,
                         allowance,
                     )
-                break  # Only one unstuck order per cycle
+                break  # 每个周期仅一个解套订单
 
-        # Log EMA gating for symbols in normal mode with no position and no initial entry
+        # 记录正常模式无持仓且无初始入场交易对的 EMA 门控
         self._log_ema_gating(ideal_orders, m1_close_emas, last_prices, symbols)
 
         ideal_orders_f, _wel_blocked = self._to_executable_orders(ideal_orders, last_prices)
@@ -7119,11 +7151,11 @@ class Passivbot:
         return ideal_orders_f
 
     async def _get_orchestrator_last_prices(self, symbols: list[str]) -> dict[str, float]:
-        """Return latest prices for orchestrator planning.
+        """返回编排器规划所需的最新价格。
 
-        In staged mode, market-price reads go through CandlestickManager only so CM owns
-        caching, TTL, and remote-fetch economy. Legacy mode retains the existing direct
-        bulk-ticker path and falls back to CM for any missing symbols.
+        在分阶段模式下，市价读取仅通过 CandlestickManager，以便 CM 统一管理
+        缓存、TTL 和远程抓取经济性。传统模式保留现有的直接批量行情路径，
+        对缺失的交易对回退到 CM。
         """
         ttl_ms = 10_000
         refresh_mode = str(
@@ -7163,7 +7195,7 @@ class Passivbot:
                 )
             return normalized
 
-        # Legacy mode: prefer direct bulk exchange prices, then fill holes via CM.
+        # 遗留模式：优先使用直接批量交易所价格，然后通过 CM 填补缺失。
         last_prices = {}
         try:
             if (
@@ -7208,7 +7240,7 @@ class Passivbot:
     def _to_executable_orders(
         self, ideal_orders: dict, last_prices: Dict[str, float]
     ) -> tuple[Dict[str, list], set[str]]:
-        """Convert raw order tuples into api-ready dicts and find WEL-restricted symbols."""
+        """将原始订单元组转换为 API 就绪的字典，并识别受 WEL 限制的交易对。"""
         ideal_orders_f: Dict[str, list] = {}
         wel_blocked_symbols: set[str] = set()
 
@@ -7295,11 +7327,11 @@ class Passivbot:
     def _finalize_reduce_only_orders(
         self, orders_by_symbol: Dict[str, list], last_prices: Dict[str, float]
     ) -> Dict[str, list]:
-        """Bound reduce-only quantities so they never exceed the current position size (per order and in sum)."""
+        """限制 reduce-only 数量，确保其不超过当前持仓量（单笔及合计）。"""
         for symbol, orders in orders_by_symbol.items():
             market_price = float(last_prices.get(symbol, 0.0))
 
-            # 1) clamp each reduce-only order to position size
+            # 1) 将每笔 reduce-only 订单数量限制在持仓量以内
             for order in orders:
                 if not order.get("reduce_only"):
                     continue
@@ -7313,7 +7345,7 @@ class Passivbot:
                     )
                     order["qty"] = pos_size_abs
 
-            # 2) cap sum(reduce_only qty) <= pos size by reducing furthest-from-market closes first
+            # 2) 限制 reduce_only 数量总和不超过持仓量，优先缩减离市价最远的平仓单
             for pside in ("long", "short"):
                 pos_size_abs = abs(
                     float(self.positions.get(symbol, {}).get(pside, {}).get("size", 0.0))
@@ -7327,7 +7359,7 @@ class Passivbot:
                 if total <= pos_size_abs + 1e-12:
                     continue
                 excess = total - pos_size_abs
-                # furthest first: larger order_market_diff
+                # 优先缩减离市价最远的：更大的 order_market_diff
                 ro_sorted = sorted(
                     ro,
                     key=lambda o: order_market_diff(
@@ -7345,7 +7377,7 @@ class Passivbot:
                     new_q = q - reduce_by
                     o["qty"] = float(round(new_q, 12))
                     excess -= reduce_by
-                # drop any zeroed reduce-only orders
+                # 移除数量归零的 reduce-only 订单
                 orders_by_symbol[symbol] = [
                     o
                     for o in orders_by_symbol[symbol]
@@ -7355,7 +7387,7 @@ class Passivbot:
         return orders_by_symbol
 
     async def calc_orders_to_cancel_and_create(self):
-        """Determine which existing orders to cancel and which new ones to place."""
+        """确定需要取消的现有订单和需要创建的新订单。"""
         if not hasattr(self, "_last_plan_detail"):
             self._last_plan_detail = {}
         ideal_orders = await self.calc_ideal_orders()
@@ -7414,7 +7446,7 @@ class Passivbot:
                         extra.append(f"unchanged_cancel={untouched_cancel}")
                     if untouched_create:
                         extra.append(f"unchanged_create={untouched_create}")
-                    # Use DEBUG when no actual work was done (all orders skipped/unchanged)
+                    # 无实际操作时（所有订单被跳过/未变化）使用 DEBUG 级别
                     log_level = logging.INFO if (total_cancel or total_create) else logging.DEBUG
                     logging.log(
                         log_level,
@@ -7430,7 +7462,7 @@ class Passivbot:
         return to_cancel, to_create
 
     def _snapshot_actual_orders(self) -> dict[str, list[dict]]:
-        """Return a normalized snapshot of currently open orders keyed by symbol."""
+        """返回按交易对分组的当前挂单标准化快照。"""
         actual_orders: dict[str, list[dict]] = {}
         for symbol in self.active_symbols:
             symbol_orders = []
@@ -7465,7 +7497,7 @@ class Passivbot:
         ideal_orders: list,
         keys: tuple[str, ...],
     ) -> tuple[list[dict], list[dict]]:
-        """Return cancel/create lists for a single symbol after mode filtering."""
+        """对单个交易对进行模式过滤后，返回取消/创建列表。"""
         to_cancel, to_create = filter_orders(actual_orders, ideal_orders, keys)
         to_cancel, to_create = self._apply_mode_filters(symbol, to_cancel, to_create)
         return to_cancel, to_create
@@ -7474,9 +7506,9 @@ class Passivbot:
         self, to_cancel: list[dict], to_create: list[dict]
     ) -> tuple[list[dict], list[dict]]:
         """
-        Attach best-effort delta info between existing and desired orders to aid logging.
+        为现有订单与目标订单之间附加最佳匹配的差量信息，辅助日志记录。
 
-        Matches orders by symbol/side/position_side and closest price distance.
+        按交易对/方向/持仓方向匹配订单，选取价格距离最近的配对。
         """
         remaining_create = list(to_create)
         for order in to_create:
@@ -7493,7 +7525,7 @@ class Passivbot:
                 return float("inf")
             return abs(b - a) / abs(a) * 100.0
 
-        # annotate cancellations
+        # 标注取消订单
         for cancel_order in to_cancel:
             candidates = [
                 (idx, co)
@@ -7504,7 +7536,7 @@ class Passivbot:
             ]
             if not candidates:
                 continue
-            # choose closest by price difference
+            # 选取价格差异最小的
             best_idx, best_order = min(
                 candidates,
                 key=lambda c: abs(
@@ -7533,7 +7565,7 @@ class Passivbot:
             }
             cancel_order["_context"] = "replace"
             cancel_order["_reason"] = reason
-            # also annotate the matched create order
+            # 同时标注匹配的创建订单
             best_order["_delta"] = {
                 "price_old": cancel_order.get("price"),
                 "price_new": best_order.get("price"),
@@ -7554,9 +7586,9 @@ class Passivbot:
     def _apply_order_match_tolerance(
         self, to_cancel: list[dict], to_create: list[dict]
     ) -> tuple[list[dict], list[dict], int]:
-        """Drop cancel/create pairs that are within tolerance to avoid churn.
+        """丢弃在容差范围内的取消/创建配对，避免无谓的订单替换。
 
-        Returns (remaining_cancel, remaining_create, skipped_pairs)
+        返回 (remaining_cancel, remaining_create, skipped_pairs)
         """
         tolerance = float(self.live_value("order_match_tolerance_pct"))
         if tolerance <= 0.0:
@@ -7618,7 +7650,7 @@ class Passivbot:
         to_cancel: list[dict],
         to_create: list[dict],
     ) -> tuple[list[dict], list[dict]]:
-        """Apply mode-specific cancel/create filtering rules."""
+        """应用模式相关的取消/创建过滤规则。"""
         for pside in ["long", "short"]:
             mode = self.PB_modes[pside].get(symbol)
             if mode == "manual":
@@ -7642,8 +7674,8 @@ class Passivbot:
                     )
                 ]
             elif mode == "tp_only_with_active_entry_cancellation":
-                # Keep active close-order management and entry-order cancellation.
-                # Entries are never created, but existing entry orders are allowed in to_cancel.
+                # 保留活跃的平仓订单管理，同时允许取消开仓订单。
+                # 永不创建新的开仓订单，但已有的开仓订单可出现在取消列表中。
                 to_create = [
                     x
                     for x in to_create
@@ -7655,7 +7687,7 @@ class Passivbot:
         return to_cancel, to_create
 
     async def _sort_orders_by_market_diff(self, orders: list[dict], log_label: str) -> list[dict]:
-        """Return orders sorted by market diff, fetching prices concurrently."""
+        """按市价差异排序订单，并发获取价格。"""
         if not orders:
             return []
         market_prices = await self._fetch_market_prices({order["symbol"] for order in orders})
@@ -7672,7 +7704,7 @@ class Passivbot:
         return [order for _, order in entries]
 
     async def _fetch_market_prices(self, symbols: set[str]) -> dict[str, float | None]:
-        """Fetch current close prices for the supplied symbols."""
+        """获取指定交易对的当前收盘价。"""
         results: dict[str, float | None] = {}
         tasks: dict[str, asyncio.Task] = {}
         for symbol in symbols:
@@ -7694,7 +7726,7 @@ class Passivbot:
         return results
 
     async def restart_bot_on_too_many_errors(self):
-        """Restart the bot if the hourly execution error budget is exhausted."""
+        """当每小时执行错误预算耗尽时重启机器人。"""
         if not hasattr(self, "error_counts"):
             self.error_counts = []
         now = utc_ms()
@@ -7708,12 +7740,12 @@ class Passivbot:
             raise Exception("too many errors... restarting bot.")
 
     def format_custom_id_single(self, order_type_id: int) -> str:
-        """Build a custom id embedding the order type marker and a UUID suffix."""
-        token = type_token(order_type_id, with_marker=True)  # "0xABCD"
+        """构建包含订单类型标记和 UUID 后缀的自定义 ID。"""
+        token = type_token(order_type_id, with_marker=True)  # "0xABCD" 类型标记
         return (token + uuid4().hex)[: self.custom_id_max_length]
 
     def debug_dump_bot_state_to_disk(self):
-        """Persist internal state snapshots to disk for debugging purposes."""
+        """将内部状态快照持久化到磁盘，用于调试。"""
         if not hasattr(self, "tmp_debug_ts"):
             self.tmp_debug_ts = 0
             self.tmp_debug_cache = make_get_filepath(f"caches/{self.exchange}/{self.user}_debug/")
@@ -7728,16 +7760,16 @@ class Passivbot:
                     logging.error(f"debug failed to dump to disk {k} {e}")
             self.tmp_debug_ts = utc_ms()
 
-    # Legacy EMA maintenance (init_EMAs_single/update_EMAs) removed in favor of CandlestickManager
+    # 遗留 EMA 维护逻辑（init_EMAs_single/update_EMAs）已移除，改用 CandlestickManager
 
     def get_symbols_with_pos(self, pside=None):
-        """Return the set of symbols with open positions for the given side."""
+        """返回指定方向上有持仓的交易对集合。"""
         if pside is None:
             return self.get_symbols_with_pos("long") | self.get_symbols_with_pos("short")
         return set([s for s in self.positions if self.positions[s][pside]["size"] != 0.0])
 
     def get_symbols_approved_or_has_pos(self, pside=None) -> set:
-        """Return symbols that are approved for trading or currently have a position."""
+        """返回已批准交易或当前有持仓的交易对。"""
         if pside is None:
             return self.get_symbols_approved_or_has_pos(
                 "long"
@@ -7748,14 +7780,13 @@ class Passivbot:
             | {s for s in self.coin_overrides if self.get_forced_PB_mode(pside, s) == "normal"}
         )
 
-    # Legacy get_ohlcvs_1m_file_mods removed
+    # 遗留 get_ohlcvs_1m_file_mods 已移除
 
     async def restart_bot(self):
-        """Stop all tasks and raise to trigger an external bot restart."""
+        """停止所有任务并抛出异常以触发外部重启。"""
         logging.info("Initiating bot restart...")
-        # Note: Do NOT set stop_signal_received=True here - that would cause
-        # the main loop to exit instead of restart. The flag is only for
-        # user-initiated stops (SIGINT/SIGTERM).
+        # 注意：不要在此设置 stop_signal_received=True —— 那会导致主循环退出而非重启。
+        # 该标志仅用于用户主动停止（SIGINT/SIGTERM）。
         self.stop_data_maintainers()
         await self.cca.close()
         if self.ccp is not None:
@@ -7763,7 +7794,7 @@ class Passivbot:
         raise RestartBotException("Bot will restart.")
 
     def _forager_refresh_budget(self, max_calls_per_minute: int) -> int:
-        """Token bucket budget for forager candle refreshes."""
+        """Forager K 线刷新的令牌桶预算。"""
         try:
             max_calls = int(max_calls_per_minute)
         except Exception:
@@ -7787,7 +7818,7 @@ class Passivbot:
     def _split_forager_budget_by_side(
         self, total_budget: int, sides: Iterable[str]
     ) -> Dict[str, int]:
-        """Split a cycle budget fairly across sides with round-robin remainder."""
+        """按方向公平分配周期预算，余数使用轮询方式分配。"""
         side_list = [s for s in sides if s in ("long", "short")]
         out = {s: 0 for s in side_list}
         try:
@@ -7808,7 +7839,7 @@ class Passivbot:
         return out
 
     def _forager_target_staleness_ms(self, n_symbols: int, max_calls_per_minute: int) -> int:
-        """Compute max acceptable staleness for forager candidates based on refresh budget."""
+        """根据刷新预算计算 Forager 候选交易对的最大可接受陈旧度。"""
         try:
             n_syms = int(n_symbols)
         except Exception:
@@ -7831,7 +7862,7 @@ class Passivbot:
         refreshed: Optional[int] = None,
         throttle_ms: int = 60_000,
     ) -> None:
-        """Log a throttled summary of candle staleness for the given symbols."""
+        """以节流方式记录指定交易对的 K 线陈旧度摘要。"""
         try:
             now = utc_ms()
             boot_delay_ms = int(getattr(self, "candle_refresh_log_boot_delay_ms", 300_000) or 0)
@@ -7873,7 +7904,7 @@ class Passivbot:
             return
 
     async def _refresh_forager_candidate_candles(self) -> None:
-        """Best-effort refresh for forager candidate symbols to avoid large bursts."""
+        """尽可能刷新 Forager 候选交易对的 K 线，避免大批量集中请求。"""
         if not self.is_forager_mode():
             return
         max_calls = get_optional_live_value(self.config, "max_ohlcv_fetches_per_minute", 0)
@@ -7911,7 +7942,7 @@ class Passivbot:
 
         if slots_open_any:
             if max_calls > 0:
-                # Respect rate limit even with open slots; use token bucket budget.
+                # 即使有空位也要遵守速率限制；使用令牌桶预算。
                 budget = self._forager_refresh_budget(max_calls)
                 if budget <= 0:
                     return
@@ -7924,7 +7955,7 @@ class Passivbot:
             if budget <= 0:
                 return
 
-        # Skip actives; they are refreshed in update_ohlcvs_1m_for_actives
+        # 跳过活跃交易对；它们在 update_ohlcvs_1m_for_actives 中刷新
         active = set(self.active_symbols) if hasattr(self, "active_symbols") else set()
         candidates = sorted(all_candidates - active)
         if not candidates:
@@ -7932,7 +7963,7 @@ class Passivbot:
 
         if slots_open_any:
             rate_limit_age_ms = self._forager_target_staleness_ms(len(all_candidates), max_calls)
-            # Respect rate limit even with open slots; floor at 60s for responsiveness.
+            # 即使有空位也要遵守速率限制；最低 60 秒以保证响应速度。
             target_age_ms = max(60_000, rate_limit_age_ms) if max_calls > 0 else 60_000
         else:
             target_age_ms = self._forager_target_staleness_ms(len(all_candidates), max_calls)
@@ -7954,7 +7985,7 @@ class Passivbot:
         if not to_refresh:
             return
 
-        # Throttled visibility into forager refresh behavior (debug only).
+        # Forager 刷新行为的节流可见性（仅调试）。
         try:
             now = utc_ms()
             boot_delay_ms = int(getattr(self, "candle_refresh_log_boot_delay_ms", 300_000) or 0)
@@ -8043,19 +8074,18 @@ class Passivbot:
                 logging.error("error refreshing forager candles for %s: %s", sym, exc, exc_info=True)
 
     async def update_ohlcvs_1m_for_actives(self):
-        """Ensure active symbols have fresh 1m candles in CandlestickManager (<=60s old).
+        """确保活跃交易对在 CandlestickManager 中有新鲜的 1 分钟 K 线（不超过 60 秒）。
 
-        Uses CandlestickManager.get_candles with max_age_ms=60_000 so it refreshes
-        only when its internal last refresh is older than the TTL. Fetches a small
-        recent window ending at the latest finalized minute.
+        使用 CandlestickManager.get_candles 的 max_age_ms=60_000 参数，仅当内部
+        上次刷新时间超过 TTL 时才会刷新。获取一个小的最近窗口，结束于最新已定型的分钟。
         """
-        # 1m candles only finalize once per minute; refreshing more often wastes API budget.
-        # Use 60s TTL so each symbol is fetched at most once per minute.
+        # 1 分钟 K 线每分钟仅定型一次；更频繁的刷新会浪费 API 预算。
+        # 使用 60 秒 TTL，确保每个交易对最多每分钟获取一次。
         max_age_ms = 60_000
         try:
             now = utc_ms()
             end_ts = (now // ONE_MIN_MS) * ONE_MIN_MS - ONE_MIN_MS
-            # Use manager default window if available, otherwise a reasonable fallback
+            # 如可用则使用管理器默认窗口，否则使用合理回退值
             try:
                 window = int(getattr(self.cm, "default_window_candles", 120))
             except Exception:
@@ -8065,9 +8095,8 @@ class Passivbot:
             fetch_delay_s = self._get_fetch_delay_seconds()
 
             symbols = sorted(set(self.active_symbols))
-            # Prioritize symbols with open positions (need fresh candles for
-            # correct order calculation), shuffle the rest to avoid alphabetic
-            # starvation when a 429 forces cache-only for late symbols.
+            # 优先处理有持仓的交易对（需要新鲜 K 线以正确计算订单），
+            # 对其余交易对随机打乱，避免 429 导致后半部分持续缓存饥饿。
             symbols_with_pos = [s for s in symbols if self.has_position(symbol=s)]
             symbols_without_pos = [s for s in symbols if s not in symbols_with_pos]
             random.shuffle(symbols_without_pos)
@@ -8080,10 +8109,9 @@ class Passivbot:
                 throttle_ms=60_000,
             )
             for sym in ordered_symbols:
-                # If a 429 triggered a global backoff in the CandlestickManager,
-                # stop the loop early; remaining symbols would all hit the same
-                # backoff.  They will be picked up on the next cycle; the
-                # position-first + shuffle ordering prevents systematic starvation.
+                # 若 429 触发了 CandlestickManager 的全局退避，则提前终止循环；
+                # 剩余交易对都会命中相同的退避。它们将在下一个周期被处理；
+                # 持仓优先 + 随机打乱的顺序可防止系统性饥饿。
                 if self.cm.is_rate_limited():
                     logging.debug("[candle] active refresh breaking early: rate limit backoff active")
                     break
@@ -8106,16 +8134,16 @@ class Passivbot:
                     )
                 except Exception as exc:
                     logging.error("error refreshing candles for %s: %s", sym, exc, exc_info=True)
-            # Best-effort refresh for forager candidates (lazy & budgeted)
+            # 尽力刷新 Forager 候选交易对（懒加载 & 有预算限制）
             await self._refresh_forager_candidate_candles()
         except Exception as e:
             logging.error(f"error with {get_function_name()} {e}")
             traceback.print_exc()
 
     async def maintain_hourly_cycle(self):
-        """Periodically refresh market metadata while the bot is running."""
-        # Random jitter (0–120s) so multiple bots on the same VPS don't fire
-        # init_markets simultaneously and blow through IP-based rate limits.
+        """在机器人运行期间定期刷新市场元数据。"""
+        # 随机抖动（0-120 秒），避免同一 VPS 上的多个机器人同时触发
+        # init_markets 而耗尽基于 IP 的速率限额。
         jitter_s = random.uniform(0, 120)
         logging.info("[hourly] starting maintenance cycle (jitter=%.1fs)", jitter_s)
         while not self.stop_signal_received:
@@ -8144,7 +8172,7 @@ class Passivbot:
                         logging.error(
                             "error running candle disk coverage audit: %s", exc, exc_info=True
                         )
-                # update markets dict once every hour, with per-instance jitter
+                # 每小时更新一次 markets 字典，附带每个实例的抖动
                 hourly_interval_ms = 1000 * 60 * 60 + int(jitter_s * 1000)
                 if now - self.init_markets_last_update_ms > hourly_interval_ms:
                     try:
@@ -8163,19 +8191,19 @@ class Passivbot:
                 await asyncio.sleep(5)
 
     async def start_data_maintainers(self):
-        """Spawn background tasks responsible for market metadata and order watching."""
+        """启动负责市场元数据和订单监控的后台任务。"""
         if hasattr(self, "maintainers"):
             self.stop_data_maintainers()
         maintainer_names = ["maintain_hourly_cycle"]
         if self.ws_enabled:
             maintainer_names.append("watch_orders")
         else:
-            logging.info("Websocket maintainers skipped (ws disabled via custom endpoints).")
+            logging.info("Websocket 维护器已跳过（通过自定义端点禁用了 ws）。")
         self.maintainers = {
             name: asyncio.create_task(getattr(self, name)()) for name in maintainer_names
         }
 
-    # Legacy websocket 1m ohlcv watchers removed; CandlestickManager is authoritative
+    # 遗留 websocket 1 分钟 OHLCV 监控已移除；CandlestickManager 为权威来源
 
     async def calc_log_range(
         self,
@@ -8185,12 +8213,12 @@ class Passivbot:
         max_age_ms: Optional[int] = 60_000,
         max_network_fetches: Optional[int] = None,
     ) -> Dict[str, float]:
-        """Compute 1m EMA of log range per symbol: EMA(ln(high/low)).
+        """计算每个交易对的 1 分钟 EMA 对数范围：EMA(ln(high/low))。
 
-        Returns mapping symbol -> ema_log_range; non-finite/failed computations yield 0.0.
+        返回交易对到 ema_log_range 的映射；非有限值或计算失败返回 0.0。
 
-        If *max_network_fetches* is set, at most that many symbols will be allowed to
-        trigger a network fetch; the rest use cached data only.
+        若设置了 *max_network_fetches*，则最多允许该数量的交易对触发网络请求；
+        其余交易对仅使用缓存数据。
         """
         if eligible_symbols is None:
             eligible_symbols = self.eligible_symbols
@@ -8216,18 +8244,19 @@ class Passivbot:
             syms, max_age_ms, max_network_fetches
         )
 
-        # Compute EMA of log range on 1m candles: ln(high/low)
+        # 在 1 分钟 K 线上计算对数范围的 EMA：ln(high/low)
         async def one(symbol: str):
+            """计算单个交易对的对数范围 EMA。"""
             try:
                 if symbol in cache_only_never_fetched:
                     return 0.0
                 ttl = per_sym_ttl.get(symbol)
                 if ttl is None or ttl == 0:
-                    # If caller passes a TTL, use it; otherwise select per-symbol TTL
+                    # 若调用方传入 TTL 则使用；否则按交易对选择 TTL
                     if max_age_ms is not None:
                         ttl = int(max_age_ms)
                     else:
-                        # More generous TTL for non-traded symbols
+                        # 对非交易中的交易对使用更宽松的 TTL
                         has_pos = self.has_position(symbol)
                         has_oo = (
                             bool(self.open_orders.get(symbol)) if hasattr(self, "open_orders") else False
@@ -8260,13 +8289,13 @@ class Passivbot:
                 out[sym] = 0.0
         elapsed_s = max(0.001, (utc_ms() - started_ms) / 1000.0)
         now_ms = utc_ms()
-        ema_log_throttle_ms = 300_000  # 5 minutes between logs per metric
+        ema_log_throttle_ms = 300_000  # 每个指标日志间隔 5 分钟
         if out:
             top_n = min(8, len(out))
             top = sorted(out.items(), key=lambda kv: kv[1], reverse=True)[:top_n]
             top_syms = tuple(sym for sym, _ in top)
-            # Only log when the ranking changes (membership/order) to reduce noise.
-            # Also throttle to at most once per 5 minutes per metric.
+            # 仅在排名变化（成员/顺序）时记录日志以减少噪音。
+            # 同时限制每个指标最多每 5 分钟记录一次。
             if not hasattr(self, "_log_range_top_cache"):
                 self._log_range_top_cache = {}
             if not hasattr(self, "_log_range_top_last_log_ms"):
@@ -8290,9 +8319,9 @@ class Passivbot:
         *,
         max_age_ms: Optional[int] = 60_000,
     ) -> Dict[str, float]:
-        """Compute 1m EMA of quote volume per symbol.
+        """计算每个交易对的 1 分钟 EMA 报价量。
 
-        Returns mapping symbol -> ema_quote_volume; non-finite/failed computations yield 0.0.
+        返回交易对到 ema_quote_volume 的映射；非有限值或计算失败返回 0.0。
         """
         span = int(round(self.bot_value(pside, "forager_volume_ema_span")))
         try:
@@ -8312,8 +8341,9 @@ class Passivbot:
         if symbols is None:
             symbols = self.get_symbols_approved_or_has_pos(pside)
 
-        # Compute EMA of quote volume on 1m candles
+        # 在 1 分钟 K 线上计算报价量的 EMA
         async def one(symbol: str):
+            """计算单个交易对的报价量 EMA。"""
             try:
                 if max_age_ms is not None:
                     ttl = int(max_age_ms)
@@ -8351,12 +8381,12 @@ class Passivbot:
                 out[sym] = 0.0
         elapsed_s = max(0.001, (utc_ms() - started_ms) / 1000.0)
         now_ms = utc_ms()
-        ema_log_throttle_ms = 300_000  # 5 minutes between logs per metric
+        ema_log_throttle_ms = 300_000  # 每个指标日志间隔 5 分钟
         if out:
             top_n = min(8, len(out))
             top = sorted(out.items(), key=lambda kv: kv[1], reverse=True)[:top_n]
             top_syms = tuple(sym for sym, _ in top)
-            # Throttle to at most once per 5 minutes per metric.
+            # 限制每个指标最多每 5 分钟记录一次。
             if not hasattr(self, "_volume_top_cache"):
                 self._volume_top_cache = {}
             if not hasattr(self, "_volume_top_last_log_ms"):
@@ -8374,12 +8404,12 @@ class Passivbot:
         return out
 
     async def execute_multiple(self, orders: [dict], type_: str):
-        """Execute a list of order operations sequentially while tracking failures."""
+        """按顺序执行一组订单操作，同时追踪失败情况。"""
         if not orders:
             return []
         executions = []
         any_exceptions = False
-        for order in orders:  # sorted by PA dist
+        for order in orders:  # 按距 PA 距离排序
             task = None
             try:
                 task = asyncio.create_task(getattr(self, type_)(order))
@@ -8393,7 +8423,7 @@ class Passivbot:
         results = []
         for order, execution in executions:
             if isinstance(execution, Exception):
-                # Already failed at task creation time
+                # 任务创建时即已失败
                 results.append(execution)
                 continue
             result = None
@@ -8410,25 +8440,25 @@ class Passivbot:
             await self.restart_bot_on_too_many_errors()
         return results
 
-    # Legacy maintain_ohlcvs_1m_REST removed; CandlestickManager handles caching and TTL
+    # 遗留 maintain_ohlcvs_1m_REST 已移除；CandlestickManager 负责缓存和 TTL
 
-    # Legacy update_ohlcvs_1m_single_from_exchange removed
+    # 遗留 update_ohlcvs_1m_single_from_exchange 已移除
 
-    # Legacy update_ohlcvs_1m_single_from_disk removed
+    # 遗留 update_ohlcvs_1m_single_from_disk 已移除
 
-    # Legacy update_ohlcvs_1m_single removed
+    # 遗留 update_ohlcvs_1m_single 已移除
 
-    # Legacy file lock helpers removed
+    # 遗留文件锁辅助函数已移除
 
     async def close(self):
-        """Stop background tasks and close exchange clients."""
+        """停止后台任务并关闭交易所客户端。"""
         logging.info(f"Stopped data maintainers: {self.stop_data_maintainers()}")
         await self.cca.close()
         if self.ccp is not None:
             await self.ccp.close()
 
     def add_to_coins_lists(self, content, k_coins, log_psides=None):
-        """Update approved/ignored coin sets from configuration content."""
+        """从配置内容更新已批准/已忽略币种集合。"""
         if log_psides is None:
             log_psides = set(content.keys())
         symbols = None
@@ -8440,10 +8470,10 @@ class Passivbot:
                 if k_coins == "approved_coins" and _coins_source_side_is_all(coins):
                     symbols = set(getattr(self, "eligible_symbols", set()))
                 else:
-                    # Check if coins is a single string that needs to be split
+                    # 检查 coins 是否为需要拆分的单个字符串
                     if isinstance(coins, str):
                         coins = coins.split(",")
-                    # Handle case where list contains comma-separated values in its elements
+                    # 处理列表元素中包含逗号分隔值的情况
                     elif isinstance(coins, (list, tuple)):
                         expanded_coins = []
                         for item in coins:
@@ -8490,7 +8520,7 @@ class Passivbot:
         return result
 
     def refresh_approved_ignored_coins_lists(self):
-        """Reload approved and ignored coin lists from config sources."""
+        """从配置源重新加载已批准和已忽略的币种列表。"""
         try:
             added_summary = {}
             removed_summary = {}
@@ -8534,7 +8564,7 @@ class Passivbot:
                 self.approved_coins_minus_ignored_coins[pside] = self._filter_approved_symbols(
                     pside, self.approved_coins[pside] - self.ignored_coins[pside]
                 )
-            # aggregate add/remove logs for readability
+            # 聚合新增/移除日志以提高可读性
             for k, summary in (("added", added_summary.get("approved_coins", {})),):
                 if summary:
                     parts = []
@@ -8605,7 +8635,7 @@ class Passivbot:
             traceback.print_exc()
 
     def _log_coin_symbol_fallback_summary(self):
-        """Emit a brief summary of symbol/coin mapping fallbacks (once per change)."""
+        """输出交易对/币种映射回退的简要摘要（每次变化时输出一次）。"""
         counts = coin_symbol_warning_counts()
         if counts != self._last_coin_symbol_warning_counts:
             if counts["symbol_to_coin_fallbacks"] or counts["coin_to_symbol_fallbacks"]:
@@ -8617,14 +8647,14 @@ class Passivbot:
             self._last_coin_symbol_warning_counts = dict(counts)
 
     def _build_order_params(self, order: dict) -> dict:
-        """Hook: Build execution parameters for order placement.
+        """钩子：构建下单的执行参数。
 
-        Override in subclass with exchange-specific logic.
+        在子类中重写以实现交易所特定逻辑。
         """
         return {}
 
     async def execute_order(self, order: dict) -> dict:
-        """Place a single order via the exchange client."""
+        """通过交易所客户端下单个订单。"""
         params = {
             "symbol": order["symbol"],
             "type": order.get("type", "limit"),
@@ -8637,21 +8667,21 @@ class Passivbot:
         return executed
 
     async def execute_orders(self, orders: [dict]) -> [dict]:
-        """Execute a batch of order creations using the helper pipeline."""
+        """使用辅助管道批量执行订单创建。"""
         return await self.execute_multiple(orders, "execute_order")
 
     async def execute_cancellation(self, order: dict) -> dict:
-        """Cancel a single order via the exchange client."""
+        """通过交易所客户端取消单个订单。"""
         executed = None
         try:
             executed = await self.cca.cancel_order(order["id"], symbol=order["symbol"])
             return executed
         except Exception as e:
             err_str = str(e).lower()
-            # Detect "order already filled/cancelled" errors - not harmful, just a race condition
+            # 检测"订单已成交/已取消"错误 —— 无害，仅为竞态条件
             already_gone_indicators = [
-                "100004",  # KuCoin: "The order cannot be canceled"
-                "110001",  # Bybit: "order not exists or too late to cancel"
+                "100004",  # KuCoin: "订单无法取消"
+                "110001",  # Bybit: "订单不存在或取消太晚"
                 "order not exists",
                 "order does not exist",
                 "order not found",
@@ -8659,8 +8689,8 @@ class Passivbot:
                 "already filled",
                 "already cancelled",
                 "already canceled",
-                "-2011",  # Binance: "Unknown order"
-                "51400",  # OKX: "Order does not exist"
+                "-2011",  # Binance: "未知订单"
+                "51400",  # OKX: "订单不存在"
                 "order_not_found",
             ]
             if any(ind in err_str for ind in already_gone_indicators):
@@ -8676,12 +8706,12 @@ class Passivbot:
             return {}
 
     async def execute_cancellations(self, orders: [dict]) -> [dict]:
-        """Execute a batch of cancellations using the helper pipeline."""
+        """使用辅助管道批量执行取消操作。"""
         return await self.execute_multiple(orders, "execute_cancellation")
 
 
 def setup_bot(config):
-    """Instantiate the correct exchange bot implementation based on configuration."""
+    """根据配置实例化正确的交易所机器人实现。"""
     user_info = load_user_info(require_live_value(config, "user"))
     if user_info["exchange"] == "bybit":
         from exchanges.bybit import BybitBot
@@ -8724,18 +8754,18 @@ def setup_bot(config):
 
         bot = FakeBot(config)
     else:
-        # Generic CCXTBot for any CCXT-supported exchange
+        # 通用 CCXTBot，适用于任何 CCXT 支持的交易所
         from exchanges.ccxt_bot import CCXTBot
 
         bot = CCXTBot(config)
         logging.info(
-            f"Using generic CCXTBot for '{user_info['exchange']}' (no custom implementation)"
+            f"正在为 '{user_info['exchange']}' 使用通用 CCXTBot（无自定义实现）"
         )
     return bot
 
 
 async def shutdown_bot(bot):
-    """Stop background tasks and close the exchange clients gracefully."""
+    """停止后台任务并优雅地关闭交易所客户端。"""
     print("Shutting down bot...")
     bot.stop_data_maintainers()
     try:
@@ -8747,7 +8777,7 @@ async def shutdown_bot(bot):
 
 
 async def main():
-    """Entry point: parse CLI args, load config, and launch the bot lifecycle."""
+    """入口点：解析命令行参数、加载配置并启动机器人生命周期。"""
     raw_argv = sys.argv[1:]
     help_all = help_all_requested(raw_argv)
     parser = build_command_parser(
@@ -8823,7 +8853,7 @@ async def main():
     )
     raw_args = merge_negative_cli_values(expand_help_all_argv(raw_argv))
     args = parser.parse_args(raw_args)
-    # --verbose flag overrides --log-level to debug (level 2)
+    # --verbose 标志覆盖 --log-level 为 debug（级别 2）
     cli_log_level = "debug" if args.verbose else args.log_level
     initial_log_level = resolve_log_level(cli_log_level, None, fallback=1)
     configure_logging(debug=initial_log_level)
@@ -8907,7 +8937,7 @@ async def main():
     )
 
     user_info = load_user_info(live_user)
-    # Reconfigure logging with exchange prefix now that we know the exchange
+    # 现在已知交易所，使用交易所前缀重新配置日志
     exchange_prefix = user_info["exchange"]
     configure_logging(debug=effective_log_level, prefix=exchange_prefix, **log_file_settings)
     await load_markets(user_info["exchange"], verbose=True)
@@ -8970,7 +9000,7 @@ async def main():
         restarts = [x for x in restarts if x > utc_ms() - 1000 * 60 * 60 * 24]
         max_restarts = int(require_live_value(bot.config, "max_n_restarts_per_day"))
         if len(restarts) > max_restarts:
-            logging.info(f"n restarts exceeded {max_restarts} last 24h")
+            logging.info(f"过去 24 小时重启次数超过 {max_restarts}")
             break
 
 

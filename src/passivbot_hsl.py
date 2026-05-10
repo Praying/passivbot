@@ -41,6 +41,7 @@ def _hsl_state(self, pside: str) -> dict[str, Any]:
 
 
 def _parse_hsl_config(self) -> dict[str, dict[str, Any]]:
+    """解析并验证 HSL（权益硬止损）配置参数。"""
     signal_mode = self._equity_hard_stop_signal_mode()
     out = {}
     for pside in self._hsl_psides():
@@ -49,6 +50,7 @@ def _parse_hsl_config(self) -> dict[str, dict[str, Any]]:
             raise TypeError(
                 f"bot.{pside}.hsl_tier_ratios must be a dict, got {type(tier_ratios_raw).__name__}"
             )
+        # 读取各配置项
         enabled = bool(self.bot_value(pside, "hsl_enabled"))
         red_threshold = float(self.bot_value(pside, "hsl_red_threshold"))
         ema_span_minutes = float(self.bot_value(pside, "hsl_ema_span_minutes"))
@@ -61,6 +63,7 @@ def _parse_hsl_config(self) -> dict[str, dict[str, Any]]:
         orange_tier_mode = str(self.bot_value(pside, "hsl_orange_tier_mode"))
         panic_close_order_type = str(self.bot_value(pside, "hsl_panic_close_order_type"))
 
+        # 参数校验
         if enabled and red_threshold <= 0.0:
             raise ValueError(f"bot.{pside}.hsl_red_threshold must be > 0.0 when enabled")
         if enabled and ema_span_minutes <= 0.0:
@@ -92,6 +95,7 @@ def _parse_hsl_config(self) -> dict[str, dict[str, Any]]:
                 f"bot.{pside}.hsl_panic_close_order_type must be one of {{market, limit}}"
             )
 
+        # 构建配置字典
         out[pside] = {
             "enabled": enabled,
             "red_threshold": red_threshold,
@@ -170,6 +174,7 @@ def _equity_hard_stop_format_remaining_time(seconds: float) -> str:
 def _equity_hard_stop_infer_replay_contract(
     self, pside: str, fill_events: list[dict], now_ms: int
 ) -> dict[str, Any]:
+    """推断重放契约：从成交历史中推断冷却策略、干预入场时间和重放边界。"""
     policy = self._equity_hard_stop_cooldown_position_policy()
     cooldown_minutes = float(self.hsl[pside]["cooldown_minutes_after_red"])
     cooldown_ms = int(round(cooldown_minutes * 60_000.0)) if cooldown_minutes > 0.0 else 0
@@ -188,6 +193,7 @@ def _equity_hard_stop_infer_replay_contract(
         if latest_panic_ts is None or cooldown_ms <= 0
         else int(latest_panic_ts + cooldown_ms)
     )
+    # 在冷却期内查找干预入场成交（非 panic 的 increase 操作）
     intervention_entry_ts = None
     if latest_panic_ts is not None:
         for evt in fill_events:
@@ -206,6 +212,7 @@ def _equity_hard_stop_infer_replay_contract(
     active_cooldown_now = cooldown_until_ms is not None and now_ms < cooldown_until_ms
     unresolved_residue = bool(active_cooldown_now and pos_now and intervention_entry_ts is None)
     intervention_active = bool(active_cooldown_now and pos_now and intervention_entry_ts is not None)
+    # 确定重放起始边界
     replay_reset_boundary_ts = None
     if latest_panic_ts is not None:
         replay_reset_boundary_ts = latest_panic_ts
@@ -226,6 +233,7 @@ def _equity_hard_stop_infer_replay_contract(
 
 
 def _equity_hard_stop_halted_mode(self, pside: str, symbol: str | None) -> str:
+    """根据冷却策略和当前持仓判断停机模式。"""
     state = self._hsl_state(pside)
     policy = self._equity_hard_stop_cooldown_position_policy()
     size = 0.0
@@ -263,6 +271,7 @@ def _equity_hard_stop_signal_values(
     unrealized_pnl_pside: float,
     unrealized_pnl_total: Optional[float] = None,
 ) -> tuple[str, float, float]:
+    """根据信号模式返回对应的已实现/未实现 PnL 值。"""
     signal_mode = self._equity_hard_stop_signal_mode()
     if signal_mode == "pside":
         return signal_mode, float(realized_pnl_pside), float(unrealized_pnl_pside)
@@ -294,6 +303,7 @@ def _equity_hard_stop_remove_latch_file(self, pside: str) -> None:
 
 
 def _equity_hard_stop_reset_state(self) -> None:
+    """重置所有方向的 HSL 运行时状态。"""
     for pside in self._hsl_psides():
         state = self._hsl_state(pside)
         state["runtime"].reset()
@@ -338,6 +348,7 @@ def _equity_hard_stop_fill_pside(fill: Any) -> str:
 
 
 async def _calc_upnl_sum_strict(self, pside: Optional[str] = None) -> float:
+    """严格计算未实现 PnL 总和，确保每个 symbol 都有最新价格。"""
     if not self.fetched_positions:
         return 0.0
     symbols = {
@@ -369,6 +380,7 @@ async def _calc_upnl_sum_strict(self, pside: Optional[str] = None) -> float:
 
 
 def _equity_hard_stop_fee_cost(fill: Any) -> float:
+    """从成交记录中提取手续费成本。"""
     if fill is None:
         return 0.0
     if isinstance(fill, dict):
@@ -451,6 +463,7 @@ def _equity_hard_stop_apply_sample(
     unrealized_pnl_pside: float,
     unrealized_pnl_total: Optional[float] = None,
 ) -> dict:
+    """向 HSL 运行时应用一个采样点，计算回撤得分和层级状态。"""
     if not math.isfinite(balance) or balance <= 0.0:
         raise ValueError(f"balance must be finite and > 0, got {balance}")
     if not math.isfinite(realized_pnl_total):
@@ -471,6 +484,7 @@ def _equity_hard_stop_apply_sample(
         unrealized_pnl_pside=unrealized_pnl_pside,
         unrealized_pnl_total=unrealized_pnl_total,
     )
+    # 同一分钟内输入相同时直接返回缓存结果
     if last_metrics is not None and int(last_metrics["timestamp_ms"]) // 60_000 == current_minute:
         same_inputs = (
             str(last_metrics.get("signal_mode")) == str(signal_mode)
@@ -485,6 +499,7 @@ def _equity_hard_stop_apply_sample(
             cached["elapsed_minutes"] = 0
             state["last_metrics"] = cached
             return cached
+    # 计算策略 PnL 峰值和权益回撤
     cfg = self.hsl[pside]
     lookback_ms = self._equity_hard_stop_lookback_ms()
     prev_tier = self._equity_hard_stop_runtime_tier(pside)
@@ -506,6 +521,7 @@ def _equity_hard_stop_apply_sample(
         float(strategy_equity),
         float(max(baseline_balance + peak_strategy_pnl, 1e-12)),
     )
+    # 调用 Rust 运行时计算回撤和层级
     step = state["runtime"].apply_sample(
         timestamp_ms=int(timestamp_ms),
         equity=float(strategy_equity),
@@ -550,6 +566,7 @@ def _equity_hard_stop_apply_sample(
 
 
 def _equity_hard_stop_log_transition(self, pside: str, metrics: dict, prev_tier: str) -> None:
+    """记录 HSL 层级转换日志。"""
     logging.info(
         "[risk] HSL[%s] tier transition %s -> %s | balance=%.6f strategy_equity=%.6f "
         "peak_strategy_equity=%.6f drawdown_raw=%.6f drawdown_ema=%.6f drawdown_score=%.6f "
@@ -599,7 +616,9 @@ def _equity_hard_stop_build_latch_payload(
     no_restart_latched: bool,
     cooldown_until_ms: Optional[int],
 ) -> dict:
+    """构建 RED 止损事件的 latch 持久化载荷。"""
     cfg = self.hsl[pside]
+    # 构建完整的 RED 止损事件载荷，包含配置和快照数据
     return {
         "triggered_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "exchange": str(self.exchange),
@@ -640,6 +659,7 @@ def _equity_hard_stop_build_latch_payload(
 
 
 async def _equity_hard_stop_compute_stop_event(self, pside: str, stop_event_ts_ms: int) -> dict:
+    """在 RED 止损确认时计算完整的止损事件快照。"""
     state = self._hsl_state(pside)
     balance = float(self.get_raw_balance())
     realized_pnl_total = float(self._equity_hard_stop_realized_pnl_now())
@@ -662,6 +682,7 @@ async def _equity_hard_stop_compute_stop_event(self, pside: str, stop_event_ts_m
     strategy_equity = float(max(baseline_balance + strategy_pnl, 1e-12))
     trigger_peak_strategy_equity = float(state["runtime"].peak_strategy_equity())
     peak_strategy_equity = float(max(strategy_equity, baseline_balance + peak_strategy_pnl, 1e-12))
+    # 校验峰值权益有效性
     if not math.isfinite(trigger_peak_strategy_equity) or trigger_peak_strategy_equity <= 0.0:
         raise RuntimeError(
             f"invalid HSL[{pside}] trigger_peak_strategy_equity at stop finalization: {trigger_peak_strategy_equity}"
@@ -693,6 +714,7 @@ async def _equity_hard_stop_compute_stop_event(self, pside: str, stop_event_ts_m
 
 
 def _equity_hard_stop_log_cooldown_status(self, pside: str, now_ms: int) -> None:
+    """定期记录 RED 冷却剩余时间。"""
     state = self._hsl_state(pside)
     cooldown_until_ms = state["cooldown_until_ms"]
     if cooldown_until_ms is None or now_ms >= cooldown_until_ms:
@@ -721,6 +743,7 @@ def _equity_hard_stop_position_symbols(self, pside: str) -> list[str]:
 
 
 async def _equity_hard_stop_refresh_cooldown_after_repanic(self, pside: str, now_ms: int) -> None:
+    """冷却期内检测到违规重新建仓后，重新触发 panic 平仓并重置冷却计时。"""
     state = self._hsl_state(pside)
     cooldown_minutes = float(self.hsl[pside]["cooldown_minutes_after_red"])
     cooldown_ms = max(0, int(round(cooldown_minutes * 60_000.0))) if cooldown_minutes > 0.0 else 0
@@ -773,6 +796,7 @@ async def _equity_hard_stop_refresh_cooldown_after_repanic(self, pside: str, now
 
 
 async def _equity_hard_stop_handle_position_during_cooldown(self, pside: str, now_ms: int) -> bool:
+    """处理冷却期内存在的持仓，根据策略决定是否干预。返回 True 表示状态已变更需重新读取。"""
     state = self._hsl_state(pside)
     if not state["halted"] or state["no_restart_latched"]:
         return False
@@ -782,6 +806,7 @@ async def _equity_hard_stop_handle_position_during_cooldown(self, pside: str, no
 
     symbols = self._equity_hard_stop_position_symbols(pside)
     policy = self._equity_hard_stop_cooldown_position_policy()
+    # 持仓已平：清除干预状态，或在 repanic 待定 时刷新冷却
     if not symbols:
         if state["cooldown_repanic_reset_pending"]:
             await self._equity_hard_stop_refresh_cooldown_after_repanic(pside, now_ms)
@@ -817,6 +842,7 @@ async def _equity_hard_stop_handle_position_during_cooldown(self, pside: str, no
         return False
     state["cooldown_intervention_active"] = True
 
+    # normal 策略：视作操作者覆盖，恢复正常运行
     if policy == "normal":
         self._equity_hard_stop_reset_after_restart(pside)
         self._equity_hard_stop_remove_latch_file(pside)
@@ -831,6 +857,7 @@ async def _equity_hard_stop_handle_position_during_cooldown(self, pside: str, no
 
 
 def _equity_hard_stop_reset_after_restart(self, pside: str) -> None:
+    """单个方向重启后重置 HSL 状态和运行时。"""
     state = self._hsl_state(pside)
     state["runtime"].reset()
     state["strategy_pnl_peak"].reset()
@@ -854,6 +881,7 @@ def _equity_hard_stop_reset_after_restart(self, pside: str) -> None:
 def _equity_hard_stop_replay_from_boundary(
     self, pside: str, timeline: list[dict], signal_mode: str, boundary_ts: int, end_ts: int
 ) -> int:
+    """从指定时间边界开始重放权益历史，返回处理的行数。"""
     n_rows = 0
     boundary_minute_ts = int(math.floor(int(boundary_ts) / 60_000.0) * 60_000)
     for row in timeline:
@@ -894,6 +922,7 @@ def _equity_hard_stop_replay_from_boundary(
 
 
 def _equity_hard_stop_refresh_halted_runtime_forced_modes(self) -> None:
+    """根据当前 HSL 状态刷新所有交易对的运行时强制模式。"""
     symbols = set(self.positions.keys()) | set(self.open_orders.keys()) | set(self.active_symbols)
     for pside in self._hsl_psides():
         if not self._equity_hard_stop_enabled(pside):
@@ -913,6 +942,7 @@ def _equity_hard_stop_refresh_halted_runtime_forced_modes(self) -> None:
 
 
 async def _equity_hard_stop_initialize_from_history(self) -> None:
+    """从交易所历史数据重放初始化 HSL 状态，重建回撤追踪器、冷却状态和 latch 文件。"""
     if not self._equity_hard_stop_enabled():
         return
     prev_phase = getattr(self, "_log_silence_watchdog_phase", "runtime")
@@ -957,6 +987,7 @@ async def _equity_hard_stop_initialize_from_history(self) -> None:
                 f"get_balance_equity_history()['fill_events'] must be a list, got {type(fill_events).__name__}"
             )
         panic_flatten_events_by_key = {}
+        # 按 (pside, minute_timestamp) 索引 panic 平仓事件，保留最新时间戳
         for item in panic_flatten_events:
             if not isinstance(item, dict):
                 continue
@@ -978,6 +1009,7 @@ async def _equity_hard_stop_initialize_from_history(self) -> None:
             if prev is None or marker["timestamp"] >= prev["timestamp"]:
                 panic_flatten_events_by_key[key] = marker
         now_ms = int(self.get_exchange_time())
+        # 推断各方向的重放契约，确定重放起始边界
         replay_contracts = {
             pside: self._equity_hard_stop_infer_replay_contract(pside, fill_events, now_ms)
             for pside in self._hsl_psides()
@@ -998,6 +1030,7 @@ async def _equity_hard_stop_initialize_from_history(self) -> None:
             cooldown_minutes = float(cfg["cooldown_minutes_after_red"])
             no_restart_drawdown_threshold = float(cfg["no_restart_drawdown_threshold"])
             cooldown_ms = int(round(cooldown_minutes * 60_000.0)) if cooldown_minutes > 0.0 else 0
+            # normal 策略且有干预入场：从干预点重放，视作操作者覆盖
             if contract["intervention_entry_ts"] is not None and contract["policy"] == "normal":
                 self._equity_hard_stop_reset_after_restart(pside)
                 n_rows[pside] = self._equity_hard_stop_replay_from_boundary(
@@ -1037,6 +1070,7 @@ async def _equity_hard_stop_initialize_from_history(self) -> None:
                 if current_metrics["tier"] == "red":
                     state["pending_red_since_ms"] = int(current_metrics["timestamp_ms"])
                 continue
+            # 逐行重放时间线
             pending_red = False
             for row in timeline:
                 if not isinstance(row, dict):
@@ -1058,6 +1092,7 @@ async def _equity_hard_stop_initialize_from_history(self) -> None:
                 ts = int(row["timestamp"])
                 if ts > now_ms:
                     break
+                # 冷却中但可自动重启：到达冷却结束时间后重置
                 if state["halted"] and not state["no_restart_latched"]:
                     cooldown_until_ms = state["cooldown_until_ms"]
                     if cooldown_until_ms is not None and ts >= cooldown_until_ms:
@@ -1078,6 +1113,7 @@ async def _equity_hard_stop_initialize_from_history(self) -> None:
                     pending_red = True
                     state["pending_red_since_ms"] = int(ts)
                 panic_flatten_marker = panic_flatten_events_by_key.get((pside, ts))
+                # 从 panic 平仓事件确认 RED 止损
                 if panic_flatten_marker is not None:
                     stop_drawdown_raw = float(current_metrics["drawdown_raw"])
                     cooldown_until_ms = None
@@ -1121,6 +1157,7 @@ async def _equity_hard_stop_initialize_from_history(self) -> None:
                         break
                     continue
                 is_flat = bool(row.get(f"is_flat_{pside}", False))
+                # RED 后确认平仓：构建止损事件并写入 latch
                 if pending_red and is_flat:
                     stop_drawdown_raw = float(current_metrics["drawdown_raw"])
                     cooldown_until_ms = None
@@ -1162,6 +1199,7 @@ async def _equity_hard_stop_initialize_from_history(self) -> None:
                     pending_red = False
                     if state["no_restart_latched"]:
                         break
+            # 重放结束后：若仍有活跃冷却中但未 halted，从契约重建冷却状态
             if (
                 not state["halted"]
                 and contract["latest_panic_ts"] is not None
@@ -1178,6 +1216,7 @@ async def _equity_hard_stop_initialize_from_history(self) -> None:
                         "cooldown_until_ms": contract["cooldown_until_ms"],
                         "no_restart_latched": False,
                     }
+            # 重放结束后：冷却已过则恢复，未过则记录剩余时间
             if state["halted"] and not state["no_restart_latched"]:
                 cooldown_until_ms = state["cooldown_until_ms"]
                 if cooldown_until_ms is not None and now_ms >= cooldown_until_ms:
@@ -1234,6 +1273,7 @@ async def _equity_hard_stop_initialize_from_history(self) -> None:
 
 
 def _equity_hard_stop_log_status(self, pside: str, metrics: dict) -> None:
+    """定期记录 HSL 状态概要。"""
     state = self._hsl_state(pside)
     now_ms = int(metrics["timestamp_ms"])
     if (
@@ -1275,6 +1315,7 @@ def _equity_hard_stop_log_status(self, pside: str, metrics: dict) -> None:
 
 
 async def _equity_hard_stop_check(self) -> Optional[dict]:
+    """周期性检查 HSL 状态，处理冷却到期、层级转换和 RED 触发。"""
     if not self._equity_hard_stop_enabled():
         return None
     if not all(
@@ -1300,6 +1341,7 @@ async def _equity_hard_stop_check(self) -> Optional[dict]:
         if not self._equity_hard_stop_enabled(pside):
             continue
         state = self._hsl_state(pside)
+        # 已停机：处理冷却期内持仓，冷却到期则恢复交易
         if state["halted"]:
             if await self._equity_hard_stop_handle_position_during_cooldown(pside, ts_ms):
                 state = self._hsl_state(pside)
@@ -1324,6 +1366,7 @@ async def _equity_hard_stop_check(self) -> Optional[dict]:
                 else:
                     self._equity_hard_stop_log_cooldown_status(pside, ts_ms)
                     continue
+        # 应用采样点并检测层级变化
         prev_latched = self._equity_hard_stop_runtime_red_latched(pside)
         prev_tier = self._equity_hard_stop_runtime_tier(pside)
         metrics = self._equity_hard_stop_apply_sample(
@@ -1337,6 +1380,7 @@ async def _equity_hard_stop_check(self) -> Optional[dict]:
         )
         if metrics["changed"]:
             self._equity_hard_stop_log_transition(pside, metrics, prev_tier)
+        # RED 首次触发：记录触发时间
         if metrics["tier"] == "red" and not prev_latched:
             state["pending_red_since_ms"] = int(metrics["timestamp_ms"])
             logging.critical(
@@ -1404,6 +1448,7 @@ def _equity_hard_stop_log_red_progress(
     nonpanic_close_orders: int,
     flat_confirmations: int,
 ) -> None:
+    """记录 RED 监督进度，仅在进度变化时输出。"""
     state = self._hsl_state(pside)
     progress = (n_positions, entry_orders, nonpanic_close_orders, flat_confirmations)
     if progress == state["last_red_progress"]:
@@ -1421,6 +1466,7 @@ def _equity_hard_stop_log_red_progress(
 
 
 async def _equity_hard_stop_finalize_red_stop(self, pside: str, stop_event: Optional[dict] = None) -> None:
+    """确认 RED 止损最终化：构建 latch 载荷、写入文件、更新运行时状态。"""
     state = self._hsl_state(pside)
     cfg = self.hsl[pside]
     stop_ts_ms = int(self.get_exchange_time())
@@ -1431,6 +1477,7 @@ async def _equity_hard_stop_finalize_red_stop(self, pside: str, stop_event: Opti
     cooldown_minutes = float(cfg["cooldown_minutes_after_red"])
     no_restart_drawdown_threshold = float(cfg["no_restart_drawdown_threshold"])
     no_restart_latched = bool(stop_event["drawdown_raw"] >= no_restart_drawdown_threshold)
+    # 计算冷却结束时间：不可重启或无冷却配置时为 None
     cooldown_ms = int(round(cooldown_minutes * 60_000.0)) if cooldown_minutes > 0.0 else 0
     cooldown_until_ms = None if no_restart_latched or cooldown_ms <= 0 else int(stop_ts_ms + cooldown_ms)
     payload = self._equity_hard_stop_build_latch_payload(
@@ -1460,6 +1507,7 @@ async def _equity_hard_stop_finalize_red_stop(self, pside: str, stop_event: Opti
     state["pending_red_since_ms"] = None
     latch_path = self._equity_hard_stop_write_latch(pside, payload)
     self._equity_hard_stop_refresh_halted_runtime_forced_modes()
+    # 记录冷却开始监控事件
     if cooldown_until_ms is not None:
         self._monitor_record_event(
             "hsl.cooldown_started",
@@ -1473,6 +1521,7 @@ async def _equity_hard_stop_finalize_red_stop(self, pside: str, stop_event: Opti
             pside=pside,
             ts=stop_ts_ms,
         )
+    # 不可重启或无冷却：终态止损
     if no_restart_latched or cooldown_until_ms is None:
         logging.critical(
             "[risk] HSL[%s] RED stop finalized (terminal) | stop_ts=%s strategy_equity=%.6f "
@@ -1499,6 +1548,7 @@ async def _equity_hard_stop_finalize_red_stop(self, pside: str, stop_event: Opti
 
 
 async def _equity_hard_stop_run_red_supervisor(self) -> None:
+    """RED 监督循环：持续 panic 平仓直到确认所有持仓已平仓，然后最终化止损。"""
     if self._equity_hard_stop_supervisor_running:
         return
     self._equity_hard_stop_supervisor_running = True
@@ -1526,6 +1576,7 @@ async def _equity_hard_stop_run_red_supervisor(self) -> None:
                 state = self._hsl_state(pside)
                 n_positions = self._equity_hard_stop_count_open_positions(pside)
                 entry_orders, nonpanic_close_orders = self._equity_hard_stop_count_blocking_open_orders(pside)
+                # 持仓和挂单全部清空：累计确认次数
                 if n_positions == 0 and entry_orders == 0 and nonpanic_close_orders == 0:
                     if state["red_flat_confirmations"] == 0:
                         state["pending_stop_event"] = await self._equity_hard_stop_compute_stop_event(
@@ -1542,6 +1593,7 @@ async def _equity_hard_stop_run_red_supervisor(self) -> None:
                     nonpanic_close_orders,
                     state["red_flat_confirmations"],
                 )
+                # 连续 2 次确认空仓：最终化止损
                 if state["red_flat_confirmations"] >= 2:
                     await self._equity_hard_stop_finalize_red_stop(pside, state["pending_stop_event"])
             active_red_psides = [
@@ -1553,6 +1605,7 @@ async def _equity_hard_stop_run_red_supervisor(self) -> None:
             ]
             if not active_red_psides:
                 return
+            # 设置强制模式并执行交易
             for pside in active_red_psides:
                 self._equity_hard_stop_set_red_runtime_forced_modes(pside)
             self._equity_hard_stop_refresh_halted_runtime_forced_modes()
@@ -1569,6 +1622,7 @@ async def _equity_hard_stop_run_red_supervisor(self) -> None:
 
 
 def _apply_equity_hard_stop_orange_overlay(self) -> None:
+    """根据 orange 层级模式覆盖交易模式：graceful_stop 或 tp_only。"""
     if not self._equity_hard_stop_enabled():
         return
     symbols = (
