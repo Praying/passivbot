@@ -28,10 +28,12 @@ ANSI_DIM = "\x1b[2m"
 
 
 def _now_ms() -> int:
+    """返回当前时间的毫秒时间戳。"""
     return int(time.time() * 1000.0)
 
 
 def _fmt_float(value: Any, digits: int = 4) -> str:
+    """将值格式化为指定小数位数的浮点数字符串。"""
     if value is None:
         return "-"
     try:
@@ -48,6 +50,7 @@ def _fmt_compact_float(
     zero: str = "0",
     none: str = "-",
 ) -> str:
+    """将浮点数格式化为紧凑表示，去除尾部零。"""
     if value is None:
         return none
     try:
@@ -63,6 +66,7 @@ def _fmt_compact_float(
 
 
 def _fmt_int(value: Any) -> str:
+    """将值格式化为整数字符串。"""
     if value is None:
         return "-"
     try:
@@ -72,6 +76,7 @@ def _fmt_int(value: Any) -> str:
 
 
 def _fmt_ts_ms(value: Any) -> str:
+    """将毫秒时间戳格式化为 UTC 时间字符串。"""
     if value is None:
         return "-"
     try:
@@ -82,6 +87,7 @@ def _fmt_ts_ms(value: Any) -> str:
 
 
 def _fmt_age_ms(ts_ms: Any) -> str:
+    """将毫秒时间戳格式化为相对当前时间的年龄字符串。"""
     if ts_ms is None:
         return "-"
     try:
@@ -101,6 +107,7 @@ def _fmt_age_ms(ts_ms: Any) -> str:
 
 
 def _fmt_uptime_ms(value: Any) -> str:
+    """将毫秒运行时长格式化为可读的 h/m/s 格式。"""
     if value is None:
         return "-"
     try:
@@ -117,6 +124,7 @@ def _fmt_uptime_ms(value: Any) -> str:
 
 
 def _truncate(value: str, width: int) -> str:
+    """截断字符串到指定宽度，超出部分用省略号代替。"""
     if len(value) <= width:
         return value
     if width <= 3:
@@ -125,6 +133,7 @@ def _truncate(value: str, width: int) -> str:
 
 
 def _wrap_text(text: str, width: int) -> list[str]:
+    """将文本按指定宽度自动换行。"""
     if width <= 0:
         return [text]
     if not text:
@@ -148,10 +157,12 @@ def _wrap_text(text: str, width: int) -> list[str]:
 
 
 def _style(text: str, ansi_code: str) -> str:
+    """应用 ANSI 颜色代码到文本。"""
     return f"{ansi_code}{text}{ANSI_RESET}"
 
 
 def _wrap_box(title: str, lines: list[str], width: int) -> list[str]:
+    """将标题和内容行渲染为带边框的盒子。"""
     width = max(12, width)
     inner = max(1, width - 4)
     out = [
@@ -168,6 +179,7 @@ def _wrap_box(title: str, lines: list[str], width: int) -> list[str]:
 
 
 def _pad_lines(lines: list[str], height: int, width: int) -> list[str]:
+    """将行列表补齐到指定高度和宽度。"""
     padded = list(lines[:height])
     while len(padded) < height:
         padded.append(" " * width)
@@ -175,6 +187,7 @@ def _pad_lines(lines: list[str], height: int, width: int) -> list[str]:
 
 
 def _combine_columns(left: list[str], right: list[str], left_width: int, right_width: int) -> list[str]:
+    """将左右两列内容合并为双栏布局。"""
     height = max(len(left), len(right))
     left_padded = _pad_lines(left, height, left_width)
     right_padded = _pad_lines(right, height, right_width)
@@ -182,6 +195,7 @@ def _combine_columns(left: list[str], right: list[str], left_width: int, right_w
 
 
 def _render_screen_diff(previous: Optional[str], current: str) -> str:
+    """计算前后两帧屏幕的差异，生成增量 ANSI 转义序列。"""
     current_lines = current.splitlines()
     if previous is None:
         return f"\x1b[2J\x1b[H{current}\x1b[J\x1b[{len(current_lines) + 1};1H"
@@ -204,6 +218,7 @@ def _render_screen_diff(previous: Optional[str], current: str) -> str:
 
 
 def _fmt_pct_ratio(value: Any) -> str:
+    """将比例值格式化为百分比字符串。"""
     if value is None:
         return "-"
     try:
@@ -214,6 +229,7 @@ def _fmt_pct_ratio(value: Any) -> str:
 
 
 def _account_realized_value(account: dict[str, Any]) -> Any:
+    """从账户数据中提取已实现 PnL 的当前值。"""
     realized = account.get("realized_pnl_cumsum")
     if isinstance(realized, dict):
         return realized.get("current")
@@ -221,6 +237,7 @@ def _account_realized_value(account: dict[str, Any]) -> Any:
 
 
 def _fmt_pct_delta(value: Any, digits: int = 2) -> str:
+    """将比例值格式化为带符号的百分比变化字符串。"""
     if value is None:
         return "-"
     try:
@@ -232,6 +249,7 @@ def _fmt_pct_delta(value: Any, digits: int = 2) -> str:
 
 
 def _capture_render_data(state: "MonitorTuiState") -> dict[str, Any]:
+    """捕获 TUI 状态的渲染数据快照，用于暂停时冻结显示。"""
     return {
         "snapshot": deepcopy(state.snapshot),
         "snapshot_seq": state.snapshot_seq,
@@ -252,6 +270,7 @@ def _capture_render_data(state: "MonitorTuiState") -> dict[str, Any]:
 
 
 def _build_query_params(exchange: Optional[str], user: Optional[str]) -> dict[str, str]:
+    """构建 URL 查询参数字典。"""
     params: dict[str, str] = {}
     if exchange:
         params["exchange"] = exchange
@@ -261,6 +280,7 @@ def _build_query_params(exchange: Optional[str], user: Optional[str]) -> dict[st
 
 
 def _append_query(url: str, params: dict[str, str]) -> str:
+    """将查询参数追加到 URL。"""
     if not params:
         return url
     separator = "&" if "?" in url else "?"
@@ -268,12 +288,14 @@ def _append_query(url: str, params: dict[str, str]) -> str:
 
 
 def _http_to_ws(url: str) -> str:
+    """将 HTTP URL 转换为 WebSocket URL。"""
     parts = urlsplit(url)
     scheme = "wss" if parts.scheme == "https" else "ws"
     return urlunsplit((scheme, parts.netloc, parts.path, parts.query, parts.fragment))
 
 
 def _message_bot_key(message: dict[str, Any]) -> Optional[tuple[str, str]]:
+    """从消息中提取 (exchange, user) 标识键。"""
     exchange = message.get("exchange")
     user = message.get("user")
     if exchange and user:
@@ -289,6 +311,7 @@ def _message_bot_key(message: dict[str, Any]) -> Optional[tuple[str, str]]:
 
 
 def _read_last_lines(path: Path, max_lines: int) -> list[str]:
+    """读取文件末尾指定行数的内容。"""
     if max_lines <= 0 or not path.exists():
         return []
     try:
@@ -300,6 +323,7 @@ def _read_last_lines(path: Path, max_lines: int) -> list[str]:
 
 @dataclass
 class _LogTailState:
+    """日志文件尾部跟踪状态，记录设备号、inode 和读取偏移量。"""
     dev: int
     ino: int
     offset: int
@@ -307,6 +331,7 @@ class _LogTailState:
 
 @dataclass
 class MonitorTuiState:
+    """TUI 监控器状态，管理快照、事件流、价格行情和用户交互数据。"""
     relay_url: str
     exchange: Optional[str] = None
     user: Optional[str] = None
@@ -331,6 +356,7 @@ class MonitorTuiState:
     recent_log_lines: deque[str] = field(default_factory=lambda: deque(maxlen=12))
 
     def apply_message(self, message: dict[str, Any]) -> None:
+        """根据消息类型更新 TUI 状态（快照、事件、行情、历史等）。"""
         message_type = message.get("type")
         if message_type == "snapshot_bundle":
             self._apply_snapshot_bundle(message)
@@ -369,6 +395,7 @@ class MonitorTuiState:
                 self.recent_log_lines.append(cleaned)
 
     def _apply_snapshot_message(self, message: dict[str, Any]) -> None:
+        """应用单条快照消息到状态。"""
         payload = message.get("payload")
         if isinstance(payload, dict):
             self.snapshot = payload
@@ -379,6 +406,7 @@ class MonitorTuiState:
         self.status_text = "snapshot refreshed"
 
     def _apply_snapshot_bundle(self, message: dict[str, Any]) -> None:
+        """从快照捆绑消息中选择并应用匹配的快照。"""
         candidates = message.get("bots", [])
         if not isinstance(candidates, list):
             return
@@ -387,6 +415,7 @@ class MonitorTuiState:
             self._apply_snapshot_message(selected)
 
     def _should_accept_message(self, message: dict[str, Any]) -> bool:
+        """判断是否应接受该消息，根据 exchange/user 过滤。"""
         key = _message_bot_key(message)
         if key is None:
             return True
@@ -396,6 +425,7 @@ class MonitorTuiState:
         return True
 
     def _select_snapshot_from_bundle(self, candidates: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """从快照候选列表中选择匹配当前 exchange/user 的快照。"""
         if self.exchange and self.user:
             for candidate in candidates:
                 if _message_bot_key(candidate) == (self.exchange, self.user):
@@ -406,6 +436,7 @@ class MonitorTuiState:
 
 
 def _active_position_rows(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """从快照中提取活跃持仓行，按 wallet_exposure 和订单数降序排列。"""
     positions = snapshot.get("positions", {})
     open_orders = snapshot.get("open_orders", {})
     market = snapshot.get("market", {})
@@ -451,6 +482,7 @@ def _active_position_rows(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _format_event_line(message: dict[str, Any]) -> str:
+    """将事件消息格式化为单行显示文本。"""
     parts = [_fmt_ts_ms(message.get("ts")), str(message.get("kind", "?"))]
     symbol = message.get("symbol")
     if symbol:
@@ -497,6 +529,7 @@ def _symbol_aliases(symbol: str) -> set[str]:
 
 
 def _available_focus_symbols(snapshot: dict[str, Any], state: Optional[MonitorTuiState] = None) -> list[str]:
+    """获取可用的焦点交易对列表，优先显示有持仓的交易对。"""
     ordered: list[str] = []
     seen: set[str] = set()
 
@@ -528,6 +561,7 @@ def resolve_focus_symbol_alias(
     *,
     state: Optional[MonitorTuiState] = None,
 ) -> tuple[Optional[str], Optional[str]]:
+    """将用户输入的交易对别名解析为标准交易对名称，返回 (解析结果, 错误信息)。"""
     cleaned = query.strip().upper()
     if not cleaned:
         return None, "focus requires a symbol, 'auto', 'next', or 'prev'"
@@ -545,6 +579,7 @@ def resolve_focus_symbol_alias(
 
 
 def _select_focus_symbol(state: MonitorTuiState, snapshot: dict[str, Any]) -> Optional[str]:
+    """选择当前焦点交易对：优先用户指定，其次活跃持仓，再次最近事件或行情。"""
     market = snapshot.get("market", {}) if isinstance(snapshot, dict) else {}
     if state.focus_symbol:
         return state.focus_symbol if state.focus_symbol in market or not market else state.focus_symbol
@@ -565,6 +600,7 @@ def _select_focus_symbol(state: MonitorTuiState, snapshot: dict[str, Any]) -> Op
 
 
 def _filtered_recent_events(state: MonitorTuiState, focus_symbol: Optional[str]) -> list[dict[str, Any]]:
+    """过滤并折叠最近事件：焦点交易对优先，余额事件折叠显示。"""
     events = list(state.recent_events)
     if focus_symbol:
         focused = [message for message in events if message.get("symbol") == focus_symbol]
@@ -579,6 +615,7 @@ def _filtered_recent_events(state: MonitorTuiState, focus_symbol: Optional[str])
 
 
 def _filtered_price_ticks(state: MonitorTuiState, focus_symbol: Optional[str]) -> list[tuple[str, dict[str, Any]]]:
+    """过滤价格行情：按时间降序，焦点交易对优先，最多显示 8 条。"""
     items = sorted(
         state.recent_price_ticks.items(),
         key=lambda item: item[1].get("ts", 0),
@@ -592,6 +629,7 @@ def _filtered_price_ticks(state: MonitorTuiState, focus_symbol: Optional[str]) -
 
 
 def _recent_order_activity(snapshot: dict[str, Any], focus_symbol: Optional[str]) -> list[dict[str, Any]]:
+    """从快照中提取最近的订单执行和取消活动，按时间降序排列。"""
     recent = snapshot.get("recent", {}) if isinstance(snapshot, dict) else {}
     if not isinstance(recent, dict):
         return []
@@ -681,6 +719,7 @@ def _market_outer_band_bounds(market_entry: dict[str, Any]) -> tuple[str, str]:
 
 
 def _render_positions_twe_summary(rows: list[dict[str, Any]]) -> list[str]:
+    """渲染持仓总 wallet_exposure 汇总行。"""
     parts: list[str] = []
     for pside in ("long", "short"):
         total_exposure = None
@@ -722,6 +761,7 @@ def _render_positions_twe_summary(rows: list[dict[str, Any]]) -> list[str]:
 
 
 def _render_forager_panel(snapshot: dict[str, Any]) -> list[str]:
+    """渲染 Forager 选币器面板，展示各方向的槽位、排名和候选信息。"""
     forager = snapshot.get("forager", {}) if isinstance(snapshot, dict) else {}
     if not isinstance(forager, dict):
         return ["(no forager snapshot data)"]
@@ -794,6 +834,7 @@ def _render_forager_panel(snapshot: dict[str, Any]) -> list[str]:
 
 
 def _render_unstuck_panel(snapshot: dict[str, Any]) -> list[str]:
+    """渲染 Unstuck 解套面板，展示各方向的解套状态和触发信息。"""
     unstuck = snapshot.get("unstuck", {}) if isinstance(snapshot, dict) else {}
     if not isinstance(unstuck, dict):
         return ["(no unstuck snapshot data)"]
@@ -842,6 +883,7 @@ def _render_unstuck_panel(snapshot: dict[str, Any]) -> list[str]:
 
 
 def _render_trailing_panel(snapshot: dict[str, Any]) -> list[str]:
+    """渲染 Trailing 追踪面板，展示追踪入场/平仓的状态和极值。"""
     trailing = snapshot.get("trailing", {}) if isinstance(snapshot, dict) else {}
     if not isinstance(trailing, dict) or not trailing:
         return ["(no trailing entries/closes selected)"]
@@ -910,6 +952,7 @@ def _format_order_only_line(row: dict[str, Any]) -> str:
 
 
 def _render_focus_panel(snapshot: dict[str, Any], focus_symbol: Optional[str]) -> list[str]:
+    """渲染焦点交易对详情面板，展示价格、持仓、EMA 波段等信息。"""
     if not focus_symbol:
         return ["symbol=-", "(no focus symbol selected yet)"]
     market = snapshot.get("market", {}) if isinstance(snapshot, dict) else {}
@@ -958,6 +1001,7 @@ def _render_focus_panel(snapshot: dict[str, Any], focus_symbol: Optional[str]) -
 
 
 def _colorize_screen(screen: str) -> str:
+    """为屏幕文本添加 ANSI 颜色高亮。"""
     plain_lines = screen.splitlines()
     colored_lines: list[str] = []
     for idx, line in enumerate(plain_lines):
@@ -988,6 +1032,7 @@ def execute_tui_command(
     *,
     dump_dir: str | Path = "tmp",
 ) -> bool:
+    """执行 TUI 命令，返回是否应退出。支持 focus、pause、resume、dump 等命令。"""
     command = raw_command.strip()
     if not command:
         state.command_status = ""
@@ -1079,6 +1124,7 @@ def render_screen(
     width: Optional[int] = None,
     display_data: Optional[dict[str, Any]] = None,
 ) -> str:
+    """渲染完整的 TUI 屏幕内容，根据终端宽度选择单栏或双栏布局。"""
     width = max(80, width or shutil.get_terminal_size((120, 40)).columns)
     display_data = display_data or _capture_render_data(state)
 
@@ -1203,6 +1249,7 @@ def render_screen(
 
     output_lines = _wrap_box("Session", header_lines, width)
     if width >= 120:
+        # 宽屏双栏布局：左侧显示摘要/焦点/持仓，右侧显示其余面板
         left_width = max(52, min(width - 38, int(width * 0.58)))
         right_width = max(34, width - left_width - 1)
         left_lines = (
@@ -1222,6 +1269,7 @@ def render_screen(
         )
         output_lines.extend(_combine_columns(left_lines, right_lines, left_width, right_width))
     else:
+        # 窄屏单栏布局：所有面板垂直堆叠
         output_lines.extend(_wrap_box("Summary", summary_lines, width))
         output_lines.extend(_wrap_box("Focus", _render_focus_panel(snapshot, focus_symbol), width))
         output_lines.extend(_wrap_box("Positions", positions_lines, width))
@@ -1238,6 +1286,7 @@ def render_screen(
 
 
 class MonitorTuiClient:
+    """TUI 监控客户端，管理 WebSocket 连接、快照轮询、日志跟踪和键盘输入。"""
     def __init__(
         self,
         *,
@@ -1272,6 +1321,7 @@ class MonitorTuiClient:
         self._stop_event.set()
 
     async def run(self) -> None:
+        """启动 TUI 客户端，并发运行快照轮询、WebSocket、渲染和命令循环。"""
         timeout = aiohttp.ClientTimeout(total=30, connect=10, sock_read=30)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             tasks = [
@@ -1295,6 +1345,7 @@ class MonitorTuiClient:
                         pass
 
     async def _snapshot_loop(self, session: aiohttp.ClientSession) -> None:
+        """定期轮询 relay 快照的异步循环。"""
         params = _build_query_params(self.state.exchange, self.state.user)
         snapshot_url = _append_query(urljoin(self.state.relay_url + "/", "snapshot"), params)
         while not self._stop_event.is_set():
@@ -1315,6 +1366,7 @@ class MonitorTuiClient:
                 pass
 
     async def _ws_loop(self, session: aiohttp.ClientSession) -> None:
+        """管理 WebSocket 连接的异步循环，自动重连。"""
         params = _build_query_params(self.state.exchange, self.state.user)
         ws_url = _http_to_ws(_append_query(urljoin(self.state.relay_url + "/", "ws"), params))
         while not self._stop_event.is_set():
@@ -1346,6 +1398,7 @@ class MonitorTuiClient:
                 pass
 
     async def _render_loop(self) -> None:
+        """定期渲染屏幕的异步循环，使用增量差异更新。"""
         sys.stdout.write("\x1b[?25l")
         sys.stdout.flush()
         try:
@@ -1384,6 +1437,7 @@ class MonitorTuiClient:
             sys.stdout.flush()
 
     async def _command_loop(self) -> None:
+        """异步读取键盘输入并执行 TUI 命令。"""
         fd = sys.stdin.fileno()
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[str] = asyncio.Queue()
@@ -1428,6 +1482,7 @@ class MonitorTuiClient:
             termios.tcsetattr(fd, termios.TCSADRAIN, original_attrs)
 
     async def _log_tail_loop(self, path: Path) -> None:
+        """定期轮询日志文件新内容的异步循环。"""
         while not self._stop_event.is_set():
             self._poll_log_tail_once(path)
             try:
@@ -1438,6 +1493,7 @@ class MonitorTuiClient:
                 pass
 
     def _bootstrap_log_tail(self, path: Path) -> None:
+        """初始化日志文件跟踪，加载已有内容并记录文件状态。"""
         self.state.set_log_file(str(path))
         self.state.push_log_lines(_read_last_lines(path, self.log_bootstrap_lines))
         try:
@@ -1448,6 +1504,7 @@ class MonitorTuiClient:
         self._log_tail_state = _LogTailState(int(stat.st_dev), int(stat.st_ino), int(stat.st_size))
 
     def _poll_log_tail_once(self, path: Optional[Path] = None) -> None:
+        """单次轮询日志文件，读取新增内容并处理文件截断/轮转。"""
         if path is None:
             if not self.log_file:
                 return
@@ -1464,6 +1521,7 @@ class MonitorTuiClient:
         if self._log_tail_state is None:
             self._log_tail_state = _LogTailState(file_id[0], file_id[1], size)
             return
+        # 检测文件截断或 inode 变化（日志轮转），若发生则从头读取
         reset = size < self._log_tail_state.offset or (
             self._log_tail_state.dev,
             self._log_tail_state.ino,

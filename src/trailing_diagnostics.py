@@ -78,6 +78,7 @@ def _effective_wallet_exposure_limit(
     *,
     pside: str,
 ) -> float:
+    """计算有效的 wallet_exposure_limit：优先直接值，其次按 total/n_positions 均分。"""
     bot_cfg = config.get("bot", {})
     if not isinstance(bot_cfg, Mapping):
         return 0.0
@@ -97,6 +98,7 @@ def _effective_wallet_exposure_limit(
 
 
 def normalize_trailing_extrema(bundle: Mapping[str, Any]) -> dict[str, float]:
+    """标准化追踪极值数据，将各字段转为浮点数。"""
     return {
         "min_since_open": _float(bundle.get("min_since_open", 0.0)),
         "max_since_min": _float(bundle.get("max_since_min", 0.0)),
@@ -111,6 +113,7 @@ def trailing_status(
     threshold_met: bool,
     retracement_met: bool,
 ) -> str:
+    """根据触发/阈值/回撤状态返回追踪状态字符串。"""
     if triggered:
         return "triggered"
     if not threshold_met:
@@ -127,6 +130,7 @@ def calculate_wallet_exposure(
     position_price: float,
     c_mult: float,
 ) -> float:
+    """计算 wallet_exposure = 持仓价值 / 余额。"""
     if balance_raw <= 0.0 or position_size == 0.0 or position_price <= 0.0 or c_mult <= 0.0:
         return 0.0
     return float(pbr.qty_to_cost(abs(position_size), position_price, c_mult) / balance_raw)
@@ -147,6 +151,7 @@ def entry_trailing_limit_cap(
     entry_trailing_grid_ratio: float,
     wallet_exposure: float,
 ) -> tuple[Optional[float], Optional[str]]:
+    """计算追踪入场限额上限和模式（trailing_only/grid_only/trailing_first/grid_first/trailing_after_grid）。"""
     allowed_limit = wallet_exposure_limit_with_allowance(
         wallet_exposure_limit=wallet_exposure_limit,
         risk_we_excess_allowance_pct=risk_we_excess_allowance_pct,
@@ -176,6 +181,7 @@ def _entry_ema_reference(inputs: Mapping[str, Any]) -> float:
 
 
 def build_trailing_entry_diagnostic(inputs: Mapping[str, Any]) -> Optional[dict[str, Any]]:
+    """构建追踪入场诊断数据，包含触发状态、阈值、回撤和极值信息。"""
     symbol = str(inputs.get("symbol", ""))
     pside = str(inputs.get("pside", "long"))
     balance_raw = _float(inputs.get("balance_raw"))
@@ -243,6 +249,7 @@ def build_trailing_entry_diagnostic(inputs: Mapping[str, Any]) -> Optional[dict[
     if "trailing" not in order_type:
         return None
 
+    # 计算调整后的阈值百分比（受 wallet_exposure 和波动率权重影响）
     threshold_multiplier = (
         (wallet_exposure / limit_cap) * _float(inputs.get("entry_trailing_threshold_we_weight"))
         if limit_cap > 0.0
@@ -267,6 +274,7 @@ def build_trailing_entry_diagnostic(inputs: Mapping[str, Any]) -> Optional[dict[
         0.0, 1.0 + retracement_multiplier + retracement_log_multiplier
     )
 
+    # 根据方向计算阈值价格和回撤价格，判断是否满足条件
     if pside == "long":
         threshold_price = position_price * (1.0 - threshold_pct) if threshold_pct > 0.0 else None
         threshold_met = True if threshold_pct <= 0.0 else trailing_bundle["min_since_open"] < threshold_price
@@ -332,6 +340,7 @@ def build_trailing_entry_diagnostic(inputs: Mapping[str, Any]) -> Optional[dict[
 
 
 def build_trailing_close_diagnostic(inputs: Mapping[str, Any]) -> Optional[dict[str, Any]]:
+    """构建追踪平仓诊断数据，包含触发状态、阈值、回撤和极值信息。"""
     symbol = str(inputs.get("symbol", ""))
     pside = str(inputs.get("pside", "long"))
     balance_raw = _float(inputs.get("balance_raw"))
@@ -438,6 +447,7 @@ def build_trailing_close_diagnostic(inputs: Mapping[str, Any]) -> Optional[dict[
 
 
 def build_trailing_diagnostic(inputs: Mapping[str, Any]) -> dict[str, Any]:
+    """构建完整的追踪诊断数据，包含入场和平仓诊断。"""
     normalized_inputs = {key: inputs.get(key) for key in inputs}
     trailing_bundle = normalize_trailing_extrema(inputs)
     wallet_exposure = calculate_wallet_exposure(
@@ -471,6 +481,7 @@ def build_trailing_diagnostic(inputs: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def snapshot_payload(snapshot: Mapping[str, Any]) -> Mapping[str, Any]:
+    """提取快照的有效载荷，兼容直接快照和包装快照格式。"""
     payload = snapshot.get("payload")
     if isinstance(payload, Mapping):
         return payload
@@ -484,6 +495,7 @@ def build_trailing_inputs_from_snapshot(
     symbol: str,
     pside: str,
 ) -> dict[str, Any]:
+    """从快照和配置构建追踪诊断所需的完整输入参数。"""
     snap = snapshot_payload(snapshot)
     market = snap.get("market", {})
     positions = snap.get("positions", {})
@@ -524,6 +536,7 @@ def build_trailing_inputs_from_snapshot(
     side_trailing = symbol_trailing.get(pside, {}) if isinstance(symbol_trailing, Mapping) else {}
     if not isinstance(side_trailing, Mapping):
         side_trailing = {}
+    # 优先从顶层 trailing 获取极值，回退到 market.trailing
     extrema_source = side_trailing.get("extrema")
     if not isinstance(extrema_source, Mapping):
         raw_market_trailing = market_entry.get("trailing", {})

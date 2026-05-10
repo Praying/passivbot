@@ -16,6 +16,7 @@ from monitor_tui import MonitorTuiClient
 
 
 def resolve_latest_log_file(*, logs_dir: str = "logs", explicit_log_file: Optional[str] = None) -> Optional[str]:
+    """解析最新的日志文件路径，优先使用显式指定的路径，否则按修改时间选择。"""
     if explicit_log_file:
         return str(Path(explicit_log_file).expanduser())
     root = Path(logs_dir).expanduser()
@@ -29,6 +30,7 @@ def resolve_latest_log_file(*, logs_dir: str = "logs", explicit_log_file: Option
 
 
 def relay_healthcheck(relay_url: str, timeout_seconds: float = 1.0) -> bool:
+    """检查 relay 服务器健康状态，返回是否可达。"""
     url = relay_url.rstrip("/") + "/health"
     try:
         with urlopen(url, timeout=timeout_seconds) as response:
@@ -38,6 +40,7 @@ def relay_healthcheck(relay_url: str, timeout_seconds: float = 1.0) -> bool:
 
 
 def _relay_launch_env(*, repo_root: str) -> dict[str, str]:
+    """构建 relay 子进程的环境变量，注入 src 目录到 PYTHONPATH。"""
     env = os.environ.copy()
     src_root = str((Path(repo_root) / "src").resolve())
     existing = env.get("PYTHONPATH", "")
@@ -48,6 +51,7 @@ def _relay_launch_env(*, repo_root: str) -> dict[str, str]:
 
 
 def _read_relay_log_excerpt(relay_log_file: str, *, max_lines: int = 20) -> str:
+    """读取 relay 日志文件的末尾摘要。"""
     path = Path(relay_log_file)
     if not path.exists():
         return ""
@@ -69,6 +73,7 @@ def launch_relay_subprocess(
     queue_size: int,
     relay_log_file: str,
 ) -> subprocess.Popen:
+    """启动 relay 子进程并将其日志重定向到指定文件。"""
     relay_log_path = Path(relay_log_file)
     relay_log_path.parent.mkdir(parents=True, exist_ok=True)
     log_handle = open(relay_log_path, "a", encoding="utf-8")
@@ -99,6 +104,7 @@ def launch_relay_subprocess(
 
 
 def stop_relay_subprocess(process: Optional[subprocess.Popen]) -> None:
+    """停止 relay 子进程：先尝试 terminate，超时后 kill。"""
     if process is None:
         return
     if process.poll() is None:
@@ -120,6 +126,7 @@ async def wait_for_relay(
     process: Optional[subprocess.Popen] = None,
     relay_log_file: Optional[str] = None,
 ) -> None:
+    """等待 relay 服务器变为健康状态，超时或进程提前退出时抛出异常。"""
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if relay_healthcheck(relay_url, timeout_seconds=0.5):
@@ -152,6 +159,7 @@ async def run_monitor_dev(
     relay_log_file: str = "tmp/monitor_dev/relay.log",
     repo_root: str = ".",
 ) -> None:
+    """启动 monitor-dev 模式：自动启动 relay 并运行 TUI 客户端。"""
     log_file = resolve_latest_log_file(logs_dir=logs_dir, explicit_log_file=explicit_log_file)
     parsed = urlsplit(relay_url)
     host = parsed.hostname or "127.0.0.1"

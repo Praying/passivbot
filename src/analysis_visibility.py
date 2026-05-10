@@ -16,6 +16,7 @@ from utils import trim_analysis_aliases
 
 @dataclass(frozen=True)
 class VisibleAnalysis:
+    """可见分析结果，包含过滤后的分析数据、显示计数和解析的指标名。"""
     analysis: dict
     shown_count: int
     total_count: int
@@ -23,6 +24,7 @@ class VisibleAnalysis:
 
 
 def collect_visible_metric_requests(config: dict) -> tuple[list[str], list[str], object]:
+    """收集可见指标请求：从优化目标和显式配置中提取。返回 (派生指标, 显式指标, 原始配置)。"""
     optimize_cfg = (config or {}).get("optimize", {}) or {}
     derived = []
     for spec in extract_objective_specs(optimize_cfg.get("scoring", []) or []):
@@ -44,6 +46,7 @@ def resolve_visible_metric_names(
     config: dict,
     analysis_keys: Iterable[str],
 ) -> list[str]:
+    """将配置中的可见指标请求解析为实际的分析键名列表。"""
     ordered_keys = list(analysis_keys)
     key_set = set(ordered_keys)
     derived, explicit, visible_cfg = collect_visible_metric_requests(config)
@@ -73,6 +76,7 @@ def resolve_visible_metric_names(
 
 
 def filter_analysis_for_visibility(analysis: dict, config: dict) -> VisibleAnalysis:
+    """根据可见性配置过滤分析数据，返回 VisibleAnalysis 结果。"""
     trimmed = trim_analysis_aliases(analysis)
     visible_names = resolve_visible_metric_names(config, trimmed.keys())
     filtered = {key: trimmed[key] for key in visible_names}
@@ -85,6 +89,7 @@ def filter_analysis_for_visibility(analysis: dict, config: dict) -> VisibleAnaly
 
 
 def validate_visible_metrics_config(config: dict) -> None:
+    """验证 visible_metrics 配置中的指标名是否可识别，不可识别时抛出 ValueError。"""
     _derived, explicit, visible_cfg = collect_visible_metric_requests(config)
     if visible_cfg in (None, []):
         return
@@ -102,6 +107,7 @@ def validate_visible_metrics_config(config: dict) -> None:
 
 
 def _normalize_visible_metrics_config(value) -> list[str]:
+    """标准化 visible_metrics 配置值为指标名字符串列表。"""
     if value == []:
         return []
     if not isinstance(value, (list, tuple, set)):
@@ -117,6 +123,7 @@ def _normalize_visible_metrics_config(value) -> list[str]:
 
 
 def _expand_metric_name(metric: str, ordered_keys: Sequence[str], key_set: set[str]) -> list[str]:
+    """展开指标名为匹配的分析键，支持别名、货币后缀和前缀匹配。"""
     metric = canonical_metric_name(metric)
     if metric in key_set:
         return [metric]
@@ -141,6 +148,7 @@ def _expand_metric_name(metric: str, ordered_keys: Sequence[str], key_set: set[s
 
 
 def _known_visible_metric_names() -> set[str]:
+    """返回所有已知可见指标名的集合，含货币后缀变体。"""
     known = set(CURRENCY_METRICS) | set(ANALYSIS_SHARED_KEYS)
     known |= {
         f"{metric}_{suffix}"
@@ -151,6 +159,7 @@ def _known_visible_metric_names() -> set[str]:
 
 
 def _metric_name_is_known(metric: str, known_metrics: set[str]) -> bool:
+    """判断指标名是否已知，支持别名和前缀匹配。"""
     metric = canonical_metric_name(metric)
     if metric in known_metrics:
         return True

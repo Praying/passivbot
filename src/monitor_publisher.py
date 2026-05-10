@@ -11,6 +11,7 @@ from typing import Any, Iterable, Optional
 
 
 def _json_default(value: Any) -> Any:
+    """JSON 序列化回退函数，处理 Path 和 numpy 标量/数组类型。"""
     if isinstance(value, Path):
         return str(value)
     if hasattr(value, "item"):
@@ -27,6 +28,7 @@ def _json_default(value: Any) -> Any:
 
 
 def _atomic_write_json(path: Path, payload: dict) -> None:
+    """原子写入 JSON 文件：先写临时文件再重命名，确保数据完整性。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     with open(tmp_path, "w", encoding="utf-8") as f:
@@ -38,6 +40,7 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
 
 
 class MonitorPublisher:
+    """监控数据发布器，负责写入快照、事件、历史和检查点文件，并管理轮转和保留策略。"""
     schema_version = 1
 
     def __init__(
@@ -100,6 +103,7 @@ class MonitorPublisher:
 
     @classmethod
     def from_config(cls, *, exchange: str, user: str, config: dict) -> "MonitorPublisher":
+        """从配置字典创建 MonitorPublisher 实例。"""
         return cls(
             exchange=exchange,
             user=user,
@@ -123,12 +127,14 @@ class MonitorPublisher:
         return int(time.time() * 1000)
 
     def _ensure_layout(self) -> None:
+        """确保目录结构和初始文件存在。"""
         for path in (self.root, self.events_dir, self.history_dir, self.checkpoints_dir):
             path.mkdir(parents=True, exist_ok=True)
         if not self.current_events_path.exists():
             self.current_events_path.touch()
 
     def _load_manifest_state(self) -> None:
+        """从 manifest.json 恢复序列号和分段起始时间等状态。"""
         if not self.manifest_path.exists():
             return
         try:
@@ -163,6 +169,7 @@ class MonitorPublisher:
             self.history_segment_started_ms = {}
 
     def _build_manifest(self, now_ms: Optional[int] = None) -> dict:
+        """构建 manifest 字典，包含路径、配置和能力信息。"""
         now_ms = self._now_ms() if now_ms is None else int(now_ms)
         history_streams = {
             "fills": self.retain_fills,
@@ -233,6 +240,7 @@ class MonitorPublisher:
         return gz_path
 
     def _rotatable_files(self) -> list[Path]:
+        """列出可轮转和清理的文件（排除当前活跃文件）。"""
         files: list[Path] = []
         for directory in (self.events_dir, self.history_dir, self.checkpoints_dir):
             if not directory.exists():
@@ -246,12 +254,14 @@ class MonitorPublisher:
         return sorted(files, key=lambda path: path.stat().st_mtime)
 
     def _prune_retention(self, now_ms: Optional[int] = None) -> None:
+        """执行保留策略：删除过期文件和超出总量限制的最早文件。"""
         now_ms = self._now_ms() if now_ms is None else int(now_ms)
         if self.last_retention_ms and now_ms - self.last_retention_ms < 60_000:
             return
         self.last_retention_ms = now_ms
         try:
             cutoff_ms = now_ms - int(self.retain_days * 24.0 * 60.0 * 60.0 * 1000.0)
+            # 按保留天数删除过期文件
             if self.retain_days >= 0.0:
                 for path in list(self._rotatable_files()):
                     try:
@@ -270,6 +280,7 @@ class MonitorPublisher:
             if total_bytes <= self.max_total_bytes:
                 return
 
+            # 超出总量限制时删除最早的可轮转文件
             protected = {
                 self.manifest_path,
                 self.state_latest_path,
@@ -290,6 +301,7 @@ class MonitorPublisher:
             logging.error("[monitor] retention pruning failed: %s", exc)
 
     def _rotate_events_if_needed(self, now_ms: Optional[int] = None) -> None:
+        """按大小或时间轮转当前事件文件，可选 gzip 压缩。"""
         now_ms = self._now_ms() if now_ms is None else int(now_ms)
         try:
             if not self.current_events_path.exists():
@@ -321,6 +333,7 @@ class MonitorPublisher:
         return path
 
     def _rotate_history_if_needed(self, stream: str, *, now_ms: int) -> None:
+        """按大小或时间轮转指定流的历史文件，可选 gzip 压缩。"""
         try:
             current_path = self._history_current_path(stream)
             started_ms = int(self.history_segment_started_ms.get(stream, self.created_ts_ms))
@@ -356,6 +369,7 @@ class MonitorPublisher:
         pside: Optional[str] = None,
         timeframe: Optional[str] = None,
     ) -> Optional[dict]:
+        """记录一条历史条目到指定流的 NDJSON 文件。"""
         now_ms = self._now_ms() if ts is None else int(ts)
         try:
             self._rotate_history_if_needed(stream, now_ms=now_ms)
@@ -396,6 +410,7 @@ class MonitorPublisher:
         pside: Optional[str] = None,
         raw_payload: Any = None,
     ) -> Optional[dict]:
+        """记录一条成交记录，可选包含原始交易所载荷。"""
         if not self.retain_fills:
             return None
         entry_payload = dict(payload or {})
@@ -420,6 +435,7 @@ class MonitorPublisher:
         ask: Optional[float] = None,
         source: Optional[str] = None,
     ) -> Optional[dict]:
+        """记录一条价格行情，受最小间隔限制。"""
         if not self.retain_price_ticks:
             return None
         now_ms = self._now_ms() if ts is None else int(ts)
@@ -455,6 +471,7 @@ class MonitorPublisher:
         timeframe: str,
         candles: Iterable[dict],
     ) -> list[dict]:
+        """记录已完成的 K 线，跳过已记录的时间戳。"""
         if not (self.retain_candles and self.emit_completed_candles):
             return []
         timeframe = str(timeframe)
@@ -497,6 +514,7 @@ class MonitorPublisher:
         symbol: Optional[str] = None,
         pside: Optional[str] = None,
     ) -> Optional[dict]:
+        """记录一条事件到当前事件 NDJSON 文件。"""
         now_ms = self._now_ms() if ts is None else int(ts)
         try:
             self._rotate_events_if_needed(now_ms=now_ms)
@@ -535,6 +553,7 @@ class MonitorPublisher:
         symbol: Optional[str] = None,
         pside: Optional[str] = None,
     ) -> Optional[dict]:
+        """记录一条错误事件，包含异常类型和消息。"""
         error_payload = dict(payload or {})
         error_payload["error_type"] = type(error).__name__
         error_payload["message"] = str(error)
@@ -550,6 +569,7 @@ class MonitorPublisher:
     def write_snapshot(
         self, snapshot: dict, *, ts: Optional[int] = None, force: bool = False
     ) -> bool:
+        """写入快照到 state.latest.json，可选写入检查点文件。返回是否实际写入。"""
         now_ms = self._now_ms() if ts is None else int(ts)
         if not force and self.last_snapshot_ms and (
             now_ms - self.last_snapshot_ms < self.snapshot_interval_ms
@@ -582,4 +602,5 @@ class MonitorPublisher:
             return False
 
     def close(self) -> None:
+        """关闭发布器，写入最终 manifest。"""
         self._write_manifest()

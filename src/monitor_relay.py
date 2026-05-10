@@ -15,6 +15,7 @@ from aiohttp import web
 MonitorKey = tuple[str, str]
 DASHBOARD_STATIC_DIR = Path(__file__).resolve().parent / "monitor_dashboard_static"
 _DASHBOARD_ASSETS = {
+    # 仪表盘静态资源映射：文件名 -> (实际文件名, MIME 类型)
     "dashboard.css": ("dashboard.css", "text/css"),
     "dashboard.js": ("dashboard.js", "application/javascript"),
 }
@@ -22,6 +23,7 @@ _DASHBOARD_ASSETS = {
 
 @dataclass
 class _PathState:
+    """文件跟踪状态，记录设备号、inode 和读取偏移量。"""
     dev: int
     ino: int
     offset: int
@@ -29,6 +31,7 @@ class _PathState:
 
 @dataclass
 class _BotPresence:
+    """Bot 在线状态跟踪，记录各时间戳用于判断活跃/过期/离线。"""
     first_seen_ts_ms: int
     last_seen_ts_ms: int
     last_activity_ts_ms: int = 0
@@ -39,6 +42,7 @@ class _BotPresence:
 
 
 class MonitorRelay:
+    """监控中继服务器核心，轮询文件系统并广播增量更新给 WebSocket 订阅者。"""
     def __init__(
         self,
         *,
@@ -60,6 +64,7 @@ class MonitorRelay:
         self._initial_prime_completed = False
 
     def discover_keys(self) -> list[MonitorKey]:
+        """发现监控根目录下所有有效的 (exchange, user) 键。"""
         if not self.monitor_root.exists():
             return []
         keys: list[MonitorKey] = []
@@ -119,6 +124,7 @@ class MonitorRelay:
         return max(0, int(value * 1000.0))
 
     def _key_last_activity_ts_ms(self, key: MonitorKey) -> int:
+        """获取键对应的最后活动时间戳（取 manifest、快照和事件文件的最大值）。"""
         manifest = self._load_json(self._manifest_path(key))
         snapshot = self._load_json(self._snapshot_path(key))
         candidates = [
@@ -173,6 +179,7 @@ class MonitorRelay:
         *,
         now_ms: Optional[int] = None,
     ) -> str:
+        """判断 Bot 在线状态：active / stale / offline。"""
         now_ms = self._now_ms() if now_ms is None else int(now_ms)
         entry = self._bot_presence.get(key)
         if entry is None:
@@ -188,6 +195,7 @@ class MonitorRelay:
         return "offline"
 
     def _refresh_presence(self, *, now_ms: Optional[int] = None) -> None:
+        """刷新所有键的在线状态，更新最后活动和快照时间戳。"""
         now_ms = self._now_ms() if now_ms is None else int(now_ms)
         for key in self.discover_keys():
             entry = self._ensure_presence_entry(key, now_ms=now_ms)
@@ -257,6 +265,7 @@ class MonitorRelay:
         user: Optional[str],
         active_only: bool = True,
     ) -> list[MonitorKey]:
+        """根据 exchange/user 筛选匹配的键，二者需同时指定或同时省略。"""
         keys = self.visible_keys() if active_only else self.discover_keys()
         if exchange and user:
             key = (str(exchange), str(user))
@@ -273,6 +282,7 @@ class MonitorRelay:
         exchange: Optional[str],
         user: Optional[str],
     ) -> MonitorKey:
+        """解析唯一的监控键，多个可用时要求明确指定 exchange/user。"""
         keys = self.matching_keys(exchange=exchange, user=user)
         if exchange and user:
             return keys[0]
@@ -304,6 +314,7 @@ class MonitorRelay:
         return messages
 
     def build_snapshot_message(self, key: MonitorKey, snapshot: dict) -> dict:
+        """构建包含 relay 元数据的快照消息。"""
         meta = snapshot.get("meta", {}) if isinstance(snapshot, dict) else {}
         relay_meta = self._presence_payload(key)
         return {
@@ -317,6 +328,7 @@ class MonitorRelay:
         }
 
     def build_snapshot_bundle(self, messages: list[dict]) -> dict:
+        """将多条快照消息打包为快照捆绑消息。"""
         now_ms = self._now_ms()
         active_count = sum(
             1 for message in messages if (message.get("relay") or {}).get("status") == "active"
@@ -334,6 +346,7 @@ class MonitorRelay:
         }
 
     def build_health_payload(self) -> dict:
+        """构建健康检查响应负载，包含运行时间、Bot 状态和订阅者信息。"""
         now_ms = self._now_ms()
         self._refresh_presence(now_ms=now_ms)
         discovered = self.discover_keys()
@@ -403,6 +416,7 @@ class MonitorRelay:
         self._poll_task = None
 
     def _prime_offsets(self) -> None:
+        """初始化所有文件的偏移量为当前文件末尾，跳过已有内容。"""
         for key in self.discover_keys():
             for path in self._current_paths_for_key(key):
                 if not path.exists():
@@ -426,6 +440,7 @@ class MonitorRelay:
             await asyncio.sleep(self.poll_interval_ms / 1000.0)
 
     async def poll_once(self) -> None:
+        """执行一次轮询：刷新在线状态并广播所有文件的增量更新。"""
         now_ms = self._now_ms()
         self._refresh_presence(now_ms=now_ms)
         for key in self.discover_keys():
@@ -441,6 +456,7 @@ class MonitorRelay:
         *,
         now_ms: Optional[int] = None,
     ) -> None:
+        """记录消息到 Bot 在线状态，更新最后活动/事件/历史时间戳。"""
         now_ms = self._now_ms() if now_ms is None else int(now_ms)
         entry = self._ensure_presence_entry(key, now_ms=now_ms)
         message_ts_ms = self._message_ts_ms(message)
@@ -451,6 +467,7 @@ class MonitorRelay:
             entry.last_history_ts_ms = max(entry.last_history_ts_ms, message_ts_ms, now_ms)
 
     def _read_updates(self, path: Path) -> list[dict]:
+        """读取文件自上次偏移量以来的新增行，并解析为消息列表。"""
         if not path.exists():
             return []
         try:
@@ -466,6 +483,7 @@ class MonitorRelay:
                 return []
             read_from = 0
         else:
+            # 检测文件截断或 inode 变化（日志轮转），若发生则从头读取
             reset = size < state.offset or (state.dev, state.ino) != file_id
             read_from = 0 if reset else state.offset
         if size == read_from:
@@ -501,6 +519,7 @@ class MonitorRelay:
         *,
         limit: Optional[int] = None,
     ) -> list[dict]:
+        """加载最近的消息，用于 WebSocket 重连后的补发。"""
         per_file_limit = self.ws_replay_limit if limit is None else max(0, int(limit))
         if per_file_limit <= 0:
             return []
@@ -521,6 +540,7 @@ class MonitorRelay:
         return [message for _, _, message in messages]
 
     def _read_recent_entries(self, path: Path, limit: int) -> list[dict]:
+        """读取文件末尾指定条数的 NDJSON 条目。"""
         if limit <= 0 or not path.exists():
             return []
         try:
@@ -581,6 +601,7 @@ class MonitorRelay:
         return message
 
     async def _broadcast(self, key: MonitorKey, message: dict) -> None:
+        """将消息广播到所有匹配的订阅者队列，溢出时标记需要重新同步。"""
         subscribers = list(self._subscribers.items())
         if not subscribers:
             return
@@ -593,6 +614,7 @@ class MonitorRelay:
                 self._replace_with_resync_required(queue)
 
     def _replace_with_resync_required(self, queue: asyncio.Queue) -> None:
+        """清空溢出队列并放入 resync_required 消息，通知客户端重新同步。"""
         try:
             while True:
                 queue.get_nowait()
@@ -667,6 +689,7 @@ async def _handle_dashboard_asset(request: web.Request) -> web.Response:
 
 
 async def _handle_ws(request: web.Request) -> web.StreamResponse:
+    """处理 WebSocket 连接：发送快照、补发最近消息、实时推送更新。"""
     relay = _relay_from_app(request.app)
     exchange = request.query.get("exchange")
     user = request.query.get("user")
@@ -724,6 +747,7 @@ def create_monitor_relay_app(
     subscriber_queue_size: int = 1000,
     ws_replay_limit: int = 50,
 ) -> web.Application:
+    """创建监控中继 aiohttp 应用，注册路由和生命周期钩子。"""
     relay = MonitorRelay(
         monitor_root=monitor_root,
         poll_interval_ms=poll_interval_ms,

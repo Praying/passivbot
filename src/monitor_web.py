@@ -23,6 +23,7 @@ def build_dashboard_url(
     user: Optional[str] = None,
     focus_symbol: Optional[str] = None,
 ) -> str:
+    """构建仪表盘 URL，附加 exchange/user/symbol 查询参数。"""
     parts = urlsplit(relay_url)
     query = {}
     if exchange:
@@ -56,6 +57,7 @@ async def run_monitor_web(
     repo_root: str = ".",
     open_browser: bool = False,
 ) -> None:
+    """启动 monitor-web 模式：自动启动 relay 并输出仪表盘 URL，可选打开浏览器。"""
     parsed = urlsplit(relay_url)
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port or (443 if parsed.scheme == "https" else 80)

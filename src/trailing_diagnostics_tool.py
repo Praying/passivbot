@@ -195,6 +195,7 @@ def _resolve_snapshot_path(
 
 
 def _manual_defaults() -> dict[str, Any]:
+    """返回手动模式下的默认输入值。"""
     defaults: dict[str, Any] = {
         "symbol": "BTC/USDT:USDT",
         "pside": "long",
@@ -222,6 +223,7 @@ def _manual_defaults() -> dict[str, Any]:
 
 
 def _snapshot_seed_defaults(snapshot: dict[str, Any], *, symbol: str, pside: str) -> dict[str, Any]:
+    """从快照中提取默认值，用于向导模式的初始填充。"""
     snap = snapshot_payload(snapshot)
     market = snap.get("market", {})
     positions = snap.get("positions", {})
@@ -300,6 +302,7 @@ def _prompt_bool(prompt: str, default: bool = False) -> bool:
 
 
 def prompt_manual_wizard(base_inputs: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """交互式向导：逐步提示用户输入核心和高级追踪参数。"""
     defaults = deepcopy(base_inputs) if base_inputs is not None else _manual_defaults()
     defaults.setdefault("symbol", "BTC/USDT:USDT")
     defaults.setdefault("pside", "long")
@@ -316,6 +319,7 @@ def prompt_manual_wizard(base_inputs: Optional[dict[str, Any]] = None) -> dict[s
 
 @dataclass
 class TrailingDiagnosticsState:
+    """追踪诊断工具状态，管理配置、快照、输入参数和命令。"""
     source_label: str
     config_path: Optional[str] = None
     snapshot_path: Optional[str] = None
@@ -346,6 +350,7 @@ class TrailingDiagnosticsState:
         return self.config is not None and self.snapshot is not None
 
     def reload_symbol_pside(self, symbol: str, pside: str) -> None:
+        """从快照和配置重新加载指定交易对和方向的追踪输入。"""
         if not self.can_reload_from_snapshot():
             raise RuntimeError("symbol/side reload requires snapshot + config source")
         fresh = build_trailing_inputs_from_snapshot(
@@ -371,6 +376,7 @@ def create_state_from_sources(
     pside: str,
     wizard: bool,
 ) -> TrailingDiagnosticsState:
+    """从配置文件和/或快照创建诊断状态，必要时启动向导模式。"""
     resolved_snapshot = _resolve_snapshot_path(
         monitor_root=monitor_root,
         exchange=exchange,
@@ -557,7 +563,7 @@ def _render_status_box(state: TrailingDiagnosticsState, width: int) -> list[str]
 
 
 def render_screen(state: TrailingDiagnosticsState, *, width: Optional[int] = None) -> str:
-    term_width = width or max(100, shutil.get_terminal_size((120, 40)).columns - 1)
+    """渲染追踪诊断工具的完整 TUI 屏幕，宽屏时双栏布局。"""
     diagnostic = state.diagnostic()
     if term_width >= 140:
         left_width = max(50, term_width // 2)
@@ -605,7 +611,7 @@ def _write_dump(state: TrailingDiagnosticsState) -> str:
 
 
 def execute_command(state: TrailingDiagnosticsState, command: str) -> bool:
-    raw = command.strip()
+    """执行诊断工具命令，返回是否应退出。支持 set/edit/symbol/side/reset/wizard/dump 等。"""
     if not raw:
         state.status_lines = ["Type 'help' for commands."]
         return False
@@ -701,6 +707,7 @@ def execute_command(state: TrailingDiagnosticsState, command: str) -> bool:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """构建命令行参数解析器。"""
     parser = argparse.ArgumentParser(
         description="Interactive trailing diagnostics explorer for Passivbot configs and monitor snapshots."
     )
@@ -725,6 +732,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_interactive(args: argparse.Namespace) -> int:
+    """运行交互式追踪诊断工具，循环渲染屏幕并处理命令。"""
     state = create_state_from_sources(
         config_path=args.config,
         monitor_root=args.monitor_root,
