@@ -596,8 +596,8 @@ class Passivbot:
             except Exception as exc:
                 logging.error("[monitor] failed to initialize monitor publisher: %s", exc)
                 self.monitor_publisher = None
-        # CandlestickManager settings from config.live
-        # Use denormalized exchange name for cache paths (e.g., "binance" not "binanceusdm")
+        # CandlestickManager 的设置来自 config.live
+        # 使用非规范化的交易所名称作为缓存路径（如 "binance" 而非 "binanceusdm"）
         cm_kwargs = {
             "exchange": self.cca,
             "exchange_name": self.exchange,
@@ -659,8 +659,8 @@ class Passivbot:
                 page_debug_symbols = [str(s) for s in raw_page_debug if s]
             if page_debug_symbols:
                 cm_kwargs["page_debug_symbols"] = page_debug_symbols
-        # Archive fetching: disabled by default for live bots (avoids timeout issues)
-        # Set live.enable_archive_candle_fetch=true to enable if needed
+        # 归档获取：实盘 bot 默认禁用（避免超时问题）
+        # 设置 live.enable_archive_candle_fetch=true 可按需启用
         archive_enabled = get_optional_live_value(config, "enable_archive_candle_fetch", False)
         cm_kwargs["archive_enabled"] = bool(archive_enabled)
         self.cm = CandlestickManager(**cm_kwargs)
@@ -762,7 +762,7 @@ class Passivbot:
         self._pnls_manager: Optional[FillEventsManager] = None
         self._pnls_initialized = False
 
-        # Health tracking for periodic summary
+        # 健康跟踪，用于定期汇总
         self._health_start_ms = utc_ms()
         self._health_orders_placed = 0
         self._health_orders_cancelled = 0
