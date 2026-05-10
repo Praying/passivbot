@@ -8,6 +8,7 @@ HLCVS_CACHE_DIR_SEP = "__"
 
 
 def _resolve_cache_artifact_path(cache_dir: Path, filename_candidates: Sequence[str]) -> str | None:
+    """在缓存目录中按候选文件名依次查找，返回第一个存在的文件路径。"""
     for filename in filename_candidates:
         candidate = cache_dir / filename
         if candidate.exists():
@@ -16,6 +17,7 @@ def _resolve_cache_artifact_path(cache_dir: Path, filename_candidates: Sequence[
 
 
 def _extract_cache_hash_from_dir(cache_dir: Path | None) -> str | None:
+    """从缓存目录名中提取哈希值，若不含分隔符则返回目录名本身。"""
     if cache_dir is None:
         return None
     name = cache_dir.name
@@ -25,6 +27,7 @@ def _extract_cache_hash_from_dir(cache_dir: Path | None) -> str | None:
 
 
 def build_backtest_dataset_metadata(config: dict, exchange: str) -> dict:
+    """根据配置和缓存目录构建回测数据集的元数据字典。"""
     cache_dir_raw = get_optional_config_value(config, f"backtest.cache_dir.{exchange}")
     cache_dir = Path(cache_dir_raw).resolve() if cache_dir_raw else None
     coins_from_config = list(get_optional_config_value(config, f"backtest.coins.{exchange}", []) or [])
@@ -38,6 +41,7 @@ def build_backtest_dataset_metadata(config: dict, exchange: str) -> dict:
     btc_usd_prices_file = None
     coins_order = list(coins_from_config)
 
+    # 缓存目录存在时，解析其中的缓存文件路径
     if cache_dir and cache_dir.exists():
         coins_file = _resolve_cache_artifact_path(cache_dir, ("coins.json",))
         market_specific_settings_file = _resolve_cache_artifact_path(
@@ -82,6 +86,7 @@ def build_backtest_dataset_metadata(config: dict, exchange: str) -> dict:
 
 
 def dump_backtest_dataset_metadata(config: dict, exchange: str, results_path: str) -> str:
+    """构建回测数据集元数据并写入 JSON 文件，返回输出路径。"""
     dataset_metadata = build_backtest_dataset_metadata(config, exchange)
     out_path = Path(results_path) / "dataset.json"
     with open(out_path, "w") as f:

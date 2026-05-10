@@ -13,6 +13,7 @@ from ohlcv_utils import load_ohlcv_data
 
 @dataclass(frozen=True)
 class LegacyRangeInspection:
+    """旧版数据范围的检查结果，记录存在和缺失的日期。"""
     exchange: str
     timeframe: str
     symbol: str
@@ -23,10 +24,12 @@ class LegacyRangeInspection:
 
     @property
     def all_days_present(self) -> bool:
+        """范围内所有日期的数据均存在。"""
         return len(self.missing_days) == 0
 
 
 def _iter_utc_days(start_ts: int, end_ts: int):
+    """按天迭代 UTC 日期，从 start_ts 到 end_ts（含）。"""
     current = datetime.fromtimestamp(int(start_ts) / 1000, tz=timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
@@ -41,10 +44,12 @@ def _iter_utc_days(start_ts: int, end_ts: int):
 def resolve_legacy_symbol_dir(
     legacy_root: str | Path, exchange: str, timeframe: str, symbol: str
 ) -> Path:
+    """解析旧版数据目录中交易对对应的路径。"""
     return Path(legacy_root) / str(exchange) / str(timeframe) / _sanitize_symbol(symbol)
 
 
 def _resolve_legacy_day_path(symbol_dir: Path, day: str) -> Path | None:
+    """查找指定日期的旧版数据文件（.npy 或 .npz），未找到则返回 None。"""
     for suffix in (".npy", ".npz"):
         fpath = symbol_dir / f"{day}{suffix}"
         if fpath.exists():
@@ -53,6 +58,7 @@ def _resolve_legacy_day_path(symbol_dir: Path, day: str) -> Path | None:
 
 
 def _load_legacy_day_file(fpath: Path) -> tuple[np.ndarray, np.ndarray]:
+    """加载旧版日数据文件，返回 (时间戳数组, 值数组) 元组。"""
     if fpath.suffix.lower() == ".npz":
         df = load_ohlcv_data(str(fpath))
         ts = df["timestamp"].to_numpy(dtype=np.int64, copy=False)
@@ -60,6 +66,7 @@ def _load_legacy_day_file(fpath: Path) -> tuple[np.ndarray, np.ndarray]:
         return ts, values
 
     arr = np.load(fpath, allow_pickle=False)
+    # 处理结构化数组格式（含 ts, h, l, c, bv 字段）
     if isinstance(arr, np.ndarray) and arr.dtype.names is not None:
         required = ("ts", "h", "l", "c", "bv")
         missing = [name for name in required if name not in arr.dtype.names]
@@ -91,6 +98,7 @@ def inspect_legacy_range(
     start_ts: int,
     end_ts: int,
 ) -> LegacyRangeInspection:
+    """检查旧版数据在指定范围内的存在情况，返回每天的缺失/存在状态。"""
     if end_ts < start_ts:
         raise ValueError("end_ts must be >= start_ts")
     symbol_dir = resolve_legacy_symbol_dir(legacy_root, exchange, timeframe, symbol)
@@ -122,6 +130,7 @@ def import_legacy_range_into_store(
     start_ts: int,
     end_ts: int,
 ) -> int:
+    """将旧版数据导入到 OhlcvStore 中，返回成功导入的行数。"""
     if end_ts < start_ts:
         raise ValueError("end_ts must be >= start_ts")
     symbol_dir = resolve_legacy_symbol_dir(legacy_root, exchange, timeframe, symbol)

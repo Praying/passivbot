@@ -16,6 +16,7 @@ BACKTEST_OHLCV_FIELDS = ("high", "low", "close", "volume")
 
 
 def timeframe_to_interval_ms(timeframe: str) -> int:
+    """将时间周期字符串转换为对应的毫秒间隔。"""
     normalized = str(timeframe).strip().lower()
     if normalized == "1m":
         return 60_000
@@ -25,28 +26,33 @@ def timeframe_to_interval_ms(timeframe: str) -> int:
 
 
 def month_start_ts(year: int, month: int) -> int:
+    """返回指定年月第一天 00:00 UTC 的时间戳（毫秒）。"""
     dt = datetime(year, month, 1, tzinfo=timezone.utc)
     return int(dt.timestamp() * 1000)
 
 
 def rows_in_month(year: int, month: int, timeframe: str) -> int:
+    """计算指定年月内在给定时间周期下的 K 线行数。"""
     interval_ms = timeframe_to_interval_ms(timeframe)
     n_days = calendar.monthrange(year, month)[1]
     return (n_days * 24 * 60 * 60_000) // interval_ms
 
 
 def month_key_for_ts(ts_ms: int) -> tuple[int, int]:
+    """根据毫秒时间戳返回 (年, 月) 元组。"""
     dt = datetime.fromtimestamp(int(ts_ms) / 1000, tz=timezone.utc)
     return dt.year, dt.month
 
 
 def month_end_ts(year: int, month: int, timeframe: str) -> int:
+    """返回指定年月最后一个 K 线的时间戳（毫秒）。"""
     return month_start_ts(year, month) + rows_in_month(year, month, timeframe) * timeframe_to_interval_ms(
         timeframe
     ) - timeframe_to_interval_ms(timeframe)
 
 
 def month_offset(ts_ms: int, year: int, month: int, timeframe: str) -> int:
+    """计算时间戳在月度数组中的行偏移量。"""
     start = month_start_ts(year, month)
     interval_ms = timeframe_to_interval_ms(timeframe)
     delta = int(ts_ms) - start
@@ -60,6 +66,7 @@ def month_offset(ts_ms: int, year: int, month: int, timeframe: str) -> int:
 
 
 def _sanitize_symbol(symbol: str) -> str:
+    """将交易对名称中不安全的文件系统字符替换为下划线。"""
     out = str(symbol).strip()
     for ch in ("/", ":", "\\"):
         out = out.replace(ch, "_")
@@ -68,24 +75,29 @@ def _sanitize_symbol(symbol: str) -> str:
 
 @dataclass(frozen=True)
 class MonthChunkPaths:
+    """月度分块的 body 和 valid 文件路径对。"""
     body_path: Path
     valid_path: Path
 
 
 @dataclass(frozen=True)
 class OhlcvRange:
+    """从 store 读取的时间范围结果，包含时间戳、值和有效位掩码。"""
     timestamps: np.ndarray
     values: np.ndarray
     valid: np.ndarray
 
 
 class OhlcvStore:
+    """OHLCV 数据存储，按月分块管理 mmapped numpy 数组。"""
+
     def __init__(self, root: str | Path, catalog: OhlcvCatalog):
         self.root = Path(root)
         self.catalog = catalog
         self.root.mkdir(parents=True, exist_ok=True)
 
     def month_paths(self, exchange: str, timeframe: str, symbol: str, year: int, month: int) -> MonthChunkPaths:
+        """返回指定交易对月度分块的文件路径对，并确保目录存在。"""
         base = (
             self.root
             / "data"
@@ -108,6 +120,7 @@ class OhlcvStore:
         *,
         status: str = "open",
     ) -> MonthChunkPaths:
+        """确保月度分块文件存在：缺失时创建并初始化为 NaN/False，并在目录中注册。"""
         paths = self.month_paths(exchange, timeframe, symbol, year, month)
         n_rows = rows_in_month(year, month, timeframe)
         if not paths.body_path.exists():
@@ -149,6 +162,7 @@ class OhlcvStore:
         *,
         status: str = "open",
     ) -> None:
+        """将一批 OHLCV 行写入对应的月度分块，并更新目录的时间范围。"""
         ts_arr = np.asarray(timestamps_ms, dtype=np.int64)
         val_arr = np.asarray(values, dtype=np.float32)
         if ts_arr.ndim != 1:
@@ -187,6 +201,7 @@ class OhlcvStore:
     def read_range(
         self, exchange: str, timeframe: str, symbol: str, start_ts: int, end_ts: int
     ) -> OhlcvRange:
+        """读取指定时间范围内的 OHLCV 数据，返回包含时间戳、值和有效位的结果。"""
         if end_ts < start_ts:
             raise ValueError("end_ts must be >= start_ts")
         interval_ms = timeframe_to_interval_ms(timeframe)
@@ -210,6 +225,7 @@ class OhlcvStore:
         out_values: np.ndarray,
         out_valid: np.ndarray,
     ) -> None:
+        """将指定时间范围的数据复制到预分配的输出数组中。"""
         if out_values.ndim != 2 or out_values.shape[1] != 4:
             raise ValueError("out_values must have shape [n, 4]")
         if out_valid.ndim != 1 or out_valid.shape[0] != out_values.shape[0]:
@@ -220,6 +236,7 @@ class OhlcvStore:
     def iter_overlapping_chunks(
         self, exchange: str, timeframe: str, symbol: str, start_ts: int, end_ts: int
     ) -> Iterator[ChunkRecord]:
+        """迭代与给定时间范围重叠的所有分块记录。"""
         yield from self.catalog.list_chunks(exchange, timeframe, symbol, start_ts, end_ts)
 
     def _copy_chunk_into_range(
@@ -231,6 +248,7 @@ class OhlcvStore:
         out_values: np.ndarray,
         out_valid: np.ndarray,
     ) -> None:
+        """将单个分块的重叠部分复制到输出数组的对应位置。"""
         overlap_start = max(int(chunk.start_ts), int(start_ts))
         overlap_end = min(int(chunk.end_ts), int(end_ts))
         if overlap_end < overlap_start:

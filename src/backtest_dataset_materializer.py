@@ -12,6 +12,7 @@ from ohlcv_store import OhlcvStore, timeframe_to_interval_ms
 
 @dataclass(frozen=True)
 class SharedBacktestDatasetHandle:
+    """共享回测数据集的只读句柄，包含各数据文件的 mmmap 访问信息。"""
     root: str
     hlcvs_path: str
     timestamps_path: str
@@ -28,9 +29,11 @@ class SharedBacktestDatasetHandle:
     meta: dict
 
     def open_hlcvs(self) -> np.memmap:
+        """以只读模式打开 HLCVS 数据的内存映射。"""
         return np.memmap(self.hlcvs_path, mode="r", dtype=np.dtype(self.hlcvs_dtype), shape=self.hlcvs_shape)
 
     def open_timestamps(self) -> np.memmap:
+        """以只读模式打开时间戳数组的内存映射。"""
         return np.memmap(
             self.timestamps_path,
             mode="r",
@@ -39,6 +42,7 @@ class SharedBacktestDatasetHandle:
         )
 
     def open_btc_usd_prices(self) -> np.memmap:
+        """以只读模式打开 BTC/USD 价格数组的内存映射。"""
         return np.memmap(
             self.btc_usd_prices_path,
             mode="r",
@@ -48,6 +52,8 @@ class SharedBacktestDatasetHandle:
 
 
 class BacktestDatasetMaterializer:
+    """回测数据集物化器，将 OHLCV 数据从 store 写入共享内存映射文件。"""
+
     def __init__(self, store: OhlcvStore, output_root: str | Path):
         self.store = store
         self.output_root = Path(output_root)
@@ -65,6 +71,7 @@ class BacktestDatasetMaterializer:
         mss: dict,
         run_id: str,
     ) -> SharedBacktestDatasetHandle:
+        """从 store 中物化回测数据集：生成 hlcvs/timestamps/btc 内存映射文件并返回句柄。"""
         interval_ms = timeframe_to_interval_ms("1m")
         if end_ts < start_ts:
             raise ValueError("end_ts must be >= start_ts")
@@ -94,6 +101,7 @@ class BacktestDatasetMaterializer:
         enriched_mss = deepcopy(mss)
         valid_buffer = np.zeros(n_steps, dtype=np.bool_)
         symbols_by_coin = symbols_by_coin or {}
+        # 逐币种从 store 复制 OHLCV 数据到共享数组
         for coin_idx, coin in enumerate(coins):
             valid_buffer[:] = False
             coin_view = hlcvs[:, coin_idx, :]
@@ -101,6 +109,7 @@ class BacktestDatasetMaterializer:
             self.store.copy_range_into(
                 exchange, "1m", store_symbol, start_ts, end_ts, coin_view, valid_buffer
             )
+            # 记录每个币种的有效数据范围索引
             if valid_buffer.any():
                 valid_indices = np.flatnonzero(valid_buffer)
                 first_valid_index = int(valid_indices[0])
@@ -162,6 +171,7 @@ def materialize_frames(
     mss: dict,
     run_id: str,
 ) -> SharedBacktestDatasetHandle:
+    """将预对齐的 OHLCV 数据直接写入内存映射文件，返回共享数据集句柄。"""
     output_root = Path(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
     ts_arr = np.asarray(timestamps, dtype=np.int64)
@@ -188,6 +198,7 @@ def materialize_frames(
     btc_mm[:] = btc_arr
 
     enriched_mss = deepcopy(mss)
+    # 逐币种写入预对齐的 OHLCV 数据并计算有效范围
     for coin_idx, coin in enumerate(coins):
         aligned = np.asarray(aligned_values_by_coin[coin], dtype=np.float64)
         if aligned.shape != (n_steps, 4):
@@ -195,6 +206,7 @@ def materialize_frames(
                 f"aligned_values_by_coin[{coin!r}] must have shape ({n_steps}, 4), got {aligned.shape}"
             )
         hlcvs[:, coin_idx, :] = aligned
+        # 根据第一列是否为 NaN 判断有效行
         valid_mask = ~np.isnan(aligned[:, 0])
         if valid_mask.any():
             valid_indices = np.flatnonzero(valid_mask)

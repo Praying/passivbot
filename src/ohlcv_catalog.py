@@ -8,11 +8,13 @@ from typing import Optional
 
 
 def _utc_ms() -> int:
+    """返回当前 UTC 时间戳（毫秒）。"""
     return int(time.time() * 1000)
 
 
 @dataclass(frozen=True)
 class ChunkRecord:
+    """月度数据分块记录，存储在 chunks 表中。"""
     exchange: str
     timeframe: str
     symbol: str
@@ -31,6 +33,7 @@ class ChunkRecord:
 
 @dataclass(frozen=True)
 class GapRecord:
+    """数据缺口记录，标记缺失的时间范围及原因。"""
     exchange: str
     timeframe: str
     symbol: str
@@ -46,6 +49,7 @@ class GapRecord:
 
 @dataclass(frozen=True)
 class FetchLogRecord:
+    """数据抓取尝试日志记录。"""
     exchange: str
     timeframe: str
     symbol: str
@@ -59,17 +63,21 @@ class FetchLogRecord:
 
 
 class OhlcvCatalog:
+    """OHLCV 数据目录，基于 SQLite 管理分块、缺口和抓取日志的元数据。"""
+
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
+        """创建并返回一个启用了 Row 工厂模式的数据库连接。"""
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
         return conn
 
     def _init_db(self) -> None:
+        """初始化数据库：启用 WAL 模式并创建所需表。"""
         with self._connect() as conn:
             conn.executescript(
                 """
@@ -133,6 +141,7 @@ class OhlcvCatalog:
     def get_symbol_bounds(
         self, exchange: str, timeframe: str, symbol: str
     ) -> tuple[int | None, int | None]:
+        """查询指定交易对已有数据的时间范围 (first_ts, last_ts)。"""
         with self._connect() as conn:
             row = conn.execute(
                 """
@@ -149,6 +158,7 @@ class OhlcvCatalog:
     def upsert_symbol_bounds(
         self, exchange: str, timeframe: str, symbol: str, start_ts: int, end_ts: int
     ) -> None:
+        """插入或更新交易对的时间范围，自动扩展 first_ts/last_ts 边界。"""
         now = _utc_ms()
         with self._connect() as conn:
             conn.execute(
@@ -186,6 +196,7 @@ class OhlcvCatalog:
         schema_version: int = 1,
         checksum: str | None = None,
     ) -> None:
+        """注册一个月度数据分块；若已存在则更新所有字段。"""
         now = _utc_ms()
         with self._connect() as conn:
             conn.execute(
@@ -226,6 +237,7 @@ class OhlcvCatalog:
     def list_chunks(
         self, exchange: str, timeframe: str, symbol: str, start_ts: int, end_ts: int
     ) -> list[ChunkRecord]:
+        """列出与给定时间范围重叠的所有分块记录。"""
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -254,6 +266,7 @@ class OhlcvCatalog:
         next_retry_at: int | None = None,
         note: str | None = None,
     ) -> None:
+        """标记一个数据缺口；若已存在则更新。"""
         with self._connect() as conn:
             conn.execute(
                 """
@@ -287,6 +300,7 @@ class OhlcvCatalog:
     def get_gaps(
         self, exchange: str, timeframe: str, symbol: str, start_ts: int, end_ts: int
     ) -> list[GapRecord]:
+        """获取与给定时间范围重叠的所有缺口记录。"""
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -318,6 +332,7 @@ class OhlcvCatalog:
     def get_persistent_gaps(
         self, exchange: str, timeframe: str, symbol: str, start_ts: int, end_ts: int
     ) -> list[GapRecord]:
+        """获取给定范围内标记为持久化的缺口记录。"""
         return [
             gap
             for gap in self.get_gaps(exchange, timeframe, symbol, start_ts, end_ts)
@@ -337,6 +352,7 @@ class OhlcvCatalog:
         latency_ms: int | None = None,
         note: str | None = None,
     ) -> None:
+        """记录一次数据抓取尝试的结果。"""
         now = _utc_ms()
         with self._connect() as conn:
             conn.execute(
@@ -368,6 +384,7 @@ class OhlcvCatalog:
     def list_fetch_attempts(
         self, exchange: str, timeframe: str, symbol: str, start_ts: int, end_ts: int
     ) -> list[FetchLogRecord]:
+        """列出与给定时间范围重叠的所有抓取尝试记录。"""
         with self._connect() as conn:
             rows = conn.execute(
                 """
