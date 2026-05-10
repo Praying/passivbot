@@ -10,6 +10,7 @@ from procedures import load_user_info
 
 
 def mask_secret(value: str, *, prefix: int = 6, suffix: int = 4) -> str:
+    """遮蔽密钥字符串，仅保留前后若干字符。"""
     if not value:
         return ""
     text = str(value)
@@ -19,6 +20,7 @@ def mask_secret(value: str, *, prefix: int = 6, suffix: int = 4) -> str:
 
 
 def round_to_step(value: float, step: float, *, mode: str) -> float:
+    """按步长对数值进行上下取整。"""
     if step <= 0.0:
         return float(value)
     q = Decimal(str(value)) / Decimal(str(step))
@@ -28,6 +30,7 @@ def round_to_step(value: float, step: float, *, mode: str) -> float:
 
 
 def extract_balance_summary(balance: dict[str, Any]) -> dict[str, Any]:
+    """从 Hyperliquid 余额数据中提取关键字段摘要。"""
     info = balance.get("info", {}) if isinstance(balance, dict) else {}
     margin_summary = info.get("marginSummary", {}) if isinstance(info, dict) else {}
     cross_margin_summary = info.get("crossMarginSummary", {}) if isinstance(info, dict) else {}
@@ -60,6 +63,7 @@ def extract_balance_summary(balance: dict[str, Any]) -> dict[str, Any]:
 
 
 def extract_position_summary(positions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """从 Hyperliquid 仓位数据中提取关键字段摘要。"""
     summarized = []
     for position in positions or []:
         summarized.append(
@@ -79,26 +83,25 @@ def extract_position_summary(positions: list[dict[str, Any]]) -> list[dict[str, 
 
 
 def add_probe_identity_args(parser: argparse.ArgumentParser, *, require_user: bool = True) -> None:
+    """添加 Hyperliquid 探测的身份验证参数（--user 和 --api-keys）。"""
     parser.add_argument(
         "--user",
         required=require_user,
-        help="Hyperliquid user in api-keys.json",
+        help="api-keys.json 中的 Hyperliquid 用户名",
     )
     parser.add_argument(
         "--api-keys",
         default="api-keys.json",
-        help="path to api-keys.json",
+        help="api-keys.json 文件路径",
     )
 
 
 def add_live_mutation_confirmation_arg(parser: argparse.ArgumentParser) -> None:
+    """添加 --yes 参数，用于确认会对实盘钱包执行变更操作的探测。"""
     parser.add_argument(
         "--yes",
         action="store_true",
-        help=(
-            "required acknowledgement for probes that place/cancel live orders or flatten positions "
-            "on the specified Hyperliquid wallet"
-        ),
+        help="确认对指定 Hyperliquid 钱包执行下单/撤单/平仓操作的必要确认",
     )
 
 
@@ -108,15 +111,17 @@ def require_live_mutation_confirmation(
     *,
     action_description: str,
 ) -> None:
+    """检查用户是否已用 --yes 确认实盘变更操作，未确认则报错退出。"""
     if getattr(args, "yes", False):
         return
     parser.error(
-        f"{action_description} touches a live Hyperliquid wallet; rerun with --yes after "
+        f"{action_description} will touch a live Hyperliquid wallet; rerun with --yes after "
         "verifying --user and --symbol"
     )
 
 
 def load_hyperliquid_wallet(user: str, *, api_keys_path: str) -> tuple[dict[str, Any], str, str]:
+    """加载 Hyperliquid 钱包信息，返回用户信息、钱包地址和私钥。"""
     user_info = load_user_info(user, api_keys_path=api_keys_path)
     exchange = str(user_info.get("exchange") or "").lower()
     if exchange != "hyperliquid":
@@ -129,6 +134,7 @@ def load_hyperliquid_wallet(user: str, *, api_keys_path: str) -> tuple[dict[str,
 
 
 def create_hyperliquid_probe_session(wallet_address: str, private_key: str):
+    """创建 Hyperliquid ccxt 异步会话，配置合约类型和市场过滤。"""
     session = ccxt_async.hyperliquid(
         {
             "walletAddress": wallet_address,
@@ -146,6 +152,7 @@ def create_hyperliquid_probe_session(wallet_address: str, private_key: str):
 
 
 def hyperliquid_probe_vault_params(user_info: dict[str, Any]) -> dict[str, Any]:
+    """若用户为金库模式，返回 vaultAddress 参数；否则返回空字典。"""
     if not bool(user_info.get("is_vault")):
         return {}
     wallet_address = str(user_info.get("wallet_address") or "")

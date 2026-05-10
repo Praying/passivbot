@@ -34,6 +34,7 @@ DEFAULT_DIFF_IGNORE_PATHS = {"meta.captured_at"}
 
 
 class _AsyncReturn:
+    """异步调用时返回深拷贝的固定值。"""
     def __init__(self, value: Any):
         self.value = deepcopy(value)
 
@@ -42,6 +43,7 @@ class _AsyncReturn:
 
 
 def sanitize_for_json(value: Any) -> Any:
+    """递归清洗值使其可 JSON 序列化，处理 NaN/Inf、bytes、Path 等类型。"""
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
@@ -78,16 +80,19 @@ def sanitize_for_json(value: Any) -> Any:
 
 
 def snapshot_slug(value: str) -> str:
+    """将字符串转换为安全的文件名 slug。"""
     slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value).strip())
     slug = slug.strip("-")
     return slug or "snapshot"
 
 
 def default_snapshot_path(base_dir: str | Path, exchange: str, label: str) -> Path:
+    """构建默认快照路径：base_dir/exchange_label.json。"""
     return Path(base_dir) / snapshot_slug(exchange) / f"{snapshot_slug(label)}.json"
 
 
 def get_bot_class(exchange: str):
+    """根据交易所名称返回对应的 Bot 类。"""
     exchange = str(exchange).lower()
     if exchange == "binance":
         from exchanges.binance import BinanceBot
@@ -131,6 +136,7 @@ def get_bot_class(exchange: str):
 
 
 def build_contract_bot(exchange: str, quote: str = "USDT"):
+    """构建用于合约探测的最小 Bot 实例，仅初始化必要属性。"""
     bot_cls = get_bot_class(exchange)
     bot = bot_cls.__new__(bot_cls)
     bot.exchange = str(exchange).lower()
@@ -178,6 +184,7 @@ def build_contract_bot(exchange: str, quote: str = "USDT"):
 
 
 def derive_market_contracts(exchange: str, quote: str, markets: dict[str, dict]) -> dict[str, dict[str, Any]]:
+    """推导市场合约参数，包括最小下单量、步长、合约乘数等。"""
     bot = build_contract_bot(exchange=exchange, quote=quote)
     bot.markets_dict = deepcopy(markets)
     bot.set_market_specific_settings()
@@ -198,6 +205,7 @@ def derive_market_contracts(exchange: str, quote: str, markets: dict[str, dict])
 
 
 def summarize_market_snapshot(exchange: str, quote: str, markets: dict[str, dict]) -> dict[str, Any]:
+    """生成市场快照摘要，包含合约参数、合格/不合格币种及映射关系。"""
     eligible, ineligible, reasons = filter_markets(markets, exchange, quote=quote)
     coin_to_symbol_map, symbol_to_coin_map = _build_coin_symbol_maps(markets, quote)
     return sanitize_for_json(
@@ -213,10 +221,12 @@ def summarize_market_snapshot(exchange: str, quote: str, markets: dict[str, dict
 
 
 def summarize_capabilities(has_map: dict[str, Any], keys: Iterable[str] = DEFAULT_CAPABILITY_KEYS) -> dict[str, Any]:
+    """提取并清洗交易所能力映射中指定键的值。"""
     return {key: sanitize_for_json(has_map.get(key)) for key in keys}
 
 
 def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
+    """递归展平嵌套结构为点分隔路径的扁平字典。"""
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key in sorted(value):
@@ -238,13 +248,16 @@ def diff_snapshots(
     *,
     ignore_paths: Iterable[str] = DEFAULT_DIFF_IGNORE_PATHS,
 ) -> dict[str, Any]:
+    """比较两个快照的差异，返回新增、删除和变更的路径列表。"""
     ignore = tuple(sorted(ignore_paths))
     old_flat = _flatten(sanitize_for_json(old_snapshot))
     new_flat = _flatten(sanitize_for_json(new_snapshot))
     added = []
     removed = []
     changed = []
+    # 逐一比较展平后的键
     for key in sorted(set(old_flat) | set(new_flat)):
+        # 跳过忽略路径
         if any(key == path or key.startswith(f"{path}.") or key.startswith(f"{path}[") for path in ignore):
             continue
         if key not in old_flat:
@@ -266,6 +279,7 @@ def diff_snapshots(
 
 
 def prepare_live_config_for_user(user: str) -> dict:
+    """为指定用户准备 live 运行配置。"""
     config = get_template_config()
     config["live"]["user"] = user
     return prepare_config(
@@ -286,6 +300,7 @@ async def capture_contract_snapshot(
     symbols: Iterable[str] = (),
     trades_limit: int = 25,
 ) -> dict[str, Any]:
+    """异步捕获合约快照，包含市场、能力、余额、仓位等各节段数据。"""
     config = prepare_live_config_for_user(user)
     bot = setup_bot(config)
     try:
@@ -305,6 +320,7 @@ async def capture_contract_snapshot(
         }
         section_set = set(sections)
 
+        # 按节段分别捕获数据
         if "markets" in section_set:
             markets = await bot.cca.load_markets(True)
             snapshot["markets"] = {
@@ -334,6 +350,7 @@ async def capture_contract_snapshot(
         if "open_orders" in section_set:
             _, normalized_all_orders = await bot.capture_open_orders_snapshot()
             open_orders_section: dict[str, Any] = {"normalized_all": sanitize_for_json(normalized_all_orders)}
+            # 按交易对分别获取挂单详情
             if symbols:
                 open_orders_section["by_symbol"] = {}
                 for symbol in symbols:
@@ -372,11 +389,13 @@ async def capture_contract_snapshot(
 
 
 def load_snapshot(path: str | Path) -> dict[str, Any]:
+    """从 JSON 文件加载快照。"""
     with open(path, "r") as f:
         return json.load(f)
 
 
 def dump_snapshot(snapshot: dict[str, Any], path: str | Path) -> Path:
+    """将快照写入 JSON 文件，自动创建父目录。"""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:

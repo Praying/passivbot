@@ -25,6 +25,7 @@ DEFAULT_MAX_OUTPUTS = 500
 
 @dataclass(frozen=True)
 class LoadedFront:
+    """已加载的 Pareto front，包含候选列表和各候选的质量分数。"""
     index: int
     input_path: Path
     pareto_dir: Path
@@ -35,6 +36,7 @@ class LoadedFront:
 
 @dataclass(frozen=True)
 class SideComponent:
+    """某个侧（long/short）的配置组件，用于合并时配对。"""
     side: str
     side_config: dict[str, Any]
     base_bot: dict[str, Any]
@@ -49,6 +51,7 @@ class SideComponent:
 
 @dataclass
 class MergeStats:
+    """合并操作的统计信息。"""
     core_pair_attempts: int = 0
     core_pair_added: int = 0
     fill_pair_attempts: int = 0
@@ -58,11 +61,13 @@ class MergeStats:
 
 
 def _json_fingerprint(value: Any) -> str:
+    """计算 JSON 值的短哈希指纹，用于去重配置。"""
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def _entry_config(entry: Mapping[str, Any]) -> Mapping[str, Any]:
+    """从候选条目中提取 config 包装层，若不存在则返回条目本身。"""
     wrapped = entry.get("config")
     if isinstance(wrapped, Mapping):
         return wrapped
@@ -70,6 +75,7 @@ def _entry_config(entry: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _entry_bot(entry: Mapping[str, Any]) -> Mapping[str, Any]:
+    """从候选条目中提取 bot 配置字典。"""
     config = _entry_config(entry)
     bot = config.get("bot")
     if not isinstance(bot, Mapping):
@@ -78,6 +84,7 @@ def _entry_bot(entry: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _entry_optimize_bounds(entry: Mapping[str, Any]) -> Mapping[str, Any]:
+    """从候选条目中提取 optimize.bounds 配置，若不存在则返回空字典。"""
     config = _entry_config(entry)
     optimize = config.get("optimize")
     if not isinstance(optimize, Mapping):
@@ -89,6 +96,7 @@ def _entry_optimize_bounds(entry: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _side_is_enabled(side_config: Mapping[str, Any]) -> bool:
+    """判断某侧（long/short）配置是否启用：n_positions 和 exposure_limit 均大于 0。"""
     try:
         n_positions_raw = side_config.get("n_positions")
         exposure_limit_raw = side_config.get("total_wallet_exposure_limit")
@@ -102,11 +110,13 @@ def _side_is_enabled(side_config: Mapping[str, Any]) -> bool:
 
 
 def _candidate_quality(front: LoadedFront, candidate: ParetoCandidate) -> float:
+    """获取候选在所属 front 中的质量分数，缺失则返回 0.0。"""
     value = front.quality_by_path.get(candidate.path)
     return 0.0 if value is None else float(value)
 
 
 def _load_fronts(input_paths: Sequence[Path]) -> list[LoadedFront]:
+    """加载所有输入路径的 Pareto front，并计算每个候选的质量分数。"""
     fronts: list[LoadedFront] = []
     for idx, input_path in enumerate(input_paths):
         pareto_dir, candidates, scoring_specs = load_candidates(input_path)
@@ -137,6 +147,7 @@ def _component_from_candidate(
     *,
     selector: str | None = None,
 ) -> SideComponent | None:
+    """从给定候选中提取指定侧的 SideComponent，若该侧未启用则返回 None。"""
     bot = _entry_bot(candidate.entry)
     raw_side_config = bot.get(side)
     if not isinstance(raw_side_config, Mapping):
@@ -161,6 +172,7 @@ def _component_from_candidate(
 
 
 def _merge_selectors(existing: tuple[str, ...], incoming: tuple[str, ...]) -> tuple[str, ...]:
+    """合并选择器元组，保持去重顺序。"""
     if not incoming:
         return existing
     merged = list(existing)
@@ -174,6 +186,7 @@ def _upsert_component(
     registry: dict[str, SideComponent],
     component: SideComponent | None,
 ) -> None:
+    """将组件插入或更新到注册表，相同 config_hash 时合并选择器。"""
     if component is None:
         return
     existing = registry.get(component.config_hash)
@@ -200,6 +213,7 @@ def _best_candidate_for_metric(
     candidates: Sequence[ParetoCandidate],
     spec: ObjectiveSpec,
 ) -> ParetoCandidate:
+    """根据目标指标的 goal（max/min）选取最优候选。"""
     values: list[tuple[float, ParetoCandidate]] = []
     for candidate in candidates:
         value = _resolve_candidate_metric_value(candidate, spec.metric)
@@ -214,6 +228,7 @@ def _best_candidate_for_metric(
 
 
 def _collect_core_components(fronts: Sequence[LoadedFront]) -> dict[str, dict[str, SideComponent]]:
+    """从各 front 中收集核心组件：每个评分指标的最优候选 + ideal/knee 选择。"""
     core: dict[str, dict[str, SideComponent]] = {"long": {}, "short": {}}
     for front in fronts:
         if not front.scoring_specs:
@@ -239,6 +254,7 @@ def _collect_core_components(fronts: Sequence[LoadedFront]) -> dict[str, dict[st
 
 
 def _collect_all_components(fronts: Sequence[LoadedFront]) -> dict[str, dict[str, SideComponent]]:
+    """收集所有 front 中所有候选的 long/short 组件，按 config_hash 去重。"""
     components: dict[str, dict[str, SideComponent]] = {"long": {}, "short": {}}
     for front in fronts:
         for candidate in front.candidates:
@@ -251,6 +267,7 @@ def _collect_all_components(fronts: Sequence[LoadedFront]) -> dict[str, dict[str
 
 
 def _round_robin_by_front(components: Iterable[SideComponent]) -> list[SideComponent]:
+    """按 front 轮询排序组件，优先输出高质量候选。"""
     buckets: dict[int, list[SideComponent]] = {}
     for component in sorted(
         components,
@@ -280,6 +297,7 @@ def _clean_number(value: float) -> int | float:
 
 
 def _parse_bound(raw: Any) -> tuple[float, float, float | None] | None:
+    """解析边界规格，返回 (low, high, step) 或 None。"""
     if isinstance(raw, (list, tuple)):
         if len(raw) < 2:
             return None
@@ -307,10 +325,12 @@ def _parse_bound(raw: Any) -> tuple[float, float, float | None] | None:
 
 
 def _merge_bounds(fronts: Sequence[LoadedFront]) -> dict[str, list[int | float]]:
+    """合并所有 front 的优化边界，取各参数的最小下界和最大上界。"""
     observed: dict[str, list[tuple[float, float, float | None]]] = {}
     for front in fronts:
         for candidate in front.candidates:
             bot = _entry_bot(candidate.entry)
+            # 确定候选中启用的侧
             enabled_sides = {
                 side
                 for side in SIDES
@@ -319,6 +339,7 @@ def _merge_bounds(fronts: Sequence[LoadedFront]) -> dict[str, list[int | float]]
             if not enabled_sides:
                 continue
             for key, raw_bound in _entry_optimize_bounds(candidate.entry).items():
+                # 跳过未启用侧的边界参数
                 if key.startswith("long_") and "long" not in enabled_sides:
                     continue
                 if key.startswith("short_") and "short" not in enabled_sides:
@@ -328,6 +349,7 @@ def _merge_bounds(fronts: Sequence[LoadedFront]) -> dict[str, list[int | float]]
                     continue
                 observed.setdefault(str(key), []).append(parsed)
 
+    # 合并各参数的边界范围
     merged: dict[str, list[int | float]] = {}
     for key in sorted(observed):
         values = observed[key]
@@ -336,12 +358,14 @@ def _merge_bounds(fronts: Sequence[LoadedFront]) -> dict[str, list[int | float]]
         steps = [item[2] for item in values if item[2] is not None]
         payload: list[int | float] = [_clean_number(low), _clean_number(high)]
         if steps:
+            # 取最小步长作为合并步长
             payload.append(_clean_number(min(steps)))
         merged[key] = payload
     return merged
 
 
 def _merge_bot(long_component: SideComponent, short_component: SideComponent) -> dict[str, Any]:
+    """合并 long 和 short 组件的 bot 配置，两侧配置各自覆盖。"""
     bot: dict[str, Any] = {}
     for source_bot in (long_component.base_bot, short_component.base_bot):
         for key, value in source_bot.items():
@@ -359,6 +383,7 @@ def _merge_metadata(
     *,
     phase: str,
 ) -> dict[str, Any]:
+    """构建合并元数据，记录来源、选择器和目标指标。"""
     return {
         "tool": "passivbot tool merge-paretos",
         "phase": phase,
@@ -384,6 +409,7 @@ def _build_merged_config(
     merged_bounds: Mapping[str, Any],
     phase: str,
 ) -> dict[str, Any]:
+    """构建合并后的完整配置，包含 bot、元数据和可选的优化边界。"""
     config: dict[str, Any] = {
         "bot": _merge_bot(long_component, short_component),
         "merge_paretos": _merge_metadata(long_component, short_component, phase=phase),
@@ -404,6 +430,7 @@ def _add_pair(
     merged_bounds: Mapping[str, Any],
     phase: str,
 ) -> bool:
+    """尝试添加一个 long/short 配对到输出列表，去重并限制上限。返回是否已达上限。"""
     pair_key = (long_component.config_hash, short_component.config_hash)
     if pair_key in seen_pairs:
         stats.duplicate_pairs += 1
@@ -429,15 +456,18 @@ def build_merged_configs(
     *,
     max_outputs: int,
 ) -> tuple[list[dict[str, Any]], MergeStats]:
+    """构建合并配置列表：先对核心组件做全配对，再用轮询填充补充配对。"""
     if max_outputs < 1:
-        raise ValueError("--max must be at least 1")
+        raise ValueError("--max 必须至少为 1")
 
+    # 收集所有组件并验证两侧均有可用配置
     all_components = _collect_all_components(fronts)
     if not all_components["long"]:
-        raise ValueError("No enabled long side configs found in the input Pareto dirs")
+        raise ValueError("输入 Pareto 目录中未找到启用的 long 侧配置")
     if not all_components["short"]:
-        raise ValueError("No enabled short side configs found in the input Pareto dirs")
+        raise ValueError("输入 Pareto 目录中未找到启用的 short 侧配置")
 
+    # 若核心组件为空则回退到全部组件
     core_components = _collect_core_components(fronts)
     if not core_components["long"]:
         core_components["long"] = dict(all_components["long"])
@@ -472,6 +502,7 @@ def build_merged_configs(
     if not fill_longs or not fill_shorts:
         return outputs, stats
 
+    # 使用偏移轮询策略生成填充配对，避免集中在同一 front
     for offset in range(len(fill_shorts)):
         for idx, long_component in enumerate(fill_longs):
             short_component = fill_shorts[(idx + offset) % len(fill_shorts)]
@@ -492,6 +523,7 @@ def build_merged_configs(
 
 
 def _prepare_output_dir(path: Path, *, overwrite: bool) -> None:
+    """准备输出目录，若已有文件则按策略处理（拒绝或覆盖 JSON）。"""
     path.mkdir(parents=True, exist_ok=True)
     existing = [item for item in path.iterdir() if item.name != ".DS_Store"]
     if not existing:
@@ -519,6 +551,7 @@ def write_outputs(
     max_outputs: int,
     overwrite: bool,
 ) -> list[Path]:
+    """将合并配置写入输出目录，生成编号 JSON 文件和索引文件。"""
     _prepare_output_dir(output_dir, overwrite=overwrite)
     width = max(4, len(str(len(configs))))
     written: list[Path] = []
@@ -553,42 +586,43 @@ def write_outputs(
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """构建命令行参数解析器。"""
     parser = argparse.ArgumentParser(
         prog="passivbot tool merge-paretos",
         description=(
-            "Merge two or more Pareto fronts into long/short starting configs. "
-            "All positional paths except the last are input run/pareto dirs; "
-            "the last path is the output dir."
+            "将两个或多个 Pareto front 合并为 long/short 起始配置。"
+            "除最后一个路径外均为输入 run/pareto 目录；最后一个为输出目录。"
         ),
     )
     parser.add_argument(
         "paths",
         nargs="+",
-        help="Input Pareto/run dirs followed by the output directory",
+        help="输入 Pareto/run 目录，最后一个是输出目录",
     )
     parser.add_argument(
         "--max",
         type=int,
         default=DEFAULT_MAX_OUTPUTS,
         dest="max_outputs",
-        help=f"Maximum merged configs to write (default: {DEFAULT_MAX_OUTPUTS})",
+        help=f"最多写入的合并配置数量（默认: {DEFAULT_MAX_OUTPUTS}）",
     )
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Replace existing JSON files in the output directory",
+        help="覆盖输出目录中的已有 JSON 文件",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Print the merge summary without writing files",
+        help="仅打印合并摘要，不写入文件",
     )
     return parser
 
 
 def run_from_args(args: argparse.Namespace) -> int:
+    """根据命令行参数执行合并操作。"""
     if len(args.paths) < 3:
-        raise SystemExit("Expected at least two input Pareto/run dirs and one output dir")
+        raise SystemExit("至少需要两个输入 Pareto/run 目录和一个输出目录")
     input_paths = [Path(raw).expanduser() for raw in args.paths[:-1]]
     output_dir = Path(args.paths[-1]).expanduser()
     fronts = _load_fronts(input_paths)
@@ -624,6 +658,7 @@ def run_from_args(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """merge-paretos 工具入口。"""
     parser = build_parser()
     args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
     try:

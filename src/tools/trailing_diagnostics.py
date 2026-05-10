@@ -16,6 +16,7 @@ from trailing_diagnostics_tool import build_parser, run_interactive
 
 
 def main() -> int:
+    """trailing-diagnostics 工具入口。"""
     parser = build_parser()
     args = parser.parse_args()
     try:

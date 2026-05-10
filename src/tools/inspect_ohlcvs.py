@@ -18,6 +18,7 @@ DEFAULT_ROOT = Path("caches/ohlcvs")
 
 @dataclass(frozen=True)
 class SymbolSummary:
+    """OHLCV 交易对摘要信息。"""
     exchange: str
     timeframe: str
     symbol: str
@@ -29,6 +30,7 @@ class SymbolSummary:
 
 @dataclass(frozen=True)
 class ChunkSummary:
+    """OHLCV 数据块摘要信息。"""
     year: int
     month: int
     status: str
@@ -43,6 +45,7 @@ class ChunkSummary:
 
 
 def _ts_to_iso(ts_ms: int | None) -> str | None:
+    """将毫秒时间戳转换为 ISO 格式字符串。"""
     if ts_ms is None:
         return None
     return datetime.fromtimestamp(int(ts_ms) / 1000, tz=UTC).isoformat().replace("+00:00", "Z")
@@ -59,6 +62,7 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 
 def _require_db(root: Path) -> Path:
+    """验证 v2 OHLCV 目录数据库存在，不存在则抛出异常。"""
     db_path = _db_path(root)
     if not db_path.exists():
         raise FileNotFoundError(f"v2 OHLCV catalog not found: {db_path}")
@@ -128,6 +132,7 @@ def _fetch_symbol_summaries(
 
 
 def _summarize_chunk(chunk) -> ChunkSummary:
+    """汇总单个数据块的统计信息，包括有效行数和时间范围。"""
     valid = np.load(chunk.valid_path, mmap_mode="r")
     valid_rows = int(valid.sum())
     true_indices = np.flatnonzero(valid)
@@ -153,6 +158,7 @@ def _summarize_chunk(chunk) -> ChunkSummary:
 
 
 def build_overview_payload(root: Path, exchange: str | None, timeframe: str, limit: int) -> dict[str, Any]:
+    """构建 OHLCV 缓存概览数据，包含统计计数和交易对列表。"""
     db_path = _require_db(root)
     with _connect(db_path) as conn:
         counts = _fetch_overview_counts(conn, exchange=exchange, timeframe=timeframe)
@@ -176,16 +182,19 @@ def build_overview_payload(root: Path, exchange: str | None, timeframe: str, lim
 def build_symbol_payload(
     root: Path, exchange: str, timeframe: str, symbol: str, fetch_log_limit: int
 ) -> dict[str, Any]:
+    """构建指定交易对的 OHLCV 详细信息，包含数据块、缺口和获取记录。"""
     db_path = _require_db(root)
     catalog = OhlcvCatalog(db_path)
     first_ts, last_ts = catalog.get_symbol_bounds(exchange, timeframe, symbol)
     if first_ts is None or last_ts is None:
         raise FileNotFoundError(f"no v2 OHLCV symbol found for {exchange}:{timeframe}:{symbol}")
     chunks = catalog.list_chunks(exchange, timeframe, symbol, first_ts, last_ts)
+    # 使用全范围查询缺口和获取记录
     all_start_ts = -1
     all_end_ts = 9_223_372_036_854_775_807
     gaps = catalog.get_gaps(exchange, timeframe, symbol, all_start_ts, all_end_ts)
     attempts = catalog.list_fetch_attempts(exchange, timeframe, symbol, all_start_ts, all_end_ts)
+    # 限制获取记录数量
     attempts = attempts[-fetch_log_limit:] if fetch_log_limit > 0 else attempts
     chunk_summaries = [_summarize_chunk(chunk) for chunk in chunks]
     return {
@@ -233,6 +242,7 @@ def build_symbol_payload(
 
 
 def print_overview(payload: dict[str, Any]) -> None:
+    """以文本格式打印 OHLCV 缓存概览。"""
     print(f"Root: {payload['root']}")
     print(f"Catalog: {payload['db_path']}")
     print(
@@ -258,6 +268,7 @@ def print_overview(payload: dict[str, Any]) -> None:
 
 
 def print_symbol_details(payload: dict[str, Any]) -> None:
+    """以文本格式打印指定交易对的 OHLCV 详情。"""
     print(
         f"Symbol: {payload['exchange']} {payload['timeframe']} {payload['symbol']}\n"
         f"Bounds: {payload['bounds']['first_iso']} -> {payload['bounds']['last_iso']}"
@@ -291,31 +302,33 @@ def print_symbol_details(payload: dict[str, Any]) -> None:
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
+    """构建命令行参数解析器。"""
     parser = argparse.ArgumentParser(
         prog="passivbot tool inspect-ohlcvs",
-        description="Inspect v2 OHLCV cache metadata, chunk coverage, persistent gaps, and fetch attempts",
+        description="检查 v2 OHLCV 缓存元数据、数据块覆盖、持续缺口和获取记录",
     )
-    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="v2 OHLCV cache root")
-    parser.add_argument("--exchange", help="exchange id to inspect")
-    parser.add_argument("--timeframe", default="1m", help="timeframe to inspect")
-    parser.add_argument("--symbol", help="symbol to inspect in detail")
+    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="v2 OHLCV 缓存根目录")
+    parser.add_argument("--exchange", help="要检查的交易所 ID")
+    parser.add_argument("--timeframe", default="1m", help="要检查的时间周期")
+    parser.add_argument("--symbol", help="要详细检查的交易对")
     parser.add_argument(
         "--limit",
         type=int,
         default=20,
-        help="max number of symbols to list in overview mode; 0 means all",
+        help="概览模式下最多列出的交易对数量；0 表示全部",
     )
     parser.add_argument(
         "--fetch-log-limit",
         type=int,
         default=10,
-        help="max number of recent fetch attempts to show in detail mode; 0 means all",
+        help="详细模式下最多显示的最近获取记录数；0 表示全部",
     )
-    parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
+    parser.add_argument("--json", action="store_true", help="输出 JSON 而非文本")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    """inspect-ohlcvs 工具入口。"""
     parser = build_argument_parser()
     args = parser.parse_args(argv)
     root = Path(args.root)
