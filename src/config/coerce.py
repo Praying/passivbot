@@ -6,6 +6,7 @@ from .pnl_lookback import normalize_pnls_max_lookback_days_config_value
 from .schema import get_template_config
 
 
+# HSL 冷却期持仓策略可选值
 HSL_COOLDOWN_POSITION_POLICIES = (
     "normal",
     "panic",
@@ -14,6 +15,7 @@ HSL_COOLDOWN_POSITION_POLICIES = (
     "manual",
 )
 HSL_SIGNAL_MODES = ("pside", "unified")
+# monitor 段中需要强制转换为 bool 的键
 MONITOR_BOOL_KEYS = (
     "enabled",
     "retain_price_ticks",
@@ -23,6 +25,7 @@ MONITOR_BOOL_KEYS = (
     "emit_completed_candles",
     "include_raw_fill_payloads",
 )
+# logging 段中需要强制转换为 bool 的键
 LOGGING_BOOL_KEYS = (
     "persist_to_file",
     "rotation",
@@ -34,6 +37,7 @@ PYMOO_REF_DIR_METHODS = ("das_dennis",)
 def normalize_hsl_cooldown_position_policy(
     value, path: str = "live.hsl_position_during_cooldown_policy"
 ) -> str:
+    """校验并返回 HSL 冷却期持仓策略值。"""
     policy = str(value)
     if policy not in HSL_COOLDOWN_POSITION_POLICIES:
         allowed = ", ".join(HSL_COOLDOWN_POSITION_POLICIES)
@@ -42,6 +46,7 @@ def normalize_hsl_cooldown_position_policy(
 
 
 def normalize_hsl_signal_mode(value, path: str = "live.hsl_signal_mode") -> str:
+    """校验并返回 HSL 信号模式值。"""
     mode = str(value)
     if mode not in HSL_SIGNAL_MODES:
         allowed = ", ".join(HSL_SIGNAL_MODES)
@@ -50,6 +55,7 @@ def normalize_hsl_signal_mode(value, path: str = "live.hsl_signal_mode") -> str:
 
 
 def normalize_monitor_config(config: dict) -> None:
+    """归一化 monitor 段配置：校验目录、布尔键和数值规则。"""
     monitor_cfg = require_config_dict(config, "monitor")
     root_dir = str(monitor_cfg["root_dir"]).strip()
     if not root_dir:
@@ -79,6 +85,7 @@ def normalize_monitor_config(config: dict) -> None:
 
 
 def normalize_logging_config(config: dict) -> None:
+    """归一化 logging 段配置：校验目录、布尔键和数值规则。"""
     logging_cfg = require_config_dict(config, "logging")
     log_dir = str(logging_cfg["dir"]).strip()
     if not log_dir:
@@ -103,6 +110,7 @@ def normalize_logging_config(config: dict) -> None:
 
 
 def normalize_pymoo_algorithm(value, path: str = "config.optimize.pymoo.algorithm") -> str:
+    """校验并返回 pymoo 算法名称。"""
     algorithm = str(value).strip().lower()
     if algorithm not in PYMOO_ALGORITHMS:
         allowed = ", ".join(PYMOO_ALGORITHMS)
@@ -113,6 +121,7 @@ def normalize_pymoo_algorithm(value, path: str = "config.optimize.pymoo.algorith
 def normalize_pymoo_ref_dir_method(
     value, path: str = "config.optimize.pymoo.algorithms.nsga3.ref_dirs.method"
 ) -> str:
+    """校验并返回 NSGA3 参考方向生成方法名称。"""
     method = str(value).strip().lower().replace("-", "_")
     if method not in PYMOO_REF_DIR_METHODS:
         allowed = ", ".join(PYMOO_REF_DIR_METHODS)
@@ -121,6 +130,7 @@ def normalize_pymoo_ref_dir_method(
 
 
 def normalize_pymoo_probability(value, path: str, *, allow_auto: bool = False) -> str | float:
+    """校验并返回 [0, 1] 区间概率值，可选支持 'auto'。"""
     if allow_auto and isinstance(value, str) and value.strip().lower() == "auto":
         return "auto"
     try:
@@ -135,6 +145,7 @@ def normalize_pymoo_probability(value, path: str, *, allow_auto: bool = False) -
 
 
 def normalize_pymoo_positive_float(value, path: str) -> float:
+    """校验并返回正浮点数值。"""
     try:
         normalized = float(value)
     except (TypeError, ValueError) as exc:
@@ -148,6 +159,7 @@ def normalize_pymoo_n_partitions(
     value,
     path: str = "config.optimize.pymoo.algorithms.nsga3.ref_dirs.n_partitions",
 ) -> str | int:
+    """校验并返回 NSGA3 参考方向分区数，支持 'auto' 或 >= 1 整数。"""
     if isinstance(value, str):
         stripped = value.strip().lower()
         if stripped == "auto":
@@ -166,6 +178,7 @@ def normalize_pymoo_n_partitions(
 
 
 def normalize_pymoo_config(config: dict, raw_optimize: Optional[dict] = None) -> None:
+    """归一化 pymoo 优化器配置，合并遗留参数和默认值。"""
     optimize_cfg = require_config_dict(config, "optimize")
     template_pymoo = get_template_config()["optimize"]["pymoo"]
 
@@ -260,6 +273,7 @@ def normalize_pymoo_config(config: dict, raw_optimize: Optional[dict] = None) ->
 
 
 def normalize_validation_fields(config: dict, *, raw_optimize=None) -> None:
+    """对需要强制类型转换的配置字段执行归一化（HSL、日志、监控、pymoo）。"""
     require_config_dict(config, "monitor")
     config["live"]["hsl_signal_mode"] = normalize_hsl_signal_mode(config["live"]["hsl_signal_mode"])
     config["live"]["hsl_position_during_cooldown_policy"] = (

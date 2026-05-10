@@ -10,10 +10,12 @@ import hjson
 from .metrics import canonical_metric_name, canonicalize_limit_name, canonicalize_metric_name
 
 
+# limit 条目中支持的统计聚合类型
 SUPPORTED_LIMIT_STATS = {"min", "max", "mean", "std", "median"}
 
 
 def parse_limits_string(limits_str: Union[str, dict]) -> dict:
+    """解析命令行限文字符串为字典（格式: --key1 val1 --key2 val2）。"""
     if not limits_str:
         return {}
     if isinstance(limits_str, dict):
@@ -33,6 +35,7 @@ def parse_limits_string(limits_str: Union[str, dict]) -> dict:
 
 
 def _parse_jsonish(raw: str) -> Any:
+    """尝试将字符串解析为 JSON/HJSON，失败返回 None。"""
     stripped = str(raw).strip()
     if not stripped or stripped[0] not in "[{" or stripped[-1] not in "]}":
         return None
@@ -46,6 +49,7 @@ def _parse_jsonish(raw: str) -> Any:
 
 
 def _parse_cli_bool(token: str) -> bool:
+    """将命令行布尔标记解析为 True/False。"""
     normalized = str(token).strip().lower()
     if normalized in {"1", "true", "t", "yes", "y", "on"}:
         return True
@@ -55,6 +59,7 @@ def _parse_cli_bool(token: str) -> bool:
 
 
 def _parse_cli_range_token(token: str) -> List[Union[int, float]]:
+    """解析命令行范围标记，返回 [low, high] 列表。"""
     parsed = _parse_jsonish(token)
     if isinstance(parsed, (list, tuple)) and len(parsed) == 2:
         bounds = _extract_range(parsed)
@@ -79,12 +84,14 @@ def _parse_cli_range_token(token: str) -> List[Union[int, float]]:
     )
 
 
+# 匹配 "metric op value" 形式的内联限次表达式
 _INLINE_LIMIT_OP_RE = re.compile(
     r"^\s*(?P<metric>[^\s<>=!]+)\s*(?P<op><=|>=|==|<|>)\s*(?P<rhs>.+?)\s*$"
 )
 
 
 def _tokenize_cli_limit_entry(raw_entry: str) -> List[str]:
+    """将 CLI limit 条目分词，支持内联运算符和 shlex 引号。"""
     tokens = shlex.split(raw_entry)
     if len(tokens) >= 3:
         return tokens
@@ -100,6 +107,7 @@ def _tokenize_cli_limit_entry(raw_entry: str) -> List[str]:
 
 
 def _cli_scalar_op_to_internal_penalize_if(token: str) -> Optional[str]:
+    """将 CLI 标量比较运算符转换为内部 penalize_if 名称（逻辑取反）。"""
     mapping = {
         ">": "less_than_or_equal",
         ">=": "less_than",
@@ -111,6 +119,7 @@ def _cli_scalar_op_to_internal_penalize_if(token: str) -> Optional[str]:
 
 
 def parse_limit_cli_entry(raw_entry: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """解析单条 CLI limit 条目为规范化字典。"""
     if isinstance(raw_entry, dict):
         return _normalize_limit_entry_preserve_extras(raw_entry)
     if not isinstance(raw_entry, str) or not raw_entry.strip():
@@ -171,10 +180,12 @@ def parse_limit_cli_entry(raw_entry: Union[str, Dict[str, Any]]) -> Dict[str, An
 
 
 def parse_limit_cli_entries(raw_entries: List[Union[str, Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """批量解析 CLI limit 条目列表。"""
     return [parse_limit_cli_entry(entry) for entry in raw_entries]
 
 
 def _ensure_float(value: Any) -> Optional[float]:
+    """安全转换为浮点数，失败返回 None。"""
     if value is None:
         return None
     if isinstance(value, (int, float)):
@@ -186,6 +197,7 @@ def _ensure_float(value: Any) -> Optional[float]:
 
 
 def _restore_numeric_precision(value: Optional[float]) -> Optional[Union[int, float]]:
+    """将接近整数的浮点数还原为 int 以避免显示问题。"""
     if value is None:
         return None
     if isinstance(value, float) and math.isfinite(value):
@@ -196,6 +208,7 @@ def _restore_numeric_precision(value: Optional[float]) -> Optional[Union[int, fl
 
 
 def _extract_range(payload: Any) -> Optional[Tuple[float, float]]:
+    """从 payload 中提取 (low, high) 范围元组，支持多种键名格式。"""
     if payload is None:
         return None
     if isinstance(payload, dict):
@@ -226,6 +239,7 @@ def _extract_range(payload: Any) -> Optional[Tuple[float, float]]:
 
 
 def _normalize_penalize_if(value: Any) -> str:
+    """将各种写法的 penalize_if 值归一化为标准枚举名。"""
     if value is None:
         raise ValueError("limits entries must include 'penalize_if'.")
     token = str(value).strip().lower()
@@ -273,6 +287,7 @@ def _normalize_penalize_if(value: Any) -> str:
 
 
 def _normalize_limit_entry(entry: Any) -> Dict[str, Any]:
+    """将单条 limit 条目归一化为标准格式（metric/penalize_if/value 或 range）。"""
     if not isinstance(entry, dict):
         raise ValueError(f"Each limit entry must be a dict, got {type(entry).__name__}.")
     payload = deepcopy(entry)
@@ -340,12 +355,14 @@ def _normalize_limit_entry(entry: Any) -> Dict[str, Any]:
 
 
 def _numeric_equal(a: Any, b: Any, tol: float = 1e-12) -> bool:
+    """判断两个数值是否在给定容差内相等。"""
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
         return math.isclose(float(a), float(b), rel_tol=0.0, abs_tol=tol)
     return a == b
 
 
 def _range_equal(a: Any, b: Any, tol: float = 1e-12) -> bool:
+    """判断两个范围列表是否在给定容差内相等。"""
     if not isinstance(a, (list, tuple)) or not isinstance(b, (list, tuple)):
         return False
     if len(a) != len(b):
@@ -354,6 +371,7 @@ def _range_equal(a: Any, b: Any, tol: float = 1e-12) -> bool:
 
 
 def _normalize_limit_entry_preserve_extras(entry: Any) -> Dict[str, Any]:
+    """归一化 limit 条目，保留标准字段之外的额外字段。"""
     normalized = _normalize_limit_entry(entry)
     if not isinstance(entry, dict):
         return normalized
@@ -364,6 +382,7 @@ def _normalize_limit_entry_preserve_extras(entry: Any) -> Dict[str, Any]:
 
 
 def _is_canonical_limit_entry(entry: Any) -> bool:
+    """判断 limit 条目是否已是规范格式（无需再归一化）。"""
     if not isinstance(entry, dict):
         return False
     try:
@@ -382,6 +401,7 @@ def _is_canonical_limit_entry(entry: Any) -> bool:
 
 
 def _legacy_limits_dict_to_entries(limits_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """将遗留的扁平 limits 字典转换为标准条目列表。"""
     entries: List[Dict[str, Any]] = []
     for key, value in limits_dict.items():
         canonical_key = canonicalize_limit_name(key)
@@ -404,6 +424,7 @@ def _legacy_limits_dict_to_entries(limits_dict: Dict[str, Any]) -> List[Dict[str
 def normalize_limit_entries(
     raw_limits: Union[str, List[dict], Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
+    """将各种格式的 limits 输入归一化为标准条目列表。"""
     if raw_limits is None:
         return []
     parsed = raw_limits
@@ -438,6 +459,7 @@ def normalize_limit_entries(
 
 
 def resolve_aggregate_mode(metric: str, aggregate_cfg: Optional[Dict[str, Any]]) -> str:
+    """根据指标名和聚合配置解析统计聚合模式。"""
     if not aggregate_cfg:
         return "mean"
     metric = canonical_metric_name(metric)
@@ -461,6 +483,7 @@ def resolve_limit_stat(
     entry: Dict[str, Any],
     aggregate_cfg: Optional[Dict[str, Any]] = None,
 ) -> str:
+    """根据 limit 条目和聚合配置解析最终使用的统计类型。"""
     metric = canonical_metric_name(str(entry.get("metric", "") or ""))
     explicit_stat = entry.get("stat")
     if explicit_stat is not None:
@@ -480,6 +503,7 @@ def _resolve_optimize_limits_for_load(
     raw_optimize_limits_present: bool,
     template_limits: List[Dict[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], str]:
+    """解析 optimize.limits 配置，返回 (规范条目列表, 来源标记)。"""
     if not raw_optimize_limits_present:
         return deepcopy(template_limits), "template_default"
 

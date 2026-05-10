@@ -13,6 +13,7 @@ from .transform_log import record_transform
 
 
 def apply_allowed_modifications(src, modifications, allowed_overrides, return_full=True):
+    """按允许覆盖规则将修改应用到源配置上。"""
     if return_full:
         result = deepcopy(src)
         target = result
@@ -59,6 +60,7 @@ def apply_allowed_modifications(src, modifications, allowed_overrides, return_fu
 
 
 def get_allowed_modifications():
+    """返回允许通过 coin_overrides 修改的配置键白名单。"""
     return {
         "bot": {
             "long": {
@@ -137,6 +139,7 @@ def get_allowed_modifications():
 
 
 def set_nested_value(d: dict, p: list, v: object):
+    """沿路径列表设置嵌套字典值，路径不存在则报错。"""
     if not p:
         raise ValueError("Path cannot be empty")
     current = d
@@ -146,6 +149,7 @@ def set_nested_value(d: dict, p: list, v: object):
 
 
 def set_nested_value_safe(d: dict, p: list, v: object, create_missing=False):
+    """安全地沿路径设置嵌套字典值，可选自动创建缺失层级。"""
     if not p:
         raise ValueError("Path cannot be empty")
     current = d
@@ -163,6 +167,7 @@ def set_nested_value_safe(d: dict, p: list, v: object, create_missing=False):
 
 
 def nested_update(base_dict, update_dict):
+    """递归合并 update_dict 到 base_dict 中。"""
     for key, value in update_dict.items():
         if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
             nested_update(base_dict[key], value)
@@ -177,6 +182,7 @@ def load_override_config(
     *,
     config_loader: Callable[[str], dict] | None = None,
 ):
+    """加载指定币种的覆盖配置文件。"""
     if config_loader is None:
         config_loader = lambda path: load_prepared_config(path, verbose=False, log_info=False)
     path = None
@@ -190,11 +196,12 @@ def load_override_config(
             if os.path.exists(npath):
                 return config_loader(npath)
     except Exception as exc:
-        logging.exception("error loading config %s: %s", path, exc)
+        logging.exception("加载配置出错 %s: %s", path, exc)
     return {}
 
 
 def parse_old_coin_flags(config) -> dict:
+    """解析遗留的 live.coin_flags 格式为 coin_overrides 字典。"""
     key_map = {
         "short_mode": ["live", "forced_mode_short"],
         "long_mode": ["live", "forced_mode_long"],
@@ -234,6 +241,7 @@ def parse_overrides(
     override_loader: Callable[[dict, str], dict] | None = None,
     symbol_normalizer: Callable[[str], str] | None = None,
 ):
+    """解析币种覆盖配置：处理旧 coin_flags、归一化币名、加载覆盖文件。"""
     if override_loader is None:
         override_loader = load_override_config
     if symbol_normalizer is None:
@@ -313,6 +321,7 @@ def _build_flag_argparser() -> argparse.ArgumentParser:
 
 
 def expand_PB_mode(mode: str) -> str:
+    """将 Passivbot 模式缩写展开为标准名称。"""
     lowered = mode.lower()
     if lowered in ["gs", "graceful_stop", "graceful-stop"]:
         return "graceful_stop"

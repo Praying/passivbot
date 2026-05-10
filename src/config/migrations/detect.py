@@ -3,6 +3,7 @@ from copy import deepcopy
 
 BOT_POSITION_SIDES = ("long", "short")
 
+# Passivbot 多币种格式中的遗留字段名 -> 当前字段名映射
 PB_MULTI_FIELD_MAP = {
     "ddown_factor": "entry_grid_double_down_factor",
     "initial_eprice_ema_dist": "entry_initial_ema_dist",
@@ -16,10 +17,11 @@ PB_MULTI_FIELD_MAP = {
     "filter_noisiness_rolling_window": "forager_volatility_ema_span",
     "filter_volume_rolling_window": "forager_volume_ema_span",
 }
-PB_MULTI_FIELD_MAP_INV = {v: k for k, v in PB_MULTI_FIELD_MAP.items()}
+PB_MULTI_FIELD_MAP_INV = {v: k for k, v in PB_MULTI_FIELD_MAP.items()}  # 反向映射
 
 
 def detect_flavor(config: dict, template: dict) -> str:
+    """检测配置风格：pb_multi / current / nested_current / live_only / unknown。"""
     pb_keys = {
         "user",
         "pnls_max_lookback_days",
@@ -47,6 +49,7 @@ def detect_flavor(config: dict, template: dict) -> str:
 
 
 def build_base_config_from_flavor(config: dict, template: dict, flavor: str, verbose: bool) -> dict:
+    """根据检测到的风格将配置转换为当前格式。"""
     if flavor == "pb_multi":
         result = deepcopy(template)
         for key1 in result["live"]:

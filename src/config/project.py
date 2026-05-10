@@ -3,6 +3,7 @@ from copy import deepcopy
 from .transform_log import record_transform
 
 
+# 各 target 保留的顶层配置段
 _TARGET_SECTION_MAP = {
     "canonical": ("backtest", "bot", "coin_overrides", "live", "logging", "monitor", "optimize"),
     "live": ("bot", "coin_overrides", "live", "logging", "monitor"),
@@ -10,10 +11,12 @@ _TARGET_SECTION_MAP = {
     "optimize": ("backtest", "bot", "coin_overrides", "live", "logging", "optimize"),
     "monitor": ("live", "logging", "monitor"),
 }
+# 共享的顶层键（不依赖 target）
 _SHARED_TOP_LEVEL_KEYS = ("config_version",)
 
 
 def project_config(config: dict, target: str, *, record_step: bool = True) -> dict:
+    """将配置投影到指定 target，只保留该 target 所需的段。"""
     normalized_target = str(target).strip().lower()
     if normalized_target not in _TARGET_SECTION_MAP:
         allowed = ", ".join(sorted(_TARGET_SECTION_MAP))

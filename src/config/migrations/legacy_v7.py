@@ -8,6 +8,7 @@ from utils import normalize_coins_source
 
 
 def _log_config(verbose: bool, level: int, message: str, *args) -> None:
+    """输出带 [config] 前缀的日志消息，非 verbose 时降级为 DEBUG。"""
     prefixed_message = "[config] " + message
     if verbose or level >= logging.WARNING:
         logging.log(level, prefixed_message, *args)
@@ -16,6 +17,7 @@ def _log_config(verbose: bool, level: int, message: str, *args) -> None:
 
 
 def _parse_version_tuple(value: object) -> Optional[tuple[int, ...]]:
+    """将版本字符串解析为整数元组（如 'v7.10.0' -> (7, 10, 0)）。"""
     if not isinstance(value, str):
         return None
     normalized = value.strip().lower()
@@ -30,6 +32,7 @@ def _parse_version_tuple(value: object) -> Optional[tuple[int, ...]]:
 def migrate_config_version(
     result: dict, verbose: bool = True, tracker: Optional[ConfigTransformTracker] = None
 ) -> None:
+    """迁移配置版本号：检测版本差异并更新到当前 schema 版本。"""
     current_version = result.get("config_version")
     current_parsed = _parse_version_tuple(current_version)
     target_parsed = _parse_version_tuple(CONFIG_SCHEMA_VERSION)
@@ -73,6 +76,7 @@ def migrate_config_version(
 def migrate_suite_to_scenarios(
     result: dict, verbose: bool = True, tracker: Optional[ConfigTransformTracker] = None
 ) -> None:
+    """将遗留的 backtest.suite 迁移为 backtest.scenarios + backtest.aggregate。"""
     backtest = result.setdefault("backtest", {})
     suite = backtest.pop("suite", None)
     if suite and isinstance(suite, dict):
@@ -114,6 +118,7 @@ def migrate_suite_to_scenarios(
 def migrate_btc_collateral_settings(
     result: dict, verbose: bool = True, tracker: Optional[ConfigTransformTracker] = None
 ) -> None:
+    """迁移 BTC 抵押设置：use_btc_collateral -> btc_collateral_cap。"""
     backtest = result.setdefault("backtest", {})
     if "use_btc_collateral" in backtest:
         use_btc = backtest.pop("use_btc_collateral")
@@ -160,6 +165,7 @@ def migrate_btc_collateral_settings(
 
 
 def _coerce_legacy_bool(value) -> bool:
+    """将各种遗留布尔表示强制转换为 True/False。"""
     if isinstance(value, str):
         normalized = value.strip().lower()
         if normalized in {"1", "true", "yes", "y", "on"}:
@@ -172,6 +178,7 @@ def _coerce_legacy_bool(value) -> bool:
 def migrate_empty_means_all_approved(
     result: dict, verbose: bool = True, tracker: Optional[ConfigTransformTracker] = None
 ) -> None:
+    """迁移遗留的 empty_means_all_approved 设置为 approved_coins='all'。"""
     live = result.setdefault("live", {})
     if "empty_means_all_approved" not in live:
         return

@@ -11,13 +11,14 @@ from .schema import get_template_config
 def load_input_config(
     config_path: str | None, *, log_info: bool = True
 ) -> tuple[dict, str, dict]:
+    """加载原始配置文件，返回 (source, config_path, raw_snapshot)。"""
     if config_path:
         if log_info:
-            logging.info("loading config %s", config_path)
+            logging.info("加载配置 %s", config_path)
         source = load_raw_config(config_path)
         return source, config_path, deepcopy(source)
     if log_info:
-        logging.info("loading schema defaults from src/config/schema.py")
+        logging.info("从 src/config/schema.py 加载 schema 默认值")
     source = get_template_config()
     return source, "", deepcopy(source)
 
@@ -34,6 +35,7 @@ def prepare_config(
     raw_snapshot: dict | None = None,
     effective_snapshot: dict | None = None,
 ) -> dict:
+    """对配置执行归一化、投影和运行时编译，返回处理后的配置。"""
     source = deepcopy(config)
     if raw_snapshot is None:
         raw_snapshot = deepcopy(source.get("_raw", source))
@@ -66,6 +68,7 @@ def load_prepared_config(
     runtime: str | None = None,
     log_info: bool = True,
 ) -> dict:
+    """加载并完整处理配置文件：读取、归一化、投影、运行时编译。"""
     source, base_config_path, raw_snapshot = load_input_config(config_path, log_info=log_info)
     return prepare_config(
         source,

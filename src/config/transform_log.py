@@ -4,6 +4,7 @@ from typing import Any, Iterable, List, Optional, Union
 
 
 def _normalize_path(path: Union[str, Iterable[Any]]) -> str:
+    """将路径规范化为点分字符串。"""
     if isinstance(path, str):
         return path
     if isinstance(path, Iterable):
@@ -19,6 +20,7 @@ def _normalize_path(path: Union[str, Iterable[Any]]) -> str:
 
 
 def _summarize_value(value: Any, *, max_str: int = 80, max_seq: int = 6) -> Any:
+    """对值做截断摘要，避免日志中输出过大内容。"""
     if isinstance(value, (int, float, bool)) or value is None:
         return value
     if isinstance(value, str):
@@ -40,6 +42,7 @@ def _summarize_value(value: Any, *, max_str: int = 80, max_seq: int = 6) -> Any:
 
 
 class ConfigTransformTracker:
+    """追踪配置变换过程中的 add/remove/rename/update 事件。"""
     def __init__(self) -> None:
         self._events: List[dict] = []
 
@@ -102,6 +105,7 @@ class ConfigTransformTracker:
         return deepcopy(self._events)
 
     def merge_details(self, base: Optional[dict] = None) -> dict:
+        """合并基础详情与已记录的事件列表。"""
         details = {} if base is None else deepcopy(base)
         if self._events:
             details = details or {}
@@ -110,6 +114,7 @@ class ConfigTransformTracker:
 
 
 def record_transform(config: dict, step: str, details: Optional[dict] = None) -> None:
+    """将变换步骤记录到配置的 _transform_log 中。"""
     if not isinstance(config, dict):
         return
     entry = {"step": step, "ts_ms": int(time.time() * 1000)}

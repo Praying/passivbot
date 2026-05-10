@@ -1,11 +1,12 @@
 from copy import deepcopy
 
 
-CONFIG_SCHEMA_VERSION = "v7.10.0"
+CONFIG_SCHEMA_VERSION = "v7.10.0"  # 当前配置 schema 版本
 DEFAULT_EXAMPLE_CONFIG_PATH = "configs/examples/default_trailing_grid_long_npos7.json"
 
 
 def get_template_config():
+    """返回完整的默认配置模板深拷贝。"""
     return deepcopy(
         {
             "config_version": CONFIG_SCHEMA_VERSION,

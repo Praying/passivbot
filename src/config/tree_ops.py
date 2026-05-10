@@ -13,6 +13,7 @@ def add_missing_keys_recursively(
     preserve: Optional[Iterable[Iterable[str]]] = None,
     _preserve_set: Optional[set[tuple[str, ...]]] = None,
 ):
+    """递归地将 src 中存在但 dst 中缺失的键添加到 dst。"""
     if parent is None:
         parent = []
     if _preserve_set is None:
@@ -31,11 +32,13 @@ def add_missing_keys_recursively(
         return
     for key in src:
         if key not in dst:
+            # dst 缺失的键直接从 src 复制
             log_config_message(verbose, logging.INFO, "Added missing %s to config.", ".".join(parent + [key]))
             dst[key] = src[key]
             if tracker is not None:
                 tracker.add(parent + [key], src[key])
         elif isinstance(src[key], dict) and isinstance(dst.get(key), dict):
+            # 双方都是字典时递归处理
             add_missing_keys_recursively(
                 src[key],
                 dst[key],
@@ -45,6 +48,7 @@ def add_missing_keys_recursively(
                 _preserve_set=_preserve_set,
             )
         elif isinstance(src[key], dict):
+            # src 是字典但 dst 不是，跳过此子树
             log_config_message(
                 verbose,
                 logging.INFO,
@@ -75,6 +79,7 @@ def remove_unused_keys_recursively(
     preserve: Optional[Iterable[Iterable[str]]] = None,
     tracker=None,
 ):
+    """递归移除 dst 中存在但 src 中不存在的键。"""
     if parent is None:
         parent = []
         if preserve is None:
@@ -99,11 +104,12 @@ def remove_unused_keys_recursively(
     if _path_is_preserved(parent):
         return
     if not isinstance(dst, dict) or not isinstance(src, dict):
-        return
+        return  # 双方之一不是字典时无法比较
 
+    # 先移除非字符串键（非标准键）
     for key in list(dst.keys()):
         if isinstance(key, str):
-            continue
+            continue  # 跳过字符串键，后面处理
         removed = dst.pop(key)
         current_path = parent + [str(key)]
         log_config_message(
@@ -120,7 +126,7 @@ def remove_unused_keys_recursively(
         if _path_is_preserved(current_path):
             continue
         if isinstance(key, str) and key.startswith("_"):
-            continue
+            continue  # 跳过内部元数据键
         if key not in src:
             removed = dst.pop(key)
             log_config_message(

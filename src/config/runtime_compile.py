@@ -5,6 +5,7 @@ from .transform_log import record_transform
 
 
 def compile_runtime_config(config: dict, runtime: str = "generic", *, record_step: bool = True) -> dict:
+    """编译运行时配置：应用 forager 内部别名并记录变换步骤。"""
     normalized_runtime = str(runtime).strip().lower()
     result = deepcopy(config)
     apply_forager_internal_aliases(result)

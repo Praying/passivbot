@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from typing import Any
 
 
+# 与货币单位相关的指标（需附加 _usd/_btc 后缀）
 CURRENCY_METRICS = {
     "adg",
     "adg_per_exposure_long",
@@ -53,6 +54,7 @@ CURRENCY_METRICS = {
     "sterling_ratio_w",
 }
 
+# 跨货币单位共享的指标（无需后缀）
 SHARED_METRICS = {
     "positions_held_per_day",
     "positions_held_per_day_w",
@@ -131,6 +133,7 @@ SHARED_METRICS = {
 }
 
 
+# 分析模块使用的共享指标键（含方向细分）
 ANALYSIS_SHARED_KEYS = SHARED_METRICS | {
     "loss_profit_ratio_long",
     "loss_profit_ratio_short",
@@ -159,8 +162,10 @@ ANALYSIS_SHARED_KEYS = SHARED_METRICS | {
     "hard_stop_restarts_short",
 }
 
+# 指标名后缀中可识别的统计类型
 STAT_SUFFIXES = ("min", "max", "mean", "std", "median")
 
+# 旧指标名 -> 规范指标名 的别名映射
 METRIC_ALIASES = {
     "gain_strategy_pnl_rebased": "gain_strategy_eq",
     "adg_strategy_pnl_rebased": "adg_strategy_eq",
@@ -195,6 +200,7 @@ METRIC_ALIASES = {
     "peak_recovery_hours_hsl_short": "peak_recovery_hours_strategy_eq_short",
 }
 
+# 规范名 -> 所有可能的别名
 CANONICAL_TO_ALIASES: dict[str, tuple[str, ...]] = {}
 for _old, _new in METRIC_ALIASES.items():
     CANONICAL_TO_ALIASES.setdefault(_new, tuple())
@@ -202,6 +208,7 @@ for _old, _new in METRIC_ALIASES.items():
 
 
 def split_metric_stat_suffix(name: str) -> tuple[str, str | None]:
+    """将指标名拆分为基础名和统计后缀（如 _mean、_max）。"""
     metric = str(name).strip()
     for suffix in STAT_SUFFIXES:
         marker = f"_{suffix}"
@@ -215,11 +222,13 @@ def _with_stat_suffix(metric: str, stat: str | None) -> str:
 
 
 def canonical_metric_name(metric: str) -> str:
+    """返回指标的规范名称（解析别名并保留统计后缀）。"""
     base, stat = split_metric_stat_suffix(metric)
     return _with_stat_suffix(METRIC_ALIASES.get(base, base), stat)
 
 
 def metric_aliases(metric: str) -> tuple[str, ...]:
+    """返回指标的所有可能别名（含规范名和旧名），用于匹配查找。"""
     base, stat = split_metric_stat_suffix(metric)
     canonical_base = METRIC_ALIASES.get(base, base)
     candidates = [_with_stat_suffix(base, stat), _with_stat_suffix(canonical_base, stat)]
@@ -231,6 +240,7 @@ def metric_aliases(metric: str) -> tuple[str, ...]:
 
 
 def resolve_metric_value(metrics: Mapping[str, Any], requested_name: str) -> Any | None:
+    """在指标字典中按所有可能别名查找指标值。"""
     for candidate in metric_aliases(requested_name):
         if candidate in metrics:
             return metrics[candidate]
@@ -238,6 +248,7 @@ def resolve_metric_value(metrics: Mapping[str, Any], requested_name: str) -> Any
 
 
 def canonicalize_metric_name(metric: str) -> str:
+    """将指标名完整规范化：解析别名、确定货币后缀、保留统计后缀。"""
     metric = canonical_metric_name(metric)
     if metric.endswith("_usd") or metric.endswith("_btc"):
         return metric
@@ -259,6 +270,7 @@ def canonicalize_metric_name(metric: str) -> str:
 
 
 def canonicalize_limit_name(limit_key: str) -> str:
+    """将 limit 键名规范化（转换 lower_bound/upper_bound 前缀为 penalize_if 形式）。"""
     if limit_key.startswith("lower_bound_"):
         metric = limit_key[len("lower_bound_") :]
         return "penalize_if_greater_than_" + canonicalize_metric_name(metric)

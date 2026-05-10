@@ -5,6 +5,7 @@ from typing import Optional
 from config.transform_log import ConfigTransformTracker
 
 
+# bot 段中遗留 filter_* 键 -> 规范 forager_* 键映射
 LEGACY_FILTER_KEYS = {
     "filter_volatility_ema_span": "forager_volatility_ema_span",
     "filter_noisiness_rolling_window": "forager_volatility_ema_span",
@@ -14,14 +15,17 @@ LEGACY_FILTER_KEYS = {
     "filter_volume_rolling_window": "forager_volume_ema_span",
 }
 
+# 遗留 forager 键映射
 LEGACY_FORAGER_KEYS = {
     "filter_volume_drop_pct": "forager_volume_drop_pct",
 }
 
+# bot 段中已废弃的键（直接删除）
 OBSOLETE_BOT_KEYS = {
     "filter_volatility_drop_pct",
 }
 
+# entry_grid 遗留键映射
 LEGACY_ENTRY_GRID_KEYS = {
     "ddown_factor": "entry_grid_double_down_factor",
     "initial_eprice_ema_dist": "entry_initial_ema_dist",
@@ -36,6 +40,7 @@ LEGACY_ENTRY_GRID_KEYS = {
     "entry_trailing_threshold_log_weight": "entry_trailing_threshold_volatility_weight",
 }
 
+# optimize.bounds 段中遗留键映射
 LEGACY_BOUNDS_KEYS = {
     "long_min_markup": "long_close_grid_markup_start",
     "short_min_markup": "short_close_grid_markup_start",
@@ -69,6 +74,7 @@ LEGACY_BOUNDS_KEYS = {
     "short_entry_trailing_threshold_log_weight": "short_entry_trailing_threshold_volatility_weight",
 }
 
+# bounds 段中已废弃的键（直接删除）
 OBSOLETE_BOUND_KEYS = {
     "long_filter_volatility_drop_pct",
     "short_filter_volatility_drop_pct",
@@ -76,6 +82,7 @@ OBSOLETE_BOUND_KEYS = {
 
 
 def _log_config(verbose: bool, level: int, message: str, *args) -> None:
+    """输出带 [config] 前缀的日志消息，非 verbose 时降级为 DEBUG。"""
     prefixed_message = "[config] " + message
     if verbose or level >= logging.WARNING:
         logging.log(level, prefixed_message, *args)
@@ -86,6 +93,7 @@ def _log_config(verbose: bool, level: int, message: str, *args) -> None:
 def apply_backward_compatibility_renames(
     result: dict, verbose: bool = True, tracker: Optional[ConfigTransformTracker] = None
 ) -> None:
+    """应用向后兼容的键重命名和废弃键清理。"""
     for pside, bot_cfg in result.get("bot", {}).items():
         if not isinstance(bot_cfg, dict):
             continue
@@ -162,6 +170,7 @@ def apply_backward_compatibility_renames(
 def rename_config_keys(
     result: dict, verbose: bool = True, tracker: Optional[ConfigTransformTracker] = None
 ) -> None:
+    """执行配置键重命名（如 minimum_market_age_days -> minimum_coin_age_days）。"""
     for section, src, dst in [
         ("live", "minimum_market_age_days", "minimum_coin_age_days"),
         ("live", "noisiness_rolling_mean_window_size", "ohlcv_rolling_window"),

@@ -4,6 +4,7 @@ from .coerce import normalize_hsl_cooldown_position_policy, normalize_hsl_signal
 
 
 def validate_config(config: dict, *, raw_optimize=None, verbose: bool = True, tracker=None) -> None:
+    """对配置执行完整校验：bot、optimize bounds、HSL、monitor、forager。"""
     from analysis_visibility import validate_visible_metrics_config
     from optimization.config_adapter import validate_optimize_bounds_against_bot_config
 

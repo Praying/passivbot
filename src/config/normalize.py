@@ -36,6 +36,7 @@ def normalize_config(
     verbose: bool = True,
     record_step: bool = True,
 ) -> dict:
+    """对配置执行完整归一化流水线：迁移、水合、校验、补充默认值。"""
     raw_snapshot = deepcopy(config["_raw"]) if "_raw" in config else None
     existing_log = config.get("_transform_log")
     if isinstance(existing_log, list):
@@ -121,10 +122,10 @@ def normalize_config(
 
     if optimize_suite_defined:
         logging.warning(
-            "Config contains optimize.suite, but suite configuration is now defined via "
-            "backtest.scenarios. optimize.suite will be ignored and deleted; backtest.scenarios "
-            "will be used. If you need different suite definitions, pass --suite-config with a "
-            "file containing backtest.scenarios."
+            "配置包含 optimize.suite，但套件配置现在通过 "
+            "backtest.scenarios 定义。optimize.suite 将被忽略并删除；将使用 "
+            "backtest.scenarios。如需不同的套件定义，请传入包含 "
+            "backtest.scenarios 的 --suite-config 文件。"
         )
         if isinstance(result.get("optimize"), dict) and "suite" in result["optimize"]:
             del result["optimize"]["suite"]

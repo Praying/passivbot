@@ -14,6 +14,7 @@ from .access import require_config_dict
 BOT_POSITION_SIDES = ("long", "short")
 DEFAULT_FORAGER_SCORE_WEIGHTS = {"volume": 0.0, "ema_readiness": 0.0, "volatility": 1.0}
 DEFAULT_HSL_TIER_RATIOS = {"yellow": 0.5, "orange": 0.75}
+# 启用侧必须存在的 bot 参数键
 REQUIRED_BOT_KEYS = (
     "close_grid_markup_start",
     "close_grid_markup_end",
@@ -25,20 +26,23 @@ REQUIRED_BOT_KEYS = (
     "entry_initial_ema_dist",
     "entry_initial_qty_pct",
 )
+# 悬崖边缘阈值键：值接近 0 时行为会剧变
 CLIFF_EDGE_THRESHOLD_KEYS = (
     "risk_wel_enforcer_threshold",
     "risk_twel_enforcer_threshold",
     "unstuck_threshold",
 )
-CLIFF_EDGE_DUST_EPS = 1e-9
-CLIFF_EDGE_WARNING_THRESHOLD = 0.1
+CLIFF_EDGE_DUST_EPS = 1e-9  # 判定阈值归零的浮点容差
+CLIFF_EDGE_WARNING_THRESHOLD = 0.1  # 触发警告的小阈值上限
 
+# forager 规范名 -> 内部运行时别名（bot 段）
 FORAGER_CANONICAL_TO_INTERNAL_BOT_KEYS = {
     "forager_volatility_ema_span": "filter_volatility_ema_span",
     "forager_volume_ema_span": "filter_volume_ema_span",
     "forager_volume_drop_pct": "filter_volume_drop_pct",
 }
 
+# forager 规范名 -> 内部运行时别名（optimize.bounds 段）
 FORAGER_CANONICAL_TO_INTERNAL_BOUND_KEYS = {
     "long_forager_volatility_ema_span": "long_filter_volatility_ema_span",
     "long_forager_volume_ema_span": "long_filter_volume_ema_span",
@@ -50,6 +54,7 @@ FORAGER_CANONICAL_TO_INTERNAL_BOUND_KEYS = {
 
 
 def validate_unstuck_ema_dist_value(value, *, path: str, pside: str) -> None:
+    """校验 unstuck_ema_dist 值的有效性（防止 EMA 触发价为非正数）。"""
     try:
         numeric = float(value)
     except (TypeError, ValueError) as exc:
@@ -69,6 +74,7 @@ def validate_unstuck_ema_dist_value(value, *, path: str, pside: str) -> None:
 
 
 def validate_bot_config(result: dict) -> None:
+    """校验 bot 配置中 unstuck_ema_dist 的有效性。"""
     for pside in BOT_POSITION_SIDES:
         validate_unstuck_ema_dist_value(
             result["bot"][pside]["unstuck_ema_dist"],
@@ -86,6 +92,7 @@ def _bot_nested_path(pside: str, key: str, child: str) -> str:
 
 
 def _format_hydration_log_value(value):
+    """格式化水合日志中的值，截断浮点精度、标记列表和字典。"""
     if isinstance(value, bool) or value is None:
         return value
     if isinstance(value, float):
@@ -110,6 +117,7 @@ def _set_hydrated_bot_value(
     tracker: Optional[object],
     level: int = logging.INFO,
 ) -> None:
+    """设置水合后的 bot 参数值，并记录日志和追踪事件。"""
     result["bot"][pside][key] = deepcopy(value)
     log_config_message(
         verbose,
@@ -134,6 +142,7 @@ def _set_hydrated_bot_nested_value(
     verbose: bool,
     tracker: Optional[object],
 ) -> None:
+    """设置水合后的嵌套 bot 参数值（如 forager_score_weights.volume）。"""
     result["bot"][pside][key][child] = deepcopy(value)
     log_config_message(
         verbose,
@@ -148,6 +157,7 @@ def _set_hydrated_bot_nested_value(
 
 
 def _read_legacy_alias(bot_cfg: dict, *keys: str):
+    """按优先级从 bot 配置中读取遗留别名键的第一个非 None 值。"""
     for key in keys:
         if key in bot_cfg and bot_cfg[key] is not None:
             return bot_cfg[key]
@@ -155,6 +165,7 @@ def _read_legacy_alias(bot_cfg: dict, *keys: str):
 
 
 def _derive_close_grid_qty_pct(bot_cfg: dict, *, path: str) -> Optional[float]:
+    """从遗留 n_closes/n_close_orders 推导 close_grid_qty_pct。"""
     raw_n_closes = _read_legacy_alias(bot_cfg, "n_closes", "n_close_orders")
     if raw_n_closes is None:
         return None
@@ -168,6 +179,7 @@ def _derive_close_grid_qty_pct(bot_cfg: dict, *, path: str) -> Optional[float]:
 
 
 def _bot_side_enabled(bot_cfg: dict, *, pside: str) -> bool:
+    """判断某个方向的 bot 是否启用（total_wallet_exposure_limit > 0）。"""
     path = _bot_path(pside, "total_wallet_exposure_limit")
     try:
         total_wallet_exposure_limit = float(bot_cfg["total_wallet_exposure_limit"])
@@ -187,6 +199,7 @@ def _hydrate_hsl_tier_ratios(
     verbose: bool,
     tracker: Optional[object],
 ) -> None:
+    """水合 HSL 层级比率默认值。"""
     bot_cfg = result["bot"][pside]
     if "hsl_tier_ratios" not in bot_cfg or bot_cfg["hsl_tier_ratios"] is None:
         _set_hydrated_bot_value(
@@ -222,6 +235,7 @@ def _hydrate_forager_score_weights(
     verbose: bool,
     tracker: Optional[object],
 ) -> None:
+    """水合 forager 评分权重默认值。"""
     bot_cfg = result["bot"][pside]
     if "forager_score_weights" not in bot_cfg or bot_cfg["forager_score_weights"] is None:
         _set_hydrated_bot_value(
@@ -256,6 +270,7 @@ def _normalize_cliff_edge_threshold(
     path: str,
     verbose: bool,
 ) -> float:
+    """归一化悬崖边缘阈值：极小值归零、极小正值触发警告。"""
     try:
         numeric = float(value)
     except (TypeError, ValueError) as exc:
@@ -290,6 +305,7 @@ def normalize_cliff_edge_thresholds(
     verbose: bool = True,
     tracker: Optional[object] = None,
 ) -> None:
+    """归一化所有悬崖边缘阈值参数。"""
     for pside in BOT_POSITION_SIDES:
         for key in CLIFF_EDGE_THRESHOLD_KEYS:
             raw_value = result["bot"][pside][key]
@@ -304,6 +320,7 @@ def normalize_cliff_edge_thresholds(
 
 
 def ensure_required_bot_params_present(result: dict) -> None:
+    """校验启用侧的必需 bot 参数是否齐全，并检查所有模板键是否已处理。"""
     template = get_template_config()["bot"]
     for pside in BOT_POSITION_SIDES:
         bot_cfg = result["bot"][pside]
@@ -322,16 +339,27 @@ def ensure_required_bot_params_present(result: dict) -> None:
 def ensure_bot_defaults(
     result: dict, *, verbose: bool = True, tracker: Optional[object] = None
 ) -> None:
+    """为 bot 配置补充缺失的默认值，处理遗留别名和水合逻辑。
+
+    对每个方向（long/short）依次：
+    1. 设置 total_wallet_exposure_limit 默认值
+    2. 从遗留 min_markup/markup_range 推导 close_grid_markup_*
+    3. 从遗留 n_closes 推导 close_grid_qty_pct
+    4. 补充全部缺失的默认参数
+    5. 水合 forager_score_weights 和 hsl_tier_ratios
+    """
     template = get_template_config()["bot"]
     for pside in BOT_POSITION_SIDES:
         bot_cfg = result["bot"][pside]
         had_any_required_core = any(key in bot_cfg for key in REQUIRED_BOT_KEYS)
+        # 读取遗留 close_grid 别名
         legacy_min_markup = _read_legacy_alias(bot_cfg, "close_grid_min_markup", "min_markup")
         legacy_markup_range = _read_legacy_alias(
             bot_cfg, "close_grid_markup_range", "markup_range"
         )
 
         if "total_wallet_exposure_limit" not in bot_cfg:
+            # 缺失时默认禁用该方向
             _set_hydrated_bot_value(
                 result,
                 pside=pside,
@@ -522,6 +550,7 @@ def ensure_bot_defaults(
                 tracker=tracker,
             )
             bot_cfg = result["bot"][pside]
+        # 若核心参数全部缺失，用模板值填充整个方向
         if not had_any_required_core:
             for key, value in template[pside].items():
                 if key not in bot_cfg:
@@ -535,6 +564,7 @@ def ensure_bot_defaults(
                         tracker=tracker,
                     )
                     bot_cfg = result["bot"][pside]
+        # 禁用侧补充必需键以保持结构完整
         if not side_enabled:
             for key in REQUIRED_BOT_KEYS:
                 if key not in bot_cfg:
@@ -565,6 +595,7 @@ def ensure_bot_defaults(
 def ensure_optimize_bounds_for_bot(
     result: dict, *, verbose: bool = True, tracker: Optional[object] = None
 ) -> None:
+    """确保 optimize.bounds 中包含 bot 所需的优化参数范围和 forager 权重边界。"""
     bounds = result["optimize"]["bounds"]
     for pside in BOT_POSITION_SIDES:
         for key, default_value in [
@@ -611,6 +642,7 @@ def ensure_optimize_bounds_for_bot(
 
 
 def normalize_forager_score_weights(weights: dict, *, path: str) -> dict:
+    """归一化 forager 评分权重：校验键完整性、非负性，并归一化为单位和。"""
     required_weight_keys = {"volume", "ema_readiness", "volatility"}
     if not isinstance(weights, dict):
         raise TypeError(f"{path} must be a dict")
@@ -634,6 +666,7 @@ def normalize_forager_score_weights(weights: dict, *, path: str) -> dict:
         total += value
 
     if total <= 0.0:
+        # 全零向量回退为 ema_readiness 单一排序
         return {"volume": 0.0, "ema_readiness": 1.0, "volatility": 0.0}
 
     return {key: normalized[key] / total for key in ("volume", "ema_readiness", "volatility")}
@@ -645,6 +678,7 @@ def forager_score_weights_are_normalized(
     path: str,
     abs_tol: float = 1e-12,
 ) -> bool:
+    """检查 forager 评分权重是否已归一化（单位和）。"""
     normalized = normalize_forager_score_weights(weights, path=path)
     return all(
         math.isclose(normalized[key], weights[key], rel_tol=0.0, abs_tol=abs_tol)
@@ -658,6 +692,7 @@ def normalize_bot_forager_config(
     verbose: bool = True,
     tracker: Optional[object] = None,
 ) -> None:
+    """归一化 forager 配置：校验 volume_drop_pct 范围、归一化评分权重。"""
     required_weight_keys = {"volume", "ema_readiness", "volatility"}
     for pside in BOT_POSITION_SIDES:
         bot_cfg = result["bot"][pside]
@@ -707,6 +742,7 @@ def normalize_bot_forager_config(
 
 
 def normalize_position_counts(result: dict, *, tracker: Optional[object] = None) -> None:
+    """将 n_positions 归一化为整数。"""
     for pside in BOT_POSITION_SIDES:
         current = result["bot"][pside].get("n_positions")
         try:
@@ -719,6 +755,7 @@ def normalize_position_counts(result: dict, *, tracker: Optional[object] = None)
 
 
 def _parse_entry_grid_inflation_flag(raw_value, *, path: str) -> bool:
+    """解析 entry_grid_inflation_enabled 标志（支持多种布尔表示）。"""
     if isinstance(raw_value, bool):
         return raw_value
     if isinstance(raw_value, (int, float)) and raw_value in (0, 1):
@@ -734,6 +771,7 @@ def strip_deprecated_entry_grid_inflation_flags(
     verbose: bool = True,
     tracker: Optional[object] = None,
 ) -> None:
+    """移除 bot 段中已废弃的 entry_grid_inflation_enabled 标志。"""
     for pside in BOT_POSITION_SIDES:
         bot_cfg = result["bot"][pside]
         if "entry_grid_inflation_enabled" not in bot_cfg:
@@ -760,6 +798,7 @@ def strip_deprecated_coin_override_entry_grid_inflation_flags(
     verbose: bool = True,
     tracker: Optional[object] = None,
 ) -> None:
+    """移除 coin_overrides 中已废弃的 entry_grid_inflation_enabled 标志。"""
     for coin, override in (result.get("coin_overrides") or {}).items():
         if not isinstance(override, dict):
             continue
@@ -797,6 +836,7 @@ def validate_forager_config(
     verbose: bool = True,
     tracker: Optional[object] = None,
 ) -> None:
+    """校验 forager 配置完整性：评分权重归一化、EMA span 有效性。"""
     del verbose, tracker
     for pside in BOT_POSITION_SIDES:
         bot_cfg = result["bot"][pside]
@@ -824,6 +864,7 @@ def validate_forager_config(
                 f"bot.{pside}.forager_score_weights must be normalized before validation"
             )
 
+        # 启用侧使用 volume 排序或裁剪时，volume_ema_span 必须 > 0
         if pside_enabled and (normalized["volume"] > 0.0 or drop_pct > 0.0):
             volume_span = float(bot_cfg["forager_volume_ema_span"])
             if not math.isfinite(volume_span) or volume_span <= 0.0:
@@ -832,6 +873,7 @@ def validate_forager_config(
                     "forager volume ranking or volume pruning is enabled"
                 )
 
+        # 启用侧使用 volatility 排序时，volatility_ema_span 必须 > 0
         if pside_enabled and normalized["volatility"] > 0.0:
             volatility_span = float(bot_cfg["forager_volatility_ema_span"])
             if not math.isfinite(volatility_span) or volatility_span <= 0.0:
@@ -848,6 +890,7 @@ def format_bot_config(
     verbose: bool = True,
     tracker: Optional[object] = None,
 ) -> dict:
+    """格式化 bot 配置：执行重命名、水合默认值、校验、归一化。"""
     if not isinstance(bot_cfg, dict):
         raise TypeError(f"config.bot must be a dict; got {type(bot_cfg).__name__}")
     template = get_template_config()
@@ -857,6 +900,7 @@ def format_bot_config(
         "optimize": {"bounds": {}},
     }
     for pside in BOT_POSITION_SIDES:
+        # 缺失的方向用模板填充并禁用
         if pside not in result["bot"]:
             seeded = deepcopy(template["bot"][pside])
             seeded["total_wallet_exposure_limit"] = 0.0
@@ -876,7 +920,10 @@ def format_bot_config(
 
 
 def apply_forager_internal_aliases(result: dict) -> None:
+    """在运行时为 forager 参数创建内部别名（规范名 -> 内部名）。"""
+
     def _alias_bot_cfg(bot_cfg: dict) -> None:
+        """为单个 bot 配置字典设置 forager 内部别名。"""
         for canonical_key, internal_key in FORAGER_CANONICAL_TO_INTERNAL_BOT_KEYS.items():
             if canonical_key in bot_cfg and internal_key not in bot_cfg:
                 bot_cfg[internal_key] = deepcopy(bot_cfg[canonical_key])
