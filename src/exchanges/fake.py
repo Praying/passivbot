@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_time_to_ms(value: Any) -> int:
+    """将多种时间格式统一转换为毫秒时间戳。"""
     if value is None:
         raise ValueError("Fake scenario timestamp is required")
     if isinstance(value, (int, float)):
@@ -62,6 +63,7 @@ def _copy_order(order: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _parse_timeframe_to_ms(timeframe: str) -> int:
+    """将时间周期字符串（如 '1m'、'5m'、'1h'、'1d'）解析为毫秒数。"""
     text = str(timeframe or "").strip().lower()
     if text == "1m":
         return 60_000
@@ -84,9 +86,12 @@ def _parse_timeframe_to_ms(timeframe: str) -> int:
 
 
 class FakeCCXTClient:
+    """模拟 ccxt 客户端，基于场景文件驱动回放或脚本时间线。"""
+
     id = "fake"
 
     def __init__(self, scenario: dict, *, quote: str = "USDT") -> None:
+        """根据场景配置初始化模拟交易所客户端。"""
         self.has = {
             "fetchBalance": True,
             "fetchPositions": True,
@@ -112,6 +117,7 @@ class FakeCCXTClient:
             or Path(str(self.scenario.get("_scenario_path", "scenario"))).stem
         )
 
+        # 解析时间线步进间隔和起始时间
         self.tick_interval_ms = int(float(self.scenario.get("tick_interval_seconds", 60)) * 1000)
         if self.tick_interval_ms <= 0:
             raise ValueError("Fake scenario tick_interval_seconds must be > 0")
@@ -121,6 +127,7 @@ class FakeCCXTClient:
             else None
         )
 
+        # 解析账户配置：余额、已实现 PnL、手续费、杠杆等
         account = self.scenario.get("account") or {}
         self.balance_total = float(account.get("balance", 0.0))
         self.balance_free = float(account.get("balance", 0.0))
@@ -130,10 +137,12 @@ class FakeCCXTClient:
         self.leverage_by_symbol: Dict[str, int] = {}
         self.margin_mode_by_symbol: Dict[str, str] = {}
 
+        # 构建市场信息和时间线
         self.markets = self._build_markets(self.scenario.get("symbols") or {})
         self.markets_by_id = {market["id"]: market for market in self.markets.values()}
         self.symbols = sorted(self.markets)
 
+        # 优先使用脚本时间线，其次使用回放时间线
         self.timeline = self._build_timeline(self.scenario.get("timeline") or [])
         if not self.timeline:
             self.timeline = self._build_replay_timeline(self.scenario.get("replay") or {})
@@ -150,6 +159,7 @@ class FakeCCXTClient:
         self.current_index = self.boot_index
         self.now_ms = int(self.timeline[self.current_index]["timestamp"])
 
+        # 初始化持仓状态（每个交易对分 long/short）
         self.positions: Dict[Tuple[str, str], Dict[str, float | str]] = {}
         for symbol in self.symbols:
             for pside in ("long", "short"):
@@ -168,6 +178,7 @@ class FakeCCXTClient:
         self._next_order_id = 1
         self._next_trade_id = 1
 
+        # 加载启动时的历史成交、挂单，并处理已触碰的挂单
         for fill in account.get("fills") or []:
             self._load_boot_fill(fill)
         for order in account.get("open_orders") or []:
@@ -203,6 +214,7 @@ class FakeCCXTClient:
         return cls(scenario, quote=quote)
 
     def _build_markets(self, symbols_config: dict) -> Dict[str, dict]:
+        """根据场景配置构建市场信息字典。"""
         if not symbols_config:
             raise ValueError("Fake scenario must define symbols")
         markets: Dict[str, dict] = {}
@@ -244,10 +256,12 @@ class FakeCCXTClient:
         return left, quote
 
     def _build_timeline(self, timeline_rows: List[dict]) -> List[Dict[str, Any]]:
+        """将脚本式时间行构建为标准化时间线，同时生成 OHLCV K 线数据。"""
         if not timeline_rows:
             return []
         if self.start_time_ms is None:
             raise ValueError("Fake scripted timeline requires scenario start_time")
+        # 逐行解析：合并价格、计算时间戳、生成 K 线
         prev_prices: Dict[str, float] = {}
         candles_by_symbol: Dict[str, List[List[float]]] = {symbol: [] for symbol in self.markets}
         normalized: List[Dict[str, Any]] = []
@@ -298,6 +312,7 @@ class FakeCCXTClient:
         return normalized
 
     def _build_replay_timeline(self, replay_config: dict) -> List[Dict[str, Any]]:
+        """根据回放配置加载历史 K 线数据，构建标准化时间线。"""
         if not replay_config:
             return []
         symbol_specs = replay_config.get("symbols")
@@ -320,6 +335,7 @@ class FakeCCXTClient:
         )
         source_dir = replay_config.get("source_dir")
 
+        # 逐交易对加载并按时间范围过滤 K 线数据
         per_symbol_rows: Dict[str, List[List[float]]] = {}
         for symbol in self.symbols:
             spec = symbol_specs.get(symbol)
@@ -334,6 +350,7 @@ class FakeCCXTClient:
                 raise ValueError(f"Fake replay for {symbol} produced no candles after filtering")
             per_symbol_rows[symbol] = rows
 
+        # 合并所有交易对的时间戳，按时间顺序对齐
         all_timestamps = sorted({int(row[0]) for rows in per_symbol_rows.values() for row in rows})
         if not all_timestamps:
             return []
@@ -350,10 +367,12 @@ class FakeCCXTClient:
                 rows = per_symbol_rows[symbol]
                 row_index = row_index_by_symbol[symbol]
                 next_row = rows[row_index] if row_index < len(rows) else None
+                # 当前时间戳有对应 K 线，使用实际数据
                 if next_row is not None and int(next_row[0]) == timestamp:
                     candle = list(next_row)
                     row_index_by_symbol[symbol] += 1
                     last_candle_by_symbol[symbol] = candle
+                # 当前时间戳无对应 K 线，用上一根收盘价填充
                 elif symbol in last_candle_by_symbol:
                     last_close = float(last_candle_by_symbol[symbol][4])
                     candle = [float(timestamp), last_close, last_close, last_close, last_close, 0.0]
@@ -387,6 +406,7 @@ class FakeCCXTClient:
         *,
         source_dir: Optional[str] = None,
     ) -> List[List[float]]:
+        """加载单个交易对的回放 K 线数据，支持内联数据、单文件和 glob 模式。"""
         if not isinstance(spec, dict):
             raise TypeError(f"Fake replay spec for {symbol} must be a mapping")
 
@@ -427,6 +447,7 @@ class FakeCCXTClient:
         return [deduped[key] for key in sorted(deduped)]
 
     def _normalize_inline_candles(self, candles: List[Any]) -> List[List[float]]:
+        """将内联 K 线数据（字典或列表格式）统一标准化为 6 元素列表。"""
         rows: List[List[float]] = []
         for candle in candles:
             if isinstance(candle, dict):
@@ -478,6 +499,7 @@ class FakeCCXTClient:
         }
 
     def _load_boot_order(self, order: dict) -> None:
+        """在启动时加载预存挂单到 open_orders。"""
         symbol = str(order["symbol"])
         order_id = str(order.get("id") or self._next_order_id)
         try:
@@ -509,6 +531,7 @@ class FakeCCXTClient:
         }
 
     def _load_boot_fill(self, fill: dict) -> None:
+        """在启动时加载历史成交记录，兼容多种字段命名。"""
         symbol = str(fill["symbol"])
         if symbol not in self.markets:
             raise KeyError(f"Unknown fake symbol in boot fill: {symbol}")
@@ -525,6 +548,7 @@ class FakeCCXTClient:
                 pass
         timestamp = int(_parse_time_to_ms(fill.get("timestamp") or self.now_ms))
         side = str(fill["side"]).lower()
+        # 兼容多种数量字段名称：amount / qty / size / contracts
         amount = abs(
             float(
                 fill.get("amount")
@@ -547,6 +571,7 @@ class FakeCCXTClient:
         ).lower()
         if position_side not in ("long", "short"):
             position_side = "long"
+        # 解析手续费：支持字典格式、数值格式或 fee_cost 字段
         fee_obj = fill.get("fee")
         if isinstance(fee_obj, dict):
             fee_cost = float(fee_obj.get("cost", 0.0) or 0.0)
@@ -554,6 +579,7 @@ class FakeCCXTClient:
             fee_cost = float(fill.get("fee_cost", 0.0) or 0.0)
         else:
             fee_cost = float(fee_obj)
+        # 构建标准化的成交记录
         boot_fill = {
             "id": trade_id,
             "order": order_id,
@@ -582,6 +608,7 @@ class FakeCCXTClient:
                 "contractMultiplier": self._c_mult(symbol),
             },
         }
+        # 累加已实现 PnL 和手续费
         self.realized_pnl += float(boot_fill["pnl"])
         self.realized_fees += fee_cost
         self.fills.append(boot_fill)
@@ -608,6 +635,7 @@ class FakeCCXTClient:
         }
 
     async def fetch_positions(self) -> List[dict]:
+        """返回所有非零持仓。"""
         positions: List[dict] = []
         for state in self.positions.values():
             size = float(state["size"])
@@ -665,6 +693,7 @@ class FakeCCXTClient:
         limit: Optional[int] = None,
         params: Optional[dict] = None,
     ) -> List[List[float]]:
+        """获取 OHLCV K 线数据，支持时间范围过滤和周期聚合。"""
         candles = self._candles_by_symbol.get(symbol)
         if candles is None:
             raise KeyError(f"Unknown fake symbol {symbol}")
@@ -698,6 +727,7 @@ class FakeCCXTClient:
         limit: Optional[int] = None,
         params: Optional[dict] = None,
     ) -> List[dict]:
+        """查询历史成交记录，支持按交易对和时间范围过滤。"""
         params = params or {}
         since_ms = since
         if since_ms is None and params.get("since") is not None:
@@ -735,6 +765,7 @@ class FakeCCXTClient:
         price: Optional[float] = None,
         params: Optional[dict] = None,
     ) -> dict:
+        """创建订单，市价单立即成交，限价单根据当前价格判断是否立即成交或挂单。"""
         params = params or {}
         order_type = str(type or "limit").lower()
         order_side = str(side).lower()
@@ -757,6 +788,7 @@ class FakeCCXTClient:
         order_id = str(self._next_order_id)
         self._next_order_id += 1
         order_price = float(price) if price is not None else None
+        # 限价单必须指定价格
         if order_type == "limit" and order_price is None:
             raise ValueError("Fake limit order requires price")
         last_price = float(self.get_current_step()["prices"][symbol])
@@ -780,14 +812,17 @@ class FakeCCXTClient:
             },
         }
 
+        # 市价单立即成交
         if order_type == "market":
             self._fill_order(order, fill_price=last_price, liquidity="taker")
             return _copy_order(order)
 
+        # 限价单若当前价格已触碰，立即成交
         if self._limit_crossed_now(order):
             self._fill_order(order, fill_price=float(order["price"]), liquidity="maker")
             return _copy_order(order)
 
+        # 限价单未触碰，挂入挂单簿
         self.open_orders[order_id] = order
         return _copy_order(order)
 
@@ -862,6 +897,7 @@ class FakeCCXTClient:
             raise ValueError(f"Unsupported fake step action type: {action_type!r}")
 
     def _apply_manual_fill(self, action: dict) -> None:
+        """执行 manual_fill 动作：模拟手动下单并立即成交。"""
         symbol = str(action["symbol"])
         side = str(action["side"]).lower()
         position_side = str(action.get("position_side") or "long").lower()
@@ -893,6 +929,7 @@ class FakeCCXTClient:
         self._fill_order(order, fill_price=price, liquidity="taker")
 
     def _cancel_matching_orders(self, action: dict) -> None:
+        """根据条件（交易对、方向、持仓方向等）取消匹配的挂单。"""
         symbol = action.get("symbol")
         position_side = action.get("position_side")
         side = action.get("side")
@@ -931,6 +968,7 @@ class FakeCCXTClient:
         return sorted(events, key=lambda item: (item["timestamp"], item["id"]))
 
     def export_state(self) -> dict:
+        """导出当前交易所状态的快照。"""
         return {
             "scenario": self.scenario_name,
             "scenario_path": self.scenario.get("_scenario_path"),
@@ -997,6 +1035,7 @@ class FakeCCXTClient:
         return last_price >= order_price
 
     def _aggregate_candles(self, rows: List[List[float]], timeframe_ms: int) -> List[List[float]]:
+        """将 1 分钟 K 线聚合为更大时间周期的 K 线。"""
         if timeframe_ms <= 60_000:
             return rows
         buckets: Dict[int, List[float]] = {}
@@ -1022,6 +1061,7 @@ class FakeCCXTClient:
         return [buckets[key] for key in ordered]
 
     def _fill_order(self, order: Dict[str, Any], *, fill_price: float, liquidity: str) -> None:
+        """执行订单成交：更新持仓、计算 PnL 和手续费、记录成交。"""
         order["status"] = "closed"
         order["filled"] = float(order["amount"])
         order["remaining"] = 0.0
@@ -1031,6 +1071,7 @@ class FakeCCXTClient:
         position = self.positions[(order["symbol"], position_side)]
         qty = abs(float(order["amount"]))
         pnl = 0.0
+        # 多头持仓更新
         if position_side == "long":
             if order["side"] == "buy":
                 new_size = float(position["size"]) + qty
@@ -1048,6 +1089,7 @@ class FakeCCXTClient:
                 position["size"] = max(0.0, float(position["size"]) - close_qty)
                 if float(position["size"]) == 0.0:
                     position["entry_price"] = 0.0
+        # 空头持仓更新
         else:
             if order["side"] == "sell":
                 new_size = float(position["size"]) + qty
@@ -1066,6 +1108,7 @@ class FakeCCXTClient:
                 if float(position["size"]) == 0.0:
                     position["entry_price"] = 0.0
 
+        # 计算手续费并更新余额
         fee_rate = self._fee_rate(order["symbol"], liquidity)
         fee_cost = fill_price * qty * self._c_mult(order["symbol"]) * fee_rate
         self.realized_pnl += pnl
@@ -1101,6 +1144,7 @@ class FakeCCXTClient:
         self.fills.append(fill)
 
     def _fill_to_event(self, fill: dict) -> dict:
+        """将成交记录转换为标准事件格式。"""
         return {
             "id": str(fill["id"]),
             "order_id": str(fill.get("order") or ""),
@@ -1129,6 +1173,8 @@ class FakeCCXTClient:
 
 
 class FakeBot(CCXTBot):
+    """基于 FakeCCXTClient 的模拟交易机器人。"""
+
     def create_ccxt_sessions(self):
         self.cca = FakeCCXTClient.from_config(self.config, self.user_info)
         self.ccp = None
