@@ -61,6 +61,7 @@ def run_backend(
     build_config_fn,
     overrides_fn,
 ) -> dict[str, Any]:
+    """DEAP 后端主入口：初始化种群、注册遗传算子、评估起始配置并执行进化。"""
     del build_config_fn
     del overrides_fn
     if base is None or creator is None or tools is None:  # pragma: no cover
@@ -128,6 +129,7 @@ def run_backend(
         logging.info("正在创建初始种群...")
 
         def _evaluate_initial(individuals):
+            """使用异步并发评估起始个体，记录指标并处理中断。"""
             if not individuals:
                 return 0
             total = len(individuals)
@@ -140,6 +142,7 @@ def run_backend(
             completed = {"count": 0}
 
             def _on_result(ind, payload):
+                """异步评估结果回调：设置适应度值和约束违反，记录指标。"""
                 fit_values, penalty, metrics = payload
                 ind.fitness.values = fit_values
                 ind.fitness.constraint_violation = penalty

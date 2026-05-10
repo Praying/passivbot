@@ -26,6 +26,7 @@ def current_rss_mib() -> float | None:
 
 
 def approx_object_size(obj: Any, *, sample_size: int = 32) -> int:
+    """估算对象的近似内存占用（字节），通过采样推断容器大小。"""
     if obj is None:
         return 0
     if hasattr(obj, "nbytes"):
@@ -76,6 +77,7 @@ def load_starting_individuals(
     bounds,
     sig_digits: int | None,
 ) -> list:
+    """加载起始配置并将其转换为优化个体，优先使用流式模式以减少内存峰值。"""
     if iter_starting_configs is not None and configs_to_individuals_streaming is not None:
         starting_individuals, starting_config_count = configs_to_individuals_streaming(
             iter_starting_configs(starting_configs_path),
@@ -148,6 +150,7 @@ def drain_async_results(
     on_result: Callable[[Any, Any], None],
     on_interrupt: Callable[[dict], None] | None = None,
 ) -> int:
+    """轮询并收集所有待处理的异步结果，支持键盘中断回调。"""
     completed = 0
     try:
         while pending:
@@ -176,6 +179,7 @@ def stream_async_results(
     poll_interval_seconds: float = 0.05,
     on_interrupt: Callable[[dict], None] | None = None,
 ) -> int:
+    """以受限并发度流式提交并收集异步任务结果，支持背压和中断处理。"""
     max_pending = None if max_pending is None else max(1, int(max_pending))
     iterator = iter(items)
     pending: dict[Any, Any] = {}

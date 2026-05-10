@@ -67,6 +67,7 @@ def _population_from_payloads(
     *,
     has_constraints: bool,
 ) -> Population:
+    """从向量和评估结果字典列表构建 pymoo Population 对象。"""
     kwargs: dict[str, Any] = {
         "X": np.asarray(vectors, dtype=np.float64),
         "F": np.asarray([payload["F"] for payload in payloads], dtype=np.float64),
@@ -88,6 +89,7 @@ def _reduce_starting_population(
     population_size: int,
     bounds,
 ) -> np.ndarray:
+    """将起始配置裁剪到种群大小；超出时用算法存活选择，不足时随机补齐。"""
     if not starting_individuals:
         return _build_random_sampling(bounds, population_size)
 
@@ -131,6 +133,7 @@ def _evaluate_starting_individuals(
     n_obj: int,
     has_constraints: bool,
 ) -> list[dict[str, Any]]:
+    """异步评估所有起始配置，返回用于初始化种群的精简结果列表。"""
     if not starting_individuals:
         return []
     max_pending = max(
@@ -224,6 +227,7 @@ def _resolve_pymoo_algorithm_name(config: dict[str, Any], *, n_obj: int | None =
 
 
 def _resolve_pymoo_shared(config: dict[str, Any]) -> dict[str, Any]:
+    """解析 pymoo 共享算子参数（交叉/变异 eta、概率等），支持旧版配置键降级。"""
     optimize_cfg = config["optimize"]
     pymoo_cfg = optimize_cfg.get("pymoo", {})
     shared = pymoo_cfg.get("shared", {}) if isinstance(pymoo_cfg, dict) else {}
@@ -273,6 +277,7 @@ def _resolve_auto_n_partitions(
     target_ref_dirs: int = DEFAULT_AUTO_REF_DIR_TARGET,
     max_partitions: int = 32,
 ) -> int:
+    """自动计算 NSGA-III 参考方向的分区数，使方向数不超过种群大小或目标值。"""
     if n_obj <= 1:
         return 1
     best = 1
@@ -294,6 +299,7 @@ def _resolve_nsga3_ref_dirs(
     n_obj: int,
     population_size: int | None,
 ) -> tuple[np.ndarray, int, str]:
+    """解析 NSGA-III 参考方向配置，返回参考方向矩阵、分区数和解析模式。"""
     if get_reference_directions is None:  # pragma: no cover
         raise ModuleNotFoundError("pymoo is required for the pymoo optimizer backend")
     pymoo_cfg = config["optimize"].get("pymoo", {})
@@ -332,6 +338,7 @@ def _resolve_pymoo_population_plan(
     *,
     n_obj: int,
 ) -> dict[str, Any]:
+    """确定 pymoo 算法选择、种群大小和参考方向计划，处理 auto 模式和边界条件。"""
     algorithm_name = _resolve_pymoo_algorithm_name(config, n_obj=n_obj)
     requested_population_size = _resolve_requested_population_size(config)
 
@@ -383,6 +390,7 @@ def _build_algorithm(
     sig_digits: int | None,
     population_plan: dict[str, Any],
 ):
+    """根据配置构建 NSGA2 或 NSGA3 算法实例，包括交叉、变异和边界修复算子。"""
     if NSGA2 is None:  # pragma: no cover
         raise ModuleNotFoundError("pymoo is required for the pymoo optimizer backend")
 
@@ -473,6 +481,7 @@ def run_backend(
     build_config_fn,
     overrides_fn,
 ) -> dict[str, Any]:
+    """pymoo 后端主入口：构建算法和问题实例、评估起始配置、执行多目标优化。"""
     del evaluator
     del duplicate_counter
     del constraint_fitness_cls

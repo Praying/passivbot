@@ -225,6 +225,7 @@ def _looks_like_bool_token(value: str) -> bool:
 
 
 def _normalize_optional_bool_flag(argv: list[str], flag: str) -> list[str]:
+    """对可选布尔参数进行规范化：当参数后跟非布尔非选项值时，自动插入 =true。"""
     result: list[str] = []
     i = 0
     while i < len(argv):
@@ -245,6 +246,7 @@ def _normalize_optional_bool_flag(argv: list[str], flag: str) -> list[str]:
 
 
 def _maybe_aggregate_backtest_data(hlcvs, timestamps, btc_usd_prices, mss, config):
+    """当 candle_interval_minutes > 1 时，将 1m K线聚合到目标周期。"""
     candle_interval = int(config.get("backtest", {}).get("candle_interval_minutes", 1) or 1)
     if candle_interval <= 1:
         return hlcvs, timestamps, btc_usd_prices
@@ -333,6 +335,7 @@ def _register_exchange_data(
 
 
 class ResultRecorder:
+    """记录优化结果：维护 Pareto 前沿存储，可选写入全量结果二进制文件。"""
     def __init__(
         self,
         *,
@@ -345,6 +348,7 @@ class ResultRecorder:
         pareto_max_size: int = 1000,
         bounds: Optional[Sequence[Bound]] = None,
     ):
+        """初始化结果记录器，创建 Pareto 存储和可选的全量结果文件。"""
         self.store = ParetoStore(
             directory=results_dir,
             sig_digits=sig_digits,
@@ -367,6 +371,7 @@ class ResultRecorder:
         self.scoring_keys = [spec.metric for spec in self.scoring_specs]
 
     def record(self, data: dict) -> None:
+        """记录一条评估结果：写入全量文件（可选）并更新 Pareto 前沿。"""
         if self.write_all and self.results_file:
             if self.compress:
                 if self.prev_data is None or self.counter % 100 == 0:
@@ -435,6 +440,7 @@ def _format_objectives(
     *,
     scoring_keys: Sequence[str] | None = None,
 ) -> str:
+    """将目标值格式化为紧凑的可读字符串，用于日志输出。"""
     if isinstance(values, dict):
         order = list(scoring_keys or values.keys())
         parts = []
@@ -466,6 +472,7 @@ def _build_invalid_candidate_metrics(
     include_stats: bool = True,
     include_suite_metrics: bool = False,
 ) -> tuple[tuple[float, ...], float, dict]:
+    """构造无效候选个体（回测失败）的惩罚性指标和目标值。"""
     specs = extract_objective_specs(scoring_keys)
     raw_objectives = {spec.metric: 0.0 for spec in specs}
     objectives = tuple(to_engine_value(spec, 0.0) for spec in specs)
@@ -502,6 +509,7 @@ def _clear_candidate_metrics(individual) -> None:
 
 
 def _record_individual_result(individual, evaluator_config, overrides_list, recorder):
+    """将个体的回测指标写入结果记录器，包含配置和约束违反信息。"""
     metrics = getattr(individual, "evaluation_metrics", {}) or {}
     suite_metrics = metrics.pop("suite_metrics", None)
     config = individual_to_config(individual, optimizer_overrides, overrides_list, evaluator_config)
@@ -539,6 +547,7 @@ def ea_mu_plus_lambda_stream(
     duplicate_counter,
     pool_state,
 ):
+    """基于 (μ+λ) 策略的流式进化算法主循环，支持异步并行评估和重复检测。"""
     logbook = tools.Logbook()
     logbook.header = "gen", "evals", "min", "max"
 
@@ -548,6 +557,7 @@ def ea_mu_plus_lambda_stream(
     liquidation_prev_total = 0
 
     def evaluate_and_record(individuals):
+        """异步评估一批个体并记录结果，返回已完成评估数。"""
         nonlocal total_evals, liquidation_total
         if not individuals:
             return 0
@@ -559,6 +569,7 @@ def ea_mu_plus_lambda_stream(
         completed = {"count": 0}
 
         def _on_result(idx, payload):
+            """异步评估结果回调：设置适应度、记录指标和破产计数。"""
             nonlocal liquidation_total
             fit_values, penalty, metrics = payload
             ind = individuals[idx]
@@ -620,6 +631,7 @@ def ea_mu_plus_lambda_stream(
     dup_prev_reused = 0
 
     def log_generation(gen, nevals, record):
+        """输出每代进化统计日志：评估数、前沿大小、重复率、破产数等。"""
         nonlocal dup_prev_total, dup_prev_resolved, dup_prev_reused, liquidation_prev_total
         best = record.get("min") if record else None
         front_size = len(halloffame) if halloffame is not None else 0
@@ -663,6 +675,7 @@ def ea_mu_plus_lambda_stream(
         if verbose and record:
             logging.debug("日志记录: %s", " ".join(f"{k}={v}" for k, v in record.items()))
 
+    # 评估种群中尚未计算适应度的个体
     invalid_ind = [ind for ind in population if not ind.fitness.valid]
     if invalid_ind:
         logging.info("正在评估初始种群（%d 个候选个体）...", len(invalid_ind))
@@ -671,10 +684,12 @@ def ea_mu_plus_lambda_stream(
     if halloffame is not None:
         halloffame.update(population)
 
+    # 记录第 0 代统计
     record = stats.compile(population) if stats is not None else {}
     logbook.record(gen=0, nevals=nevals, **record)
     log_generation(0, nevals, record)
 
+    # 种群太小无法交叉/变异则直接返回
     if len(population) < 2:
         logging.warning(
             "种群太小，无法进行交叉/变异（大小=%d）；跳过进化步骤",
@@ -683,10 +698,13 @@ def ea_mu_plus_lambda_stream(
         return population, logbook
 
     for gen in range(1, ngen + 1):
+        # 生成子代：通过交叉和变异
         offspring = algorithms.varOr(population, toolbox, lambda_, cxpb, mutpb)
+        # 只评估未计算过适应度的个体
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
         nevals = evaluate_and_record(invalid_ind)
 
+        # 环境选择：从父代+子代中选择最优的 mu 个
         population[:] = toolbox.select(population + offspring, mu)
 
         if halloffame is not None:
@@ -725,6 +743,7 @@ def config_to_individual(
     key_paths=None,
     optimization_shape: OptimizationShape | None = None,
 ):
+    """从配置字典提取参数值并转换为优化个体向量，同时施加边界约束。"""
     if optimization_shape is not None:
         bounds = optimization_shape.bounds
         if sig_digits is None:
@@ -756,6 +775,7 @@ def validate_array(arr, name, allow_nan=True):
 
 
 class Evaluator:
+    """优化评估器：执行回测、计算适应度、管理重复检测和共享内存数据。"""
     def __init__(
         self,
         hlcvs_specs,
@@ -767,6 +787,7 @@ class Evaluator:
         timestamps=None,
         shared_array_manager: SharedArrayManager | None = None,
     ):
+        """初始化评估器：绑定共享内存数据、构建优化形状和约束检查。"""
         logging.debug("正在初始化 Evaluator...")
         self.hlcvs_specs = hlcvs_specs
         self.btc_usd_specs = btc_usd_specs
@@ -817,6 +838,7 @@ class Evaluator:
                 self.shared_btc_np[exchange] = attachment.array
 
     def perturb_step_digits(self, individual, change_chance=0.5):
+        """按有效数字步长扰动个体参数，保持精度一致性。"""
         perturbed = []
         for i, val in enumerate(individual):
             if np.random.random() < change_chance:  # x% 概率保持不变
@@ -888,6 +910,7 @@ class Evaluator:
         return perturbed
 
     def perturb_gaussian(self, individual, scale=0.01):
+        """以高斯分布扰动参数，步进参数按步数偏移。"""
         perturbed = []
         for i, val in enumerate(individual):
             bound = self.bounds[i]
@@ -915,6 +938,7 @@ class Evaluator:
         return perturbed
 
     def evaluate(self, individual, overrides_list):
+        """评估单个个体：施加边界、检测重复、执行回测并计算适应度。"""
         individual[:] = enforce_bounds(individual, self.bounds, self.sig_digits)
         config = individual_to_config(
             individual,
@@ -924,6 +948,7 @@ class Evaluator:
             key_paths=self.key_paths,
         )
         individual_hash = calc_hash(individual)
+        # 重复检测：如果个体已评估过，尝试扰动产生新个体
         if self.use_duplicate_guard:
             if individual_hash in self.seen_hashes:
                 existing_entry = self.seen_hashes[individual_hash]
@@ -944,6 +969,7 @@ class Evaluator:
                     perturbed = perturb_fn(individual)
                     perturbed = enforce_bounds(perturbed, self.bounds, self.sig_digits)
                     new_hash = calc_hash(perturbed)
+                    # 找到未见过的新个体，替换并继续评估
                     if new_hash not in self.seen_hashes:
                         individual[:] = perturbed
                         self.seen_hashes[new_hash] = None
@@ -957,6 +983,7 @@ class Evaluator:
                         self.duplicate_counter["resolved"] += 1
                         break
                 else:
+                    # 所有扰动仍重复，复用已有结果
                     if existing_score is not None:
                         self.duplicate_counter["reused"] += 1
                         return tuple(existing_score), existing_penalty, None
@@ -964,6 +991,7 @@ class Evaluator:
                 self.seen_hashes[individual_hash] = None
         analyses = {}
         liquidated = False
+        # 对每个交易所执行回测
         for exchange in self.exchanges:
             self._ensure_attached(exchange)
             payload = build_backtest_payload(
@@ -978,6 +1006,7 @@ class Evaluator:
             try:
                 fills, equities_array, analysis = execute_backtest(payload, config)
             except BaseException as exc:
+                # 可恢复的回测错误：标记为无效候选并返回惩罚值
                 if not _is_recoverable_backtest_candidate_error(exc):
                     raise
                 error = f"{exc.__class__.__name__}: {exc}"
@@ -1031,6 +1060,7 @@ class Evaluator:
         )
 
     def calc_fitness(self, analyses_combined, *, return_raw_objectives: bool = False):
+        """根据评分规格计算适应度值，应用约束违反惩罚。"""
         per_objective_modifier = [0.0] * len(self.scoring_specs)
         global_modifier = 0.0
         for check in self.limit_checks:
@@ -1091,6 +1121,7 @@ class Evaluator:
 
 
 class SuiteEvaluator:
+    """多场景评估器：在不同回测场景上评估个体，聚合指标后计算适应度。"""
     def __init__(
         self,
         base_evaluator: Evaluator,
@@ -1177,6 +1208,7 @@ class SuiteEvaluator:
                 ctx.shared_btc_np[exchange] = attachment.array
 
     def evaluate(self, individual, overrides_list):
+        """在所有场景上评估个体，聚合多场景指标后计算适应度。"""
         individual[:] = enforce_bounds(individual, self.base.bounds, self.base.sig_digits)
         config = individual_to_config(
             individual,
@@ -1233,7 +1265,9 @@ class SuiteEvaluator:
 
         from tools.iterative_backtester import combine_analyses as combine
 
+        # 遍历所有场景，执行回测并收集指标
         for ctx in self.contexts:
+            # 从主配置克隆并应用场景特定参数
             scenario_config = deepcopy(config)
             scenario_config["backtest"]["start_date"] = ctx.config["backtest"]["start_date"]
             scenario_config["backtest"]["end_date"] = ctx.config["backtest"]["end_date"]
@@ -1260,6 +1294,7 @@ class SuiteEvaluator:
             scenario_config["disable_plotting"] = True
 
             analyses = {}
+            # 对每个交易所执行回测
             for exchange in ctx.exchanges:
                 # 获取数据数组 - 来自惰性切片或缓存的 SharedMemory
                 if self._uses_lazy_slicing(ctx, exchange):
@@ -1387,6 +1422,7 @@ class SuiteEvaluator:
 
 
 def add_extra_options(parser, *, help_all: bool):
+    """向参数解析器注册优化器额外选项（起始配置、微调参数等）。"""
     parser.add_argument(
         "-t",
         "--start",
@@ -1416,6 +1452,7 @@ def add_extra_options(parser, *, help_all: bool):
 
 
 def _resolve_cli_limits_override(args, existing_limits=None) -> list[dict] | None:
+    """从命令行参数解析优化限制覆盖，合并或替换现有限制列表。"""
     raw_limits_payload = getattr(args, "optimize.limits", None)
     raw_limit_entries = list(getattr(args, "limit_entries", []) or [])
     clear_limits = bool(getattr(args, "clear_limits", False))
@@ -1438,9 +1475,11 @@ def apply_fine_tune_bounds(
     fine_tune_params: list[str],
     cli_overridden_bounds: set[str],
 ) -> None:
+    """根据微调参数选择器，将非微调参数的边界固定为其当前配置值。"""
     bounds = config.get("optimize", {}).get("bounds", {})
 
     def _resolve_bound_selectors(selectors, label: str) -> set[str]:
+        """将模糊选择器解析为匹配的优化边界键集合。"""
         resolved: set[str] = set()
         selectors_sorted = sorted(
             {str(selector).strip() for selector in selectors if str(selector).strip()}
@@ -1479,6 +1518,7 @@ def apply_fine_tune_bounds(
         return ("bot", pside, param)
 
     def _fix_bound_to_current_value(bound_key: str) -> bool:
+        """将指定边界固定为配置中的当前值（low=high），使其不被优化。"""
         path = _resolve_bound_key_path(bound_key)
         if path is None:
             logging.warning("微调边界: 无法解析键 '%s'，跳过", bound_key)
@@ -1501,6 +1541,7 @@ def apply_fine_tune_bounds(
         return True
 
     # 首先，规范化所有 CLI 覆盖，使单值表示固定边界
+    # (将 [val] 或 val 统一为 [val, val])
     for key in cli_overridden_bounds:
         if key not in bounds:
             continue
@@ -1521,8 +1562,10 @@ def apply_fine_tune_bounds(
         "optimize.fixed_params",
     )
 
+    # 合并配置中指定的固定参数和非微调参数
     effective_fixed_params = set(config_fixed_params)
     if fine_tune_params:
+        # 如果指定了微调参数，则不在微调集合中的参数全部固定
         effective_fixed_params.update(key for key in bounds if key not in fine_tune_set)
 
     if not effective_fixed_params:
@@ -1543,6 +1586,7 @@ def extract_configs(path):
 
 
 def iter_extract_configs(path):
+    """从文件路径迭代提取起始配置，支持 JSON、Pareto 文本和目录递归。"""
     if not os.path.exists(path):
         return
     if path.endswith("_all_results.bin"):
@@ -1566,6 +1610,7 @@ def iter_extract_configs(path):
 
 
 def _extract_starting_config(raw_config, *, source: str = "<memory>"):
+    """从原始配置中提取机器人配置、live 策略和优化边界，供优化器种子使用。"""
     if not isinstance(raw_config, dict):
         raise TypeError(f"expected dict, got {type(raw_config).__name__}")
     current = raw_config
@@ -1593,6 +1638,7 @@ def _extract_starting_config(raw_config, *, source: str = "<memory>"):
 
 
 def _build_starting_seed_config(cfg):
+    """从起始配置构建完整的种子配置，合并到模板配置中。"""
     if not isinstance(cfg, dict):
         raise TypeError(f"expected dict, got {type(cfg).__name__}")
     if all(pside in cfg and isinstance(cfg.get(pside), dict) for pside in ("long", "short")):
@@ -1649,6 +1695,7 @@ def configs_to_individuals_streaming(
     sig_digits=0,
     optimization_shape: OptimizationShape | None = None,
 ):
+    """流式将配置列表转换为去重的优化个体集合，返回个体列表和原始配置数。"""
     inds = set()
     raw_count = 0
     for cfg in cfgs:
@@ -1668,6 +1715,7 @@ def configs_to_individuals_streaming(
 
 
 async def main():
+    """优化器主入口：解析配置、初始化数据、构建评估器并启动优化后端。"""
     raw_argv = sys.argv[1:]
     help_all = help_all_requested(raw_argv)
     parser = build_command_parser(
@@ -1836,7 +1884,7 @@ async def main():
     if scenario_filter:
         labels = [label.strip() for label in scenario_filter.split(",") if label.strip()]
         suite_cfg["scenarios"] = filter_scenarios_by_label(suite_cfg.get("scenarios", []), labels)
-        suite_cfg["enabled"] = True  # --scenarios implies suite mode
+        suite_cfg["enabled"] = True  # --scenarios 隐含 suite 模式
         logging.info("已过滤到 %d 个场景: %s", len(labels), ", ".join(labels))
 
     # --suite CLI 参数覆盖配置（在 --scenarios 之后应用，因此显式 --suite n 优先）
@@ -1967,6 +2015,7 @@ async def main():
                         array_manager=array_manager,
                     )
         exchanges = backtest_exchanges
+        # 构建结果目录名称
         exchanges_fname = "combined" if len(backtest_exchanges) > 1 else "_".join(exchanges)
         date_fname = ts_to_date(utc_ms())[:19].replace(":", "_")
         coins = sorted(set([x for y in config["backtest"]["coins"].values() for x in y]))
@@ -2015,11 +2064,13 @@ async def main():
         )
 
         if suite_enabled:
+            # Suite 模式：包装为多场景评估器
             evaluator_for_pool = SuiteEvaluator(evaluator, scenario_contexts, aggregate_cfg)
         else:
             evaluator_for_pool = evaluator
 
         logging.info(f"评估器初始化完成...")
+        # 创建结果记录器
         flush_interval = 60  # 或从配置中读取
         sig_digits = config["optimize"]["round_to_n_significant_digits"]
         pareto_max = config["optimize"].get("pareto_max_size", DEFAULT_PARETO_MAX_SIZE)
@@ -2033,6 +2084,7 @@ async def main():
             pareto_max_size=pareto_max,
             bounds=evaluator.bounds,
         )
+        # 选择并运行优化后端
         backend_name = config["optimize"]["backend"]
         logging.info("已选择优化器后端: %s", backend_name)
         backend_runner = get_backend_runner(backend_name)

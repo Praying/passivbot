@@ -56,6 +56,7 @@ DEPRECATED_OPTIMIZE_BOUND_ALIASES = {
 
 
 def _validate_standard_optimize_bound_target(bound_key: str, bot_config) -> None:
+    """验证标准格式的优化边界键是否映射到 bot 配置中的有效标量数值。"""
     if "_" not in bound_key:
         return
     pside, key = bound_key.split("_", 1)
@@ -74,6 +75,7 @@ def _validate_standard_optimize_bound_target(bound_key: str, bot_config) -> None
 
 
 def validate_optimize_bounds_against_bot_config(bot_config, optimize_bounds) -> None:
+    """逐一校验 optimize.bounds 中的键在 bot 配置中有效，并对特殊键执行额外约束检查。"""
     if not isinstance(optimize_bounds, dict):
         return
     for bound_key in optimize_bounds:
@@ -102,6 +104,7 @@ def validate_optimize_bounds_against_bot_config(bot_config, optimize_bounds) -> 
 
 
 def get_optimization_key_paths(config) -> List[Tuple[str, Tuple[str, ...]]]:
+    """从配置中提取优化参数的键路径列表，支持显式 bounds 和自动推导两种模式。"""
     key_paths: List[Tuple[str, Tuple[str, ...]]] = []
     bot_config = config.get("bot")
     if bot_config is None:
