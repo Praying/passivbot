@@ -7,6 +7,7 @@ import passivbot_rust as pbr
 
 
 def dominates(p0, p1):
+    """判断 p0 是否 Pareto 支配 p1（所有目标越小越好）。"""
     better_in_one = False
     for a, b in zip(p0, p1):
         if a < b:
@@ -17,6 +18,7 @@ def dominates(p0, p1):
 
 
 def dominates_d(x, y, higher_is_better):
+    """带方向标记的 Pareto 支配判断。"""
     better_in_one = False
     for xi, yi, hib in zip(x, y, higher_is_better):
         if hib:
@@ -33,6 +35,7 @@ def dominates_d(x, y, higher_is_better):
 
 
 def update_pareto_front(new_index, new_obj, current_front, objectives_dict, higher_is_better):
+    """将新候选加入 Pareto 前沿，移除被支配的成员。"""
     for idx in current_front:
         if dominates_d(objectives_dict[idx], new_obj, higher_is_better):
             return current_front
@@ -62,7 +65,7 @@ def calc_normalized_dist(point, ideal, w0_min, w0_max, w1_min, w1_max):
 
 
 def format_distance(dist: float) -> str:
-    """Format distance to fixed-width string for lexicographical sorting."""
+    """将距离格式化为固定宽度字符串，用于字典序排序。"""
     return f"{dist:08.4f}"
 
 
@@ -82,7 +85,7 @@ def gprint(verbose):
 
 
 def generate_diffs(dictlist):
-    """Yield diffs between consecutive dicts in dictlist, supporting nested dicts."""
+    """生成相邻字典之间的增量差异，支持嵌套字典。"""
 
     def dict_diff(d1, d2):
         diff = {}
@@ -107,7 +110,7 @@ def generate_diffs(dictlist):
 
 
 def deep_updated(base, diff):
-    out = {}  # build a fresh dict
+    out = {}  # 构建新字典
     keys = base.keys() | diff.keys()
     for k in keys:
         if k in diff:
@@ -122,7 +125,7 @@ def deep_updated(base, diff):
 
 
 def generate_incremental_diff(prev, current):
-    """Return the diff between two dicts."""
+    """返回两个字典之间的增量差异。"""
 
     def dict_diff(d1, d2):
         diff = {}
@@ -141,7 +144,7 @@ def generate_incremental_diff(prev, current):
 
 
 def apply_diffs(difflist, base=None):
-    """Yield full dicts by applying diffs, supporting nested dicts."""
+    """依次应用增量差异，还原完整字典，支持嵌套字典。"""
     current = base or {}
     for d in difflist:
         current = deep_updated(current, d)
@@ -150,8 +153,8 @@ def apply_diffs(difflist, base=None):
 
 def load_results(filepath):
     """
-    Generator that yields each full config by applying diffs.
-    No need to distinguish between full configs and diffs.
+    生成器：通过应用增量差异还原每条完整配置。
+    无需区分完整配置和增量差异。
     """
     with open(filepath, "rb") as f:
         unpacker = msgpack.Unpacker(f, raw=False)
@@ -201,12 +204,11 @@ def round_floats_step(obj: Any, step: float) -> Any:
 
 def quantize_floats(obj: Any, sig_digits: int = None, step: float = None) -> Any:
     """
-    if step is given, round by step
-    else, round by sig_digits
+    量化浮点数：若指定 step 则按步长取整，否则按有效位数取整。
     """
     if step is None:
         if sig_digits is None:
-            raise Exception("must provide sig_digits or step")
+            raise Exception("必须提供 sig_digits 或 step")
         return round_floats_sig_digits(obj, sig_digits)
     else:
         return round_floats_step(obj, step)
@@ -214,17 +216,18 @@ def quantize_floats(obj: Any, sig_digits: int = None, step: float = None) -> Any
 
 def enforce_bounds_v2(obj: Any, bounds: Any = None, sig_digits: int = None):
     """
-    apply floor/ceil capping and rounding to each element in obj
-    obj may be a bot config:
-        - take bounds from config.optimize.bounds
-        - apply to config.bot
-    obj may be a list of floats:
-        - assert len(obj) == len(bounds)
-        - obj is on form [float]
-        - bounds is on form [[float]]
-        - each element of bounds must be len==2 or len==3
-        - bound[0] is lower bound; bound[1] is upper bound
-        - if len bound element == 3, consider bound[2] as step
-        - if len bound element == 2, use sig_digits (raise if missing)
+    对 obj 中每个元素施加上下限截断和取整。
+
+    obj 可以为 bot 配置：
+        - 从 config.optimize.bounds 取边界
+        - 应用到 config.bot
+    obj 可以为浮点数列表：
+        - 要求 len(obj) == len(bounds)
+        - obj 格式为 [float]
+        - bounds 格式为 [[float]]
+        - 每个 bounds 元素长度为 2 或 3
+        - bound[0] 为下界，bound[1] 为上界
+        - 若长度为 3，bound[2] 为步长
+        - 若长度为 2，使用 sig_digits（缺失则报错）
     """
     pass

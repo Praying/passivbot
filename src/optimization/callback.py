@@ -8,6 +8,7 @@ from pymoo.core.callback import Callback
 from config_utils import strip_config_metadata
 
 
+# 回调写入前需要剥离的元数据键
 CALLBACK_METADATA_KEYS = (
     "_raw",
     "_raw_effective",
@@ -26,6 +27,7 @@ def build_pymoo_record_entry(
     overrides_fn,
     overrides_list: Sequence[str] | None = None,
 ) -> dict:
+    """构建一条 pymoo 优化记录条目，包含完整配置与指标。"""
     if isinstance(vector, np.ndarray):
         vector = vector.tolist()
     metrics = dict(metrics or {})
@@ -48,6 +50,7 @@ def build_pymoo_record_entry(
 
 
 class PymooRecorderCallback(Callback):
+    """pymoo 回调：将每个批次个体记入优化记录器。"""
     def __init__(
         self,
         *,
@@ -65,6 +68,7 @@ class PymooRecorderCallback(Callback):
         self.overrides_list = list(overrides_list or [])
 
     def _build_entry(self, individual) -> dict:
+        """从个体中提取向量和指标，构建记录条目。"""
         vector = None
         if hasattr(individual, "data") and isinstance(individual.data, dict):
             vector = individual.data.get("evaluation_vector")
@@ -83,6 +87,7 @@ class PymooRecorderCallback(Callback):
         )
 
     def notify(self, algorithm):
+        """当算法生成新批次时，记录每个个体。"""
         batch = getattr(algorithm, "off", None)
         if batch is None:
             batch = getattr(algorithm, "pop", None)

@@ -11,6 +11,7 @@ from config.scoring import extract_objective_specs, from_engine_value
 
 
 class OptimizeOutput(Output):
+    """优化过程终端输出：显示前沿大小、目标值和耗时。"""
     def __init__(self, scoring_keys: Sequence[str]):
         super().__init__()
         self.scoring_specs = extract_objective_specs(scoring_keys)
@@ -24,6 +25,7 @@ class OptimizeOutput(Output):
         self._start_time = time.time()
 
     def update(self, algorithm):
+        """更新各列数值：前沿大小、最佳目标值和已用时间。"""
         super().update(algorithm)
         opt = algorithm.opt
         front_size = len(opt) if opt is not None else 0

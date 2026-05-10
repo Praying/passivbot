@@ -12,12 +12,15 @@ from config.metrics import resolve_metric_value
 
 @dataclass(frozen=True)
 class ParetoPoint:
+    """Pareto 前沿上的一个点：哈希标识、目标值向量和约束违反度。"""
+
     hash_id: str
     objectives: Tuple[float, ...]
     violation: float = 0.0
 
 
 def detect_latest_pareto_dir(root: str | Path = "optimize_results") -> Optional[Path]:
+    """检测最新的包含 Pareto JSON 文件的优化结果目录。"""
     base = Path(root).expanduser()
     if not base.is_dir():
         return None
@@ -35,10 +38,10 @@ def extract_objectives(
     entry: Dict[str, Any], scoring_keys: Optional[Sequence[str]] = None
 ) -> Tuple[Tuple[float, ...], List[str]]:
     """
-    Extract raw objective values from a result entry.
-    Ordered by scoring keys/specs if provided, otherwise by sorted named keys.
-    Legacy w_i engine-space payloads are converted back to raw values when scoring
-    metadata is available.
+    从结果条目中提取原始目标值。
+
+    若提供了 scoring_keys/specs 则按其顺序，否则按排序后的命名键。
+    旧式 w_i 引擎空间载荷在有评分元数据时被转换回原始值。
     """
     metrics_block = entry.get("metrics") or {}
     objectives_map = metrics_block.get("objectives", metrics_block) or {}
@@ -80,8 +83,7 @@ def dominates_with_violation(
     tol: float = 1e-12,
 ) -> bool:
     """
-    Constraint-aware dominance: lower violation wins ties; otherwise standard Pareto
-    dominance using objective directions when provided.
+    带约束的 Pareto 支配判断：违反度低者优先；否则按目标方向执行标准支配判断。
     """
     if np.isclose(viol_a, viol_b, atol=tol, rtol=0.0):
         if objective_specs:
@@ -98,7 +100,7 @@ def dominates_with_violation(
 
 def crowding_distances(values: np.ndarray) -> np.ndarray:
     """
-    Compute crowding distances for an array of objective vectors (lower is more crowded).
+    计算目标向量数组的拥挤距离（值越低表示越拥挤）。
     """
     if values.ndim != 2:
         return np.zeros(len(values))
@@ -129,9 +131,9 @@ def prune_front_with_extremes(
     max_size: int,
 ) -> List[str]:
     """
-    Determine which members to remove to satisfy max_size while always
-    retaining extremes (min/max) per objective axis.
-    Returns the list of hash_ids to drop.
+    确定需要移除的成员以满足 max_size 限制，
+    同时始终保留每个目标轴的极值（最小/最大）点。
+    返回需要移除的 hash_id 列表。
     """
     if max_size <= 0 or len(front_hashes) <= max_size:
         return []
@@ -146,7 +148,7 @@ def prune_front_with_extremes(
 
     crowding = crowding_distances(arr)
     scored = list(zip(front_hashes, crowding))
-    scored.sort(key=lambda item: item[1])  # lowest crowding removed first
+    scored.sort(key=lambda item: item[1])  # 优先移除拥挤度最低的
 
     to_remove: List[str] = []
     for hash_id, _cd in scored:
@@ -166,12 +168,13 @@ def compute_ideal(
     pct: float = 10,
     objective_specs: Optional[Sequence[ObjectiveSpec]] = None,
 ):
+    """根据指定模式计算理想点（支持 min/weighted/utopian/percentile/midrange/geomedian）。"""
     def _require_specs() -> Sequence[ObjectiveSpec]:
         if not objective_specs:
-            raise ValueError("objective_specs required for goal-aware ideal computation")
+            raise ValueError("目标感知理想点计算需要 objective_specs")
         if len(objective_specs) != values_matrix.shape[1]:
             raise ValueError(
-                "objective_specs length must match objective column count "
+                "objective_specs 长度必须与目标列数匹配 "
                 f"({len(objective_specs)} != {values_matrix.shape[1]})"
             )
         return objective_specs
@@ -180,16 +183,16 @@ def compute_ideal(
         specs = _require_specs()
         mins = values_matrix.min(axis=0)
         maxs = values_matrix.max(axis=0)
-        if mode in ["m", "min"]:
+        if mode in ["m", "min"]:  # 按目标方向取各轴最优
             return np.array(
                 [
                     maxs[i] if specs[i].goal == "max" else mins[i]
                     for i in range(values_matrix.shape[1])
                 ]
             )
-        if mode in ["w", "weighted"]:
+        if mode in ["w", "weighted"]:  # 加权偏移
             if weights is None:
-                raise ValueError("weights required")
+                raise ValueError("需要 weights")
             ideal = np.array(
                 [
                     maxs[i] if specs[i].goal == "max" else mins[i]
@@ -203,7 +206,7 @@ def compute_ideal(
                 ]
             )
             return ideal + weights * (anti_ideal - ideal)
-        if mode in ["u", "utopian"]:
+        if mode in ["u", "utopian"]:  # utopian 点：理想点偏移 eps
             ranges = maxs - mins
             return np.array(
                 [
@@ -211,7 +214,7 @@ def compute_ideal(
                     for i in range(values_matrix.shape[1])
                 ]
             )
-        if mode in ["p", "percentile"]:
+        if mode in ["p", "percentile"]:  # 百分位理想点
             return np.array(
                 [
                     np.percentile(values_matrix[:, i], 100.0 - pct)
@@ -220,32 +223,32 @@ def compute_ideal(
                     for i in range(values_matrix.shape[1])
                 ]
             )
-        if mode in ["mi", "midrange"]:
+        if mode in ["mi", "midrange"]:  # 中点
             return 0.5 * (mins + maxs)
 
-    # values_matrix:  shape (n_points, n_obj)
+    # 无 objective_specs 时的简易分支
     if mode in ["m", "min"]:
         return values_matrix.min(axis=0)
 
-    if mode in ["w", "weighted"]:
+    if mode in ["w", "weighted"]:  # 加权偏移（无 specs 时）
         if weights is None:
-            raise ValueError("weights required")
+            raise ValueError("需要 weights")
         vmin = values_matrix.min(axis=0)
         vmax = values_matrix.max(axis=0)
         return vmin + weights * (vmax - vmin)
 
-    if mode in ["u", "utopian"]:
+    if mode in ["u", "utopian"]:  # utopian 点偏移
         mins = values_matrix.min(axis=0)
         ranges = values_matrix.ptp(axis=0)
-        return mins - eps * ranges  # ε-shift
+        return mins - eps * ranges
 
-    if mode in ["p", "percentile"]:
+    if mode in ["p", "percentile"]:  # 百分位（无 specs 时）
         return np.percentile(values_matrix, pct, axis=0)
 
-    if mode in ["mi", "midrange"]:
+    if mode in ["mi", "midrange"]:  # 中点（无 specs 时）
         return 0.5 * (values_matrix.min(axis=0) + values_matrix.max(axis=0))
 
-    if mode in ["g", "geomedian"]:
+    if mode in ["g", "geomedian"]:  # 几何中位数迭代
         z = values_matrix.mean(axis=0)
         for _ in range(10):
             d = np.linalg.norm(values_matrix - z, axis=1)
@@ -256,4 +259,4 @@ def compute_ideal(
             z = z_new
         return z
 
-    raise ValueError(f"unknown mode {mode}")
+    raise ValueError(f"未知模式 {mode}")

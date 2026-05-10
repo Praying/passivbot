@@ -50,17 +50,19 @@ METHOD_ALIASES = {
 
 
 METHOD_DESCRIPTIONS = {
-    "knee": "Approximate knee-point chooser. Picks a balanced compromise on the Pareto front.",
-    "reference": "Reference-point chooser. Picks the candidate closest to user targets.",
-    "ideal": "Distance-to-ideal chooser. Picks the candidate closest to the observed ideal point.",
-    "utility": "Weighted utility chooser. Picks the highest weighted normalized utility.",
-    "lexicographic": "Strict priority chooser. Sorts by objective priority order.",
-    "outranking": "Simplified PROMETHEE-style chooser based on pairwise net preference flow.",
+    "knee": "近似膝点选择器。在 Pareto 前沿上挑选均衡折中解。",
+    "reference": "参考点选择器。选择最接近用户目标的候选。",
+    "ideal": "理想点距离选择器。选择最接近观测理想点的候选。",
+    "utility": "加权效用选择器。选择加权归一化效用最高的候选。",
+    "lexicographic": "严格优先级选择器。按目标优先级排序。",
+    "outranking": "简化 PROMETHEE 风格选择器，基于成对净偏好流。",
 }
 
 
 @dataclass(frozen=True)
 class ParetoCandidate:
+    """Pareto 候选：包含文件路径、原始条目、目标值、展平统计值和聚合值。"""
+
     path: Path
     entry: Dict[str, Any]
     objectives: Dict[str, float]
@@ -70,6 +72,8 @@ class ParetoCandidate:
 
 @dataclass(frozen=True)
 class SelectionResult:
+    """选择结果：被选中的候选、使用的方法、得分和详细信息。"""
+
     candidate: ParetoCandidate
     method: str
     score: float
@@ -101,24 +105,25 @@ def _method_explanation(method: str) -> str:
 
 
 def _selection_rationale_lines(result: SelectionResult) -> List[str]:
+    """返回选中该候选的原因说明。"""
     method = result.method
     if method == "knee":
         mode = str(result.details.get("knee_mode", "")).strip()
         if mode == "hyperplane_distance":
-            return ["Why this winner: strongest balanced compromise away from the extreme-anchor hyperplane."]
+            return ["选中原因：远离极端锚点超平面的最强均衡折中。"]
         if mode == "maximin_fallback":
-            return ["Why this winner: strongest worst-objective utility among retained candidates."]
-        return ["Why this winner: only retained candidate."]
+            return ["选中原因：在保留候选中最差目标效用最强。"]
+        return ["选中原因：唯一保留候选。"]
     if method == "reference":
-        return ["Why this winner: smallest weighted distance to the supplied target utilities."]
+        return ["选中原因：与指定目标效用的加权距离最小。"]
     if method == "ideal":
-        return ["Why this winner: smallest weighted distance to the observed ideal point on this front."]
+        return ["选中原因：与该前沿观测理想点的加权距离最小。"]
     if method == "utility":
-        return ["Why this winner: highest weighted normalized utility after objective scaling."]
+        return ["选中原因：目标缩放后加权归一化效用最高。"]
     if method == "lexicographic":
-        return ["Why this winner: best on the first priority objective, then tie-broken by the next priorities."]
+        return ["选中原因：按第一优先目标最优，同级按后续优先目标打破。"]
     if method == "outranking":
-        return ["Why this winner: strongest net pairwise preference flow against the other retained candidates."]
+        return ["选中原因：对其余保留候选的成对净偏好流最强。"]
     return []
 
 
@@ -131,6 +136,7 @@ def _summarize_anchor_files(anchor_files: Sequence[str], *, preview: int = 4) ->
 
 
 def _abbreviate_path(path: Path | str, *, max_len: int = 100) -> str:
+    """缩写路径以适应最大长度，保留首尾可用信息。"""
     value = str(path)
     home = str(Path.home())
     if value.startswith(home):
@@ -203,6 +209,7 @@ def _render_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> List
 
 
 def _format_limit_entry(entry: Mapping[str, Any]) -> str:
+    """将限制条件条目格式化为可读字符串。"""
     metric = str(entry.get("metric", "")).strip()
     mode = str(entry.get("penalize_if", "")).strip().lower()
     value = entry.get("value")
@@ -243,20 +250,22 @@ def _format_metric_value(value: Any) -> str:
 
 
 def _score_label_and_value(result: SelectionResult) -> tuple[str, str]:
+    """返回选择结果的得分标签和格式化值。"""
     if result.method in {"ideal", "reference"}:
-        return "Distance", f"{abs(float(result.score)):.6f}"
+        return "距离", f"{abs(float(result.score)):.6f}"
     if result.method == "utility":
-        return "Utility score", f"{float(result.score):.6f}"
+        return "效用得分", f"{float(result.score):.6f}"
     if result.method == "outranking":
-        return "Net flow", f"{float(result.score):.6f}"
+        return "净流", f"{float(result.score):.6f}"
     if result.method == "lexicographic":
-        return "Lexicographic score", f"{float(result.score):.6f}"
+        return "字典序得分", f"{float(result.score):.6f}"
     if result.method == "knee":
-        return "Knee score", f"{float(result.score):.6f}"
-    return "Score", f"{float(result.score):.6f}"
+        return "膝点得分", f"{float(result.score):.6f}"
+    return "得分", f"{float(result.score):.6f}"
 
 
 def resolve_pareto_directory(path: str | os.PathLike[str]) -> Path:
+    """解析并验证 Pareto 目录路径。"""
     raw = Path(path).expanduser()
     if raw.is_dir():
         if raw.name == "pareto":
@@ -266,9 +275,9 @@ def resolve_pareto_directory(path: str | os.PathLike[str]) -> Path:
         else:
             pareto_dir = raw
     else:
-        raise FileNotFoundError(f"Pareto path not found: {raw}")
+        raise FileNotFoundError(f"Pareto 路径未找到: {raw}")
     if not pareto_dir.is_dir():
-        raise FileNotFoundError(f"Pareto directory not found: {pareto_dir}")
+        raise FileNotFoundError(f"Pareto 目录未找到: {pareto_dir}")
     return pareto_dir.resolve()
 
 
@@ -304,27 +313,29 @@ def _resolve_candidate_metric_value(candidate: ParetoCandidate, metric: str) -> 
 
 
 def parse_method_name(raw_method: str) -> str:
+    """解析选择方法名称，支持别名缩写。"""
     method = METHOD_ALIASES.get(str(raw_method or "").strip().lower())
     if method is None:
         allowed = ", ".join(sorted(dict.fromkeys(METHOD_ALIASES.values())))
-        raise ValueError(f"Unknown method {raw_method!r}; expected one of: {allowed}")
+        raise ValueError(f"未知方法 {raw_method!r}；应为以下之一: {allowed}")
     return method
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """构建命令行参数解析器。"""
     parser = argparse.ArgumentParser(
         prog="passivbot tool pareto",
-        description="Select a single candidate from a Pareto front directory.",
+        description="从 Pareto 前沿目录中选择单个候选。",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=(
-            "Methods:\n"
-            "  knee         Approximate balanced compromise selector.\n"
-            "  reference    Closest to user targets (--target metric=value).\n"
-            "  ideal        Closest to the observed ideal point.\n"
-            "  utility      Highest weighted normalized utility (--weight metric=value).\n"
-            "  lexicographic Strict priority order (--priority metric_a,metric_b,...).\n"
-            "  outranking   Simplified PROMETHEE-style net flow selector.\n\n"
-            "Limits are applied before selection. Repeat -l/--limit for multiple keep-conditions:\n"
+            "方法:\n"
+            "  knee          近似均衡折中选择器。\n"
+            "  reference     最接近用户目标（--target metric=value）。\n"
+            "  ideal         最接近观测理想点。\n"
+            "  utility       最高加权归一化效用（--weight metric=value）。\n"
+            "  lexicographic 严格优先级排序（--priority metric_a,metric_b,...）。\n"
+            "  outranking    简化 PROMETHEE 风格净流选择器。\n\n"
+            "限制条件在选择前应用。可重复 -l/--limit 指定多个保留条件:\n"
             "  -l 'adg_strategy_eq>0.0'\n"
             "  -l 'drawdown_worst_strategy_eq<=0.35'\n"
             "  --limits '[{\"metric\":\"drawdown_worst_strategy_eq\",\"penalize_if\":\">\",\"value\":0.35}]'\n"
@@ -335,8 +346,8 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         type=str,
         help=(
-            "Pareto directory or optimization run directory. Defaults to the "
-            "lexicographically latest optimize_results/<run>/pareto with JSON candidates."
+            "Pareto 目录或优化运行目录。默认使用 optimize_results/<run>/pareto 中\n"
+            "按字典序最新且包含 JSON 候选的目录。"
         ),
     )
     parser.add_argument(
@@ -344,7 +355,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--method",
         type=str,
         default="ideal",
-        help="Selection method. Default: ideal.",
+        help="选择方法。默认: ideal。",
     )
     parser.add_argument(
         "-l",
@@ -353,54 +364,54 @@ def build_parser() -> argparse.ArgumentParser:
         dest="limit_entries",
         default=None,
         metavar="SPEC",
-        help="Repeatable keep-condition filter, using optimizer-style CLI syntax.",
+        help="可重复的保留条件过滤器，使用优化器 CLI 语法。",
     )
     parser.add_argument(
         "--limits",
         dest="limits_payload",
         default=None,
         metavar="JSON_OR_HJSON",
-        help="Whole-list limit payload using canonical optimize.limits schema.",
+        help="完整的限制列表，使用规范 optimize.limits schema。",
     )
     parser.add_argument(
         "-o",
         "--objectives",
         type=str,
         default=None,
-        help="Optional comma-separated subset of metrics to consider. May include stored non-scoring metrics with known min/max direction.",
+        help="可选的逗号分隔指标子集。可包含已知 min/max 方向的存储非评分指标。",
     )
     parser.add_argument(
         "--weight",
         action="append",
         default=None,
         metavar="METRIC=VALUE",
-        help="Repeatable method weight. Used by utility, ideal, reference, and outranking.",
+        help="可重复的方法权重。用于 utility、ideal、reference 和 outranking。",
     )
     parser.add_argument(
         "--target",
         action="append",
         default=None,
         metavar="METRIC=VALUE",
-        help="Repeatable reference-point target. Required for method=reference.",
+        help="可重复的参考点目标。method=reference 时必需。",
     )
     parser.add_argument(
         "--priority",
         type=str,
         default=None,
-        help="Comma-separated objective priority order for method=lexicographic.",
+        help="逗号分隔的目标优先级顺序，用于 method=lexicographic。",
     )
     parser.add_argument(
         "--show-top",
         type=int,
         default=1,
         metavar="N",
-        help="Show the top N ranked candidates instead of only the winner. Default: 1.",
+        help="显示排名前 N 的候选而非仅获胜者。默认: 1。",
     )
     parser.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
-        help="Emit machine-readable JSON instead of human-readable text.",
+        help="输出机器可读的 JSON 而非人类可读的文本。",
     )
     return parser
 
@@ -409,6 +420,7 @@ def _extract_suite_metrics(
     entry: Mapping[str, Any],
     aggregate_cfg: Mapping[str, Any] | None = None,
 ) -> tuple[Dict[str, float], Dict[str, float]]:
+    """从条目中提取套件指标，返回展平统计值和聚合值。"""
     aggregated_values: Dict[str, float] = {}
     stats_flat: Dict[str, float] = {}
     suite_metrics = entry.get("suite_metrics")
@@ -459,6 +471,7 @@ def _extract_suite_metrics(
 
 
 def _extract_objectives(entry: Mapping[str, Any]) -> Dict[str, float]:
+    """从条目中提取目标值，优先使用度量目标载荷，回退到统计值。"""
     scoring_specs = extract_objective_specs(entry)
     metrics_block = entry.get("metrics") or {}
     if not isinstance(metrics_block, Mapping):
@@ -501,10 +514,11 @@ def _extract_objectives(entry: Mapping[str, Any]) -> Dict[str, float]:
 
 
 def load_candidates(path: str | os.PathLike[str]) -> tuple[Path, List[ParetoCandidate], List[ObjectiveSpec]]:
+    """从 Pareto 目录加载所有候选条目及其目标规格。"""
     pareto_dir = resolve_pareto_directory(path)
     json_paths = sorted(pareto_dir.glob("*.json"))
     if not json_paths:
-        raise ValueError(f"No Pareto JSON files found in {pareto_dir}")
+        raise ValueError(f"在 {pareto_dir} 中未找到 Pareto JSON 文件")
 
     candidates: List[ParetoCandidate] = []
     baseline_specs: Optional[List[ObjectiveSpec]] = None
@@ -520,7 +534,7 @@ def load_candidates(path: str | os.PathLike[str]) -> tuple[Path, List[ParetoCand
             baseline_metrics = metrics
         elif metrics != baseline_metrics:
             raise ValueError(
-                f"Inconsistent optimize.scoring in {entry_path}; expected {baseline_metrics}, got {metrics}"
+                f"optimize.scoring 不一致（{entry_path}）；期望 {baseline_metrics}，实际 {metrics}"
             )
 
         metrics_block = entry.get("metrics") or {}
@@ -535,7 +549,7 @@ def load_candidates(path: str | os.PathLike[str]) -> tuple[Path, List[ParetoCand
 
         missing = [metric for metric in baseline_metrics or [] if metric not in objectives]
         if missing:
-            raise ValueError(f"Missing objective values for {entry_path}: {missing}")
+            raise ValueError(f"缺少目标值（{entry_path}）: {missing}")
 
         candidates.append(
             ParetoCandidate(
@@ -560,6 +574,7 @@ def _resolve_active_objective_metrics(
     target_map: Optional[Dict[str, float]],
     method: str,
 ) -> List[ObjectiveSpec]:
+    """根据参数解析实际参与选择的目标指标规格。"""
     available_specs = objective_spec_by_metric(scoring_specs)
     available = [spec.metric for spec in scoring_specs]
     if priority_arg:
@@ -591,7 +606,7 @@ def _resolve_active_objective_metrics(
 
     if invalid:
         raise ValueError(
-            f"Unknown or unavailable objective metric(s): {invalid}; available scoring metrics: {available}"
+            f"未知或不可用的目标指标: {invalid}; 可用评分指标: {available}"
         )
     return resolved
 
@@ -600,6 +615,7 @@ def _normalize_objective_matrix(
     candidates: Sequence[ParetoCandidate],
     active_specs: Sequence[ObjectiveSpec],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """将候选目标值归一化为效用矩阵，同时返回最小值和最大值。"""
     active_metrics = [spec.metric for spec in active_specs]
     raw = np.array(
         [
@@ -651,6 +667,7 @@ def _attach_shared_selection_details(
     candidates: Sequence[ParetoCandidate],
     active_specs: Sequence[ObjectiveSpec],
 ) -> SelectionResult:
+    """为选择结果附加理想点等共享详情。"""
     ideal_point = _build_ideal_point(candidates, active_specs)
     details = dict(result.details)
     details["ideal_point"] = ideal_point
@@ -671,6 +688,7 @@ def _ranked_rows(
     *,
     limit: int,
 ) -> List[Dict[str, Any]]:
+    """按排名顺序生成前 N 个候选的行数据。"""
     rows: List[Dict[str, Any]] = []
     for rank, idx in enumerate(list(ranking_order)[: max(1, int(limit))], start=1):
         candidate = candidates[int(idx)]
@@ -696,11 +714,12 @@ def _normalize_reference_targets(
     lows: np.ndarray,
     highs: np.ndarray,
 ) -> np.ndarray:
+    """将参考目标值归一化到效用空间。"""
     active_metrics = [spec.metric for spec in active_specs]
     target_values = []
     for idx, metric in enumerate(active_metrics):
         if metric not in targets:
-            raise ValueError(f"Reference method requires target for {metric}")
+            raise ValueError(f"参考方法需要为 {metric} 提供目标值")
         raw_value = float(targets[metric])
         low = lows[idx]
         high = highs[idx]
@@ -722,6 +741,7 @@ def _resolve_limit_value(
     entry: Mapping[str, Any],
     aggregate_cfg: Mapping[str, Any] | None = None,
 ) -> Optional[float]:
+    """解析候选的指标值用于限制判断，依次尝试聚合值、统计值和目标值。"""
     metric = str(entry.get("metric", "")).strip()
     if not metric:
         return None
@@ -745,6 +765,7 @@ def _resolve_limit_value(
 
 
 def _limit_rejects(entry: Mapping[str, Any], value: float) -> bool:
+    """根据限制条件的比较模式判断值是否应被拒绝。"""
     mode = str(entry.get("penalize_if", "greater_than")).strip().lower()
     if mode == "greater_than":
         return value > float(entry["value"])
@@ -764,7 +785,7 @@ def _limit_rejects(entry: Mapping[str, Any], value: float) -> bool:
     if mode == "inside_range":
         low, high = entry["range"]
         return float(low) <= value <= float(high)
-    raise ValueError(f"Unsupported limit mode {mode!r}")
+    raise ValueError(f"不支持的限制模式 {mode!r}")
 
 
 def filter_candidates(
@@ -773,6 +794,7 @@ def filter_candidates(
     limits_payload: Optional[str],
     limit_entries: Optional[Sequence[str]],
 ) -> tuple[List[ParetoCandidate], List[Dict[str, Any]]]:
+    """根据限制条件过滤候选，返回保留的候选和已启用的限制列表。"""
     normalized_limits: List[Dict[str, Any]] = []
     if limits_payload is not None:
         normalized_limits.extend(normalize_limit_entries(limits_payload))
@@ -808,18 +830,21 @@ def _select_knee(
     active_metrics: Sequence[str],
     utilities: np.ndarray,
 ) -> SelectionResult:
+    """膝点选择：在 Pareto 前沿上选择均衡折中解。"""
     n_candidates, n_obj = utilities.shape
-    if n_candidates == 1:
+    if n_candidates == 1:  # 仅一个候选时直接选中
         idx = 0
         score = 0.0
         scores = np.array([score], dtype=float)
         mode = "single_candidate"
         anchor_files: list[str] = [candidates[0].path.name]
     else:
+        # 找到各目标轴的最优锚点
         anchor_indices = [int(np.argmax(utilities[:, j])) for j in range(n_obj)]
         unique_anchor_indices = list(dict.fromkeys(anchor_indices))
         anchors = utilities[unique_anchor_indices]
         if anchors.shape[0] >= 2 and np.linalg.matrix_rank((anchors[1:] - anchors[:1]).T) >= 1:
+            # 超平面距离模式：计算每个候选到锚点超平面的距离
             base = anchors[0]
             basis = (anchors[1:] - base).T
             scores = np.zeros(n_candidates, dtype=float)
@@ -831,7 +856,7 @@ def _select_knee(
             idx = int(np.argmax(scores))
             score = float(scores[idx])
             mode = "hyperplane_distance"
-        else:
+        else:  # 退化为 maximin 模式
             scores = utilities.min(axis=1)
             idx = int(np.argmax(scores))
             score = float(scores[idx])
@@ -868,6 +893,7 @@ def _select_ideal_like(
     *,
     details: Optional[Dict[str, Any]] = None,
 ) -> SelectionResult:
+    """理想点/参考点选择：选择加权距离目标向量最近的候选。"""
     weighted_sq = ((utilities - target_vector) ** 2) * weights
     distances = np.sqrt(weighted_sq.sum(axis=1))
     idx = int(np.argmin(distances))
@@ -900,6 +926,7 @@ def _select_utility(
     utilities: np.ndarray,
     weights: np.ndarray,
 ) -> SelectionResult:
+    """效用选择：选择加权归一化效用最高的候选。"""
     scores = utilities @ weights
     idx = int(np.argmax(scores))
     candidate = candidates[idx]
@@ -928,6 +955,7 @@ def _select_lexicographic(
     active_metrics: Sequence[str],
     utilities: np.ndarray,
 ) -> SelectionResult:
+    """字典序选择：按目标优先级排序选择最优候选。"""
     best_idx = 0
     best_key = tuple(float(utilities[0, j]) for j in range(utilities.shape[1]))
     sort_keys: list[tuple[float, ...]] = [best_key]
@@ -968,6 +996,7 @@ def _select_outranking(
     utilities: np.ndarray,
     weights: np.ndarray,
 ) -> SelectionResult:
+    """超越关系选择：基于成对净偏好流选择最优候选。"""
     n = len(candidates)
     if n == 1:
         idx = 0
@@ -1011,8 +1040,9 @@ def select_candidate(
     target_pairs: Optional[Sequence[str]] = None,
     priority_arg: Optional[str] = None,
 ) -> SelectionResult:
+    """按指定方法从候选中选择最佳 Pareto 候选。"""
     if not candidates:
-        raise ValueError("No Pareto candidates available for selection.")
+        raise ValueError("无可用 Pareto 候选进行选择。")
 
     normalized_method = parse_method_name(method)
     target_map = _parse_key_value_pairs(target_pairs or [], value_name="target") if target_pairs else {}
@@ -1034,7 +1064,7 @@ def select_candidate(
         return _attach_shared_selection_details(result, candidates=candidates, active_specs=active_specs)
     if normalized_method == "reference":
         if not target_map:
-            raise ValueError("Method 'reference' requires at least one --target metric=value.")
+            raise ValueError("方法 'reference' 至少需要一个 --target metric=value。")
         target_vector = _normalize_reference_targets(target_map, active_specs, lows, highs)
         result = _select_ideal_like(
             "reference",
@@ -1067,7 +1097,7 @@ def select_candidate(
     if normalized_method == "outranking":
         result = _select_outranking(candidates, active_metrics, utilities, weights)
         return _attach_shared_selection_details(result, candidates=candidates, active_specs=active_specs)
-    raise ValueError(f"Unsupported selection method {normalized_method!r}")
+    raise ValueError(f"不支持的选择方法 {normalized_method!r}")
 
 
 def format_selection_result(
@@ -1080,6 +1110,7 @@ def format_selection_result(
     result: SelectionResult,
     show_top: int = 1,
 ) -> str:
+    """将选择结果格式化为人类可读的文本报告。"""
     selected_filename = result.candidate.path.name
     score_label, score_value = _score_label_and_value(result)
     selected_display_path = _display_path(result.candidate.path)
@@ -1088,48 +1119,48 @@ def format_selection_result(
     lines.extend(
         _render_key_value_box(
             [
-                ("Pareto directory", _display_path(pareto_dir)),
-                ("Loaded candidates", str(loaded_count)),
-                ("Retained after limits", str(retained_count)),
-                ("Applied limits", str(len(active_limits))),
-                ("Method", result.method),
+                ("Pareto 目录", _display_path(pareto_dir)),
+                ("已加载候选", str(loaded_count)),
+                ("限制后保留", str(retained_count)),
+                ("已应用限制", str(len(active_limits))),
+                ("方法", result.method),
                 (score_label, score_value),
-                ("Selected file", selected_filename),
-                ("Selected path", selected_display_path),
+                ("选中文件", selected_filename),
+                ("选中路径", selected_display_path),
             ]
         )
     )
-    lines.append(f"Backtest command: {backtest_command}")
-    lines.append(f"Method summary: {_method_explanation(result.method)}")
+    lines.append(f"回测命令: {backtest_command}")
+    lines.append(f"方法说明: {_method_explanation(result.method)}")
     active_metrics = result.details.get("active_metrics")
     spec_map = objective_spec_by_metric(result.candidate.entry)
     if isinstance(active_metrics, list) and active_metrics:
-        lines.append("Active objectives:")
+        lines.append("活跃目标:")
         objective_rows = []
         for metric in active_metrics:
             goal = spec_map.get(metric).goal if metric in spec_map else (default_objective_goal(metric) or "?")
             objective_rows.append([str(metric), str(goal)])
         lines.extend(_render_table(["metric", "goal"], objective_rows))
     if active_limits:
-        lines.append("Limit filters:")
+        lines.append("限制过滤器:")
         for entry in active_limits:
             lines.append(f"  - {_format_limit_entry(entry)}")
     weights = result.details.get("weights")
     targets = result.details.get("targets")
     if isinstance(targets, Mapping) and targets:
-        lines.append("Reference targets:")
+        lines.append("参考目标:")
         for metric, value in targets.items():
             lines.append(f"  - {metric} = {_format_metric_value(value)}")
     priority = result.details.get("priority")
     if isinstance(priority, list) and priority:
-        lines.append(f"Priority order: {', '.join(str(metric) for metric in priority)}")
+        lines.append(f"优先级顺序: {', '.join(str(metric) for metric in priority)}")
     knee_mode = result.details.get("knee_mode")
     if isinstance(knee_mode, str) and knee_mode:
-        lines.append(f"Knee mode: {knee_mode}")
+        lines.append(f"膝点模式: {knee_mode}")
     anchor_files = result.details.get("anchor_files")
     if isinstance(anchor_files, list) and anchor_files:
         lines.append(
-            f"Anchor files ({len(anchor_files)}): {_summarize_anchor_files([str(item) for item in anchor_files])}"
+            f"锚点文件 ({len(anchor_files)}): {_summarize_anchor_files([str(item) for item in anchor_files])}"
         )
     lines.extend(_selection_rationale_lines(result))
     selected_utilities = result.details.get("selected_utilities")
@@ -1139,7 +1170,7 @@ def format_selection_result(
     ideal_point = result.details.get("ideal_point")
     if "minimum_selected_utility" in result.details:
         lines.append(
-            f"Minimum selected utility: {float(result.details['minimum_selected_utility']):.6f}"
+            f"最小选中效用: {float(result.details['minimum_selected_utility']):.6f}"
         )
     if isinstance(selected_utilities, Mapping) and selected_utilities:
         metric_rows: List[List[str]] = []
@@ -1164,21 +1195,21 @@ def format_selection_result(
                 row.append(_format_metric_value(target_utilities.get(metric, "")))
             metric_rows.append(row)
 
-        headers = ["metric", "goal", "value", "utility", "ideal"]
+        headers = ["指标", "方向", "值", "效用", "理想点"]
         if isinstance(weights, Mapping) and weights:
-            headers.append("weight")
+            headers.append("权重")
         if isinstance(distance_components, Mapping) and distance_components:
-            headers.append("distance")
+            headers.append("距离")
         if isinstance(utility_contributions, Mapping) and utility_contributions:
-            headers.append("contrib")
+            headers.append("贡献")
         if isinstance(targets, Mapping) and targets:
-            headers.append("target")
+            headers.append("目标")
         elif isinstance(target_utilities, Mapping) and target_utilities and result.method != "ideal":
-            headers.append("target_u")
-        lines.extend(["", "Objective table:"])
+            headers.append("目标效用")
+        lines.extend(["", "目标表:"])
         lines.extend(_render_table(headers, metric_rows))
     else:
-        lines.extend(["", "Objectives:"])
+        lines.extend(["", "目标:"])
         for metric, value in result.objective_values.items():
             goal = spec_map.get(metric).goal if metric in spec_map else (default_objective_goal(metric) or "?")
             lines.append(f"  {metric} ({goal}): {value}")
@@ -1190,7 +1221,7 @@ def format_selection_result(
         and show_top > 1
         and len(ranking_order) > 1
     ):
-        lines.extend(["", "Top candidates:"])
+        lines.extend(["", "排名前列候选:"])
         shortlist = _ranked_rows(
             candidates,
             list(active_metrics) if isinstance(active_metrics, list) else list(result.objective_values),
@@ -1207,19 +1238,20 @@ def format_selection_result(
             ]
             for row in shortlist
         ]
-        lines.extend(_render_table(["rank", "score", "file", "hash"], top_rows))
+        lines.extend(_render_table(["排名", "得分", "文件", "哈希"], top_rows))
     return "\n".join(lines)
 
 
 def run_from_args(args: argparse.Namespace) -> SelectionResult:
+    """从命令行参数执行候选选择并输出结果。"""
     method = parse_method_name(args.method)
     raw_path = getattr(args, "path", None)
     if not raw_path:
         latest = detect_latest_pareto_dir()
         if latest is None:
             raise FileNotFoundError(
-                "No pareto path provided and no valid optimize_results/<run>/pareto directory "
-                "with at least one *.json candidate was found."
+                "未提供 Pareto 路径，且未找到有效的 optimize_results/<run>/pareto 目录"
+                "包含至少一个 *.json 候选文件。"
             )
         raw_path = str(latest)
     pareto_dir, candidates, scoring_specs = load_candidates(raw_path)
@@ -1229,7 +1261,7 @@ def run_from_args(args: argparse.Namespace) -> SelectionResult:
         limit_entries=list(getattr(args, "limit_entries", []) or []),
     )
     if not filtered_candidates:
-        raise ValueError("No Pareto candidates remained after applying limits.")
+        raise ValueError("应用限制后无 Pareto 候选保留。")
     result = select_candidate(
         filtered_candidates,
         scoring_specs,
@@ -1286,6 +1318,7 @@ def run_from_args(args: argparse.Namespace) -> SelectionResult:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    """命令行入口。"""
     parser = build_parser()
     args = parser.parse_args(argv)
     run_from_args(args)

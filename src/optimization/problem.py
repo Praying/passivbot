@@ -10,6 +10,7 @@ from optimization.bounds import Bound
 from optimization.callback import build_pymoo_record_entry
 
 
+# pymoo worker 进程全局状态
 _PYMOO_WORKER_EVALUATOR = None
 _PYMOO_WORKER_OVERRIDES_LIST: list[str] = []
 _PYMOO_WORKER_N_OBJ = 0
@@ -23,6 +24,7 @@ def initialize_pymoo_worker(
     has_constraints: bool,
     ignore_sigint_in_worker=None,
 ) -> None:
+    """初始化 pymoo worker 进程的全局求值器状态。"""
     global _PYMOO_WORKER_EVALUATOR
     global _PYMOO_WORKER_OVERRIDES_LIST
     global _PYMOO_WORKER_N_OBJ
@@ -43,6 +45,7 @@ def _evaluate_pymoo_worker(
     n_obj: int,
     has_constraints: bool,
 ) -> dict[str, Any]:
+    """在 worker 中执行单次求值，返回目标值和约束违反度。"""
     evaluated_vector = list(float(v) for v in vector)
     objectives, constraint_violation, metrics = evaluator.evaluate(
         evaluated_vector,
@@ -51,7 +54,7 @@ def _evaluate_pymoo_worker(
     objectives_arr = np.asarray(objectives, dtype=np.float64)
     if len(objectives_arr) != int(n_obj):
         raise ValueError(
-            f"pymoo objective length mismatch: expected {int(n_obj)}, got {len(objectives_arr)}"
+            f"pymoo 目标长度不匹配：期望 {int(n_obj)}，实际 {len(objectives_arr)}"
         )
     payload = {
         "F": objectives_arr,
@@ -65,8 +68,9 @@ def _evaluate_pymoo_worker(
 
 
 def _evaluate_pymoo_worker_from_globals(vector: Sequence[float]) -> dict[str, Any]:
+    """从全局状态调用求值器，供多进程 worker 使用。"""
     if _PYMOO_WORKER_EVALUATOR is None:
-        raise RuntimeError("pymoo worker evaluator not initialized")
+        raise RuntimeError("pymoo worker 求值器未初始化")
     return _evaluate_pymoo_worker(
         _PYMOO_WORKER_EVALUATOR,
         vector,
@@ -77,6 +81,7 @@ def _evaluate_pymoo_worker_from_globals(vector: Sequence[float]) -> dict[str, An
 
 
 class PymooEvaluatorAdapter:
+    """适配器：将优化求值器封装为 pymoo 可调用的接口。"""
     def __init__(self, evaluator, *, overrides_list: Sequence[str] | None = None):
         self.evaluator = evaluator
         self.overrides_list = list(overrides_list or [])
@@ -89,6 +94,7 @@ class PymooEvaluatorAdapter:
         return bool(getattr(base, "limit_checks", []))
 
     def evaluate(self, vector: Sequence[float]) -> dict[str, Any]:
+        """求值单条向量，返回目标值、约束违反度和指标。"""
         evaluated_vector = list(float(v) for v in vector)
         objectives, constraint_violation, metrics = self.evaluator.evaluate(
             evaluated_vector,
@@ -103,6 +109,7 @@ class PymooEvaluatorAdapter:
 
 
 class PymooAsyncRecordingRunner:
+    """异步并行求值运行器，同时将结果记入优化记录器。"""
     def __init__(
         self,
         *,
@@ -117,6 +124,7 @@ class PymooAsyncRecordingRunner:
         overrides_list: Sequence[str] | None = None,
         poll_interval_seconds: float = 0.05,
     ):
+        """初始化异步并行运行器，配置求值器、进程池和记录器。"""
         self.evaluator = evaluator
         self.has_constraints = bool(has_constraints)
         self.n_obj = int(n_obj)
@@ -129,6 +137,7 @@ class PymooAsyncRecordingRunner:
         self.poll_interval_seconds = max(0.0, float(poll_interval_seconds))
 
     def _record_result(self, vector, metrics) -> None:
+        """将求值结果构建为记录条目并写入记录器。"""
         entry = build_pymoo_record_entry(
             vector=vector,
             metrics=metrics,
@@ -140,6 +149,7 @@ class PymooAsyncRecordingRunner:
         self.recorder.record(entry)
 
     def __call__(self, _f, X):
+        """批量求值：提交所有向量到进程池，收集排序后的结果。"""
         xs = list(X)
         initialize_pymoo_worker(
             self.evaluator,
@@ -177,6 +187,7 @@ class PymooAsyncRecordingRunner:
 
 
 class PassivbotProblem(ElementwiseProblem):
+    """pymoo 优化问题定义：封装边界、目标函数和约束。"""
     def __init__(
         self,
         *,
@@ -185,6 +196,7 @@ class PassivbotProblem(ElementwiseProblem):
         evaluator_adapter: PymooEvaluatorAdapter,
         **kwargs,
     ):
+        """初始化优化问题，设置变量边界、目标数和约束。"""
         self.bounds = list(bounds)
         self.scoring_keys = list(scoring_keys)
         self.evaluator_adapter = evaluator_adapter
@@ -200,11 +212,12 @@ class PassivbotProblem(ElementwiseProblem):
         )
 
     def _evaluate(self, x, out, *args, **kwargs):
+        """求值单条个体，将目标值和约束写入 out 字典。"""
         payload = self.evaluator_adapter.evaluate(x)
         objectives = np.asarray(payload["objectives"], dtype=np.float64)
         if len(objectives) != self.n_obj:
             raise ValueError(
-                f"pymoo objective length mismatch: expected {self.n_obj}, got {len(objectives)}"
+                f"pymoo 目标长度不匹配：期望 {self.n_obj}，实际 {len(objectives)}"
             )
         out["F"] = objectives
         if self.n_ieq_constr:

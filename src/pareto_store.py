@@ -39,13 +39,16 @@ def _resolve_aggregate_mode(metric: str, aggregate_cfg: Optional[Dict[str, str]]
 
 @dataclass(frozen=True)
 class LimitSpec:
+    """限制条件规格：指标名、统计字段、比较运算和阈值。"""
+
     metric: str
-    field: str  # "mean", "min", "max", "std", or "auto"
+    field: str  # "mean"、"min"、"max"、"std" 或 "auto"
     op: Callable[[float, float], bool]
     value: float
 
 
 def _split_metric_field(raw_key: str) -> tuple[str, str]:
+    """将 'metric.field' 拆分为 (指标名, 统计字段)，无后缀时字段为 'auto'。"""
     key = raw_key.strip()
     if "." in key:
         metric, suffix = key.rsplit(".", 1)
@@ -55,6 +58,7 @@ def _split_metric_field(raw_key: str) -> tuple[str, str]:
 
 
 def _resolve_metric_name(metric: str, metric_map: Dict[str, str]) -> str:
+    """解析指标名：将旧式 w_ 标识转换为新指标名并规范化。"""
     if metric.startswith("w_"):
         return canonicalize_metric_name(metric_map.get(metric, metric))
     return canonicalize_metric_name(metric)
@@ -67,6 +71,7 @@ def _resolve_limit_value(
     objectives: Dict[str, float],
     metric_map: Dict[str, str],
 ) -> Optional[float]:
+    """根据限制规格解析指标值：优先从目标值取，其次聚合值，最后统计值。"""
     metric = spec.metric
     value = resolve_metric_value(objectives, metric)
     if value is not None:
@@ -90,6 +95,7 @@ def _suite_metrics_to_stats(
     entry: Dict[str, Any],
     aggregate_cfg: Optional[Dict[str, str]] = None,
 ) -> Tuple[Dict[str, float], Dict[str, float]]:
+    """从条目的 suite_metrics 中提取展平统计值和聚合值。"""
     aggregated_values: Dict[str, float] = {}
     stats_flat: Dict[str, float] = {}
     suite_metrics = entry.get("suite_metrics") or {}
@@ -121,13 +127,14 @@ def _suite_metrics_to_stats(
 def _quantize_entry_params_with_bounds(
     entry: dict, bounds: Sequence[Bound], log: logging.Logger
 ) -> dict:
+    """使用边界对条目的优化参数进行量化：步长取整或上下限截断。"""
     if not isinstance(entry, dict):
         return entry
 
     key_paths = get_optimization_key_paths(entry)
     if len(key_paths) != len(bounds):
         log.warning(
-            "ParetoStore bounds length mismatch: bounds has %d entries but optimization key list has %d params",
+            "ParetoStore 边界长度不匹配：边界有 %d 项但优化键列表有 %d 个参数",
             len(bounds),
             len(key_paths),
         )
@@ -160,6 +167,7 @@ def _evaluate_limits(
     objectives: Dict[str, float],
     metric_map: Dict[str, str],
 ) -> bool:
+    """检查所有限制条件是否满足，任一不满足则返回 False。"""
     for spec in specs:
         value = _resolve_limit_value(spec, stats_flat, aggregated_values, objectives, metric_map)
         if value is None:
@@ -170,6 +178,7 @@ def _evaluate_limits(
 
 
 class ParetoStore:
+    """Pareto 前沿存储：维护内存中的前沿集合并持久化到磁盘。"""
     def __init__(
         self,
         directory: str,
@@ -179,20 +188,21 @@ class ParetoStore:
         log_name: str | None = None,
         max_size: int = 300,
     ):
+        """初始化 ParetoStore，设置目录、边界和内存结构。"""
         self._log = logging.getLogger(log_name or __name__)
         self.directory = directory
         self.pareto_dir = os.path.join(self.directory, "pareto")
         self.sig_digits = sig_digits
         self.bounds = bounds
-        self.flush_interval = flush_interval  # seconds
+        self.flush_interval = flush_interval  # 秒
         self.max_size = max(1, int(max_size))
         os.makedirs(os.path.join(self.directory, "pareto"), exist_ok=True)
-        # --- in-memory structures -----------------------------------------
-        self._entries: dict[str, str] = {}  # hash -> file path
-        self._objectives: dict[str, tuple] = {}  # hash -> objective vector
-        self._violations: dict[str, float] = {}  # hash -> constraint violation
-        self._front: list[str] = []  # list of hashes (Pareto set)
-        self._objective_lookup: dict[tuple, str] = {}  # objective vector ➜ hash
+        # --- 内存结构 ---------------------------------------------------
+        self._entries: dict[str, str] = {}  # hash -> 文件路径
+        self._objectives: dict[str, tuple] = {}  # hash -> 目标向量
+        self._violations: dict[str, float] = {}  # hash -> 约束违反度
+        self._front: list[str] = []  # hash 列表（Pareto 集）
+        self._objective_lookup: dict[tuple, str] = {}  # 目标向量 ➜ hash
         # ------------------------------------------------------------------
         self.n_iters = 0
         self._last_flush_ts = time.time()
@@ -201,13 +211,13 @@ class ParetoStore:
         self.scoring_keys = None
         self.scoring_specs = None
 
-        # bootstrap from disk if any
+        # 从磁盘引导已有数据
         self._bootstrap_from_disk()
 
     def add_entry(self, entry: dict, *, source_path: str | None = None) -> bool:
         """
-        Add a new entry, update Pareto front in‑memory.
-        Return True if the store actually changed.
+        添加新条目，在内存中更新 Pareto 前沿。
+        若存储实际发生变化则返回 True。
         """
         self.n_iters += 1
         if self.scoring_keys is None:
@@ -215,7 +225,7 @@ class ParetoStore:
             self.scoring_keys = [spec.metric for spec in self.scoring_specs]
         h = calc_hash(entry)
         with self._lock:
-            if h in self._entries:  # fast‑dedupe
+            if h in self._entries:  # 快速去重
                 return False
 
             metrics_block = entry.get("metrics", {}) or {}
@@ -224,22 +234,22 @@ class ParetoStore:
             )
             violation = extract_violation(entry)
 
-            # ───────────── NEW: dedupe on the objective vector ──────────────
+            # ───────────── 按目标向量去重 ──────────────
             existing_hash = self._objective_lookup.get(obj)
             if existing_hash:
                 existing_violation = self._violations.get(existing_hash, 0.0)
                 if violation >= existing_violation - 1e-12:
                     self._log.info(
-                        "Dropping candidate whose obj score is already present with <= violation: %s",
+                        "丢弃目标值已存在且违反度不更优的候选: %s",
                         obj,
                     )
                     return False
                 else:
-                    # replace existing entry with higher violation
+                    # 替换违反度更高的已有条目
                     self._remove_from_front(existing_hash)
-            # ────────────────────────────────────────────────────────────────
+            # ────────────────────────────────────────────
 
-            # discard if dominated by current front
+            # 若被当前前沿支配则丢弃
             if any(
                 dominates_with_violation(
                     self._objectives[idx],
@@ -252,7 +262,7 @@ class ParetoStore:
             ):
                 return False
 
-            # remove dominated members
+            # 移除被支配的成员
             dominated = [
                 idx
                 for idx in self._front
@@ -267,7 +277,7 @@ class ParetoStore:
             for idx in dominated:
                 self._remove_from_front(idx)
 
-            # add new member
+            # 添加新成员
             self._persist_entry(h, entry, source_path=source_path)
             self._objectives[h] = obj
             self._violations[h] = violation
@@ -282,12 +292,13 @@ class ParetoStore:
                 removed=len(dominated),
             )
 
-            # maybe flush
+            # 可能刷新到磁盘
             self._maybe_flush()
 
             return True
 
     def get_front(self) -> list[dict]:
+        """返回当前 Pareto 前沿中所有条目。"""
         with self._lock:
             results = []
             for h in self._front:
@@ -302,7 +313,7 @@ class ParetoStore:
             return results
 
     def flush_now(self) -> None:
-        """Force a write of the current in‑memory set to disk."""
+        """强制将内存中的前沿集合写入磁盘。"""
         with self._lock:
             self._write_all_to_disk()
             self._last_flush_ts = time.time()
@@ -313,6 +324,7 @@ class ParetoStore:
             self._last_flush_ts = time.time()
 
     def _write_all_to_disk(self) -> None:
+        """将当前前沿同步到磁盘，删除不再属于前沿的文件。"""
         if not self._front:
             for fp in glob.glob(os.path.join(self.pareto_dir, "*.json")):
                 try:
@@ -327,12 +339,12 @@ class ParetoStore:
                 try:
                     os.remove(fp)
                 except OSError as e:
-                    self._log.warning("Could not remove obsolete Pareto file %s: %s", fp, e)
+                    self._log.warning("无法移除过时的 Pareto 文件 %s: %s", fp, e)
 
     def _bootstrap_from_disk(self) -> None:
         """
-        Read existing *.json files once at start so we don’t lose old results
-        when the new optimizer run appends.
+        启动时从磁盘读取已有的 *.json 文件，
+        以免新的优化运行追加时丢失旧结果。
         """
         for fp in glob.glob(os.path.join(self.pareto_dir, "*.json")):
             try:
@@ -343,7 +355,7 @@ class ParetoStore:
                 print(f"bootstrap skip {fp}: {e}")
 
     def _log_front_state(self, *, added: int, removed: int) -> None:
-        """Emit a compact one‑liner with min / max / spread per objective."""
+        """输出每个目标的最小/最大/范围的紧凑日志。"""
         objs = [self._objectives[idx] for idx in self._front]
 
         mins = [min(col) for col in zip(*objs)]
@@ -371,7 +383,7 @@ class ParetoStore:
         )
 
     def _prune_front(self, n_prune: int) -> None:
-        """Trim the Pareto front down by removing the most crowded entries."""
+        """通过移除最拥挤的条目来缩减 Pareto 前沿。"""
         if n_prune <= 0 or len(self._front) <= n_prune:
             return
         to_remove = prune_front_with_extremes(
@@ -392,6 +404,7 @@ class ParetoStore:
             pass
 
     def _persist_entry(self, hash_id: str, entry: dict, *, source_path: str | None = None) -> None:
+        """将条目写入磁盘 JSON 文件（原子写入）。"""
         if source_path is None:
             path = os.path.join(self.pareto_dir, f"{hash_id}.json")
             tmp = path + ".tmp"
@@ -422,6 +435,7 @@ class ParetoStore:
         self._entries[hash_id] = path
 
     def _delete_entry_file(self, hash_id: str) -> None:
+        """删除条目的磁盘文件。"""
         path = self._entries.pop(hash_id, None)
         if path and os.path.exists(path):
             try:
@@ -435,6 +449,7 @@ def comma_separated_values_float(x):
 
 
 def main():
+    """命令行入口：检查优化器 Pareto 集，计算理想点并可视化。"""
     import argparse
     import matplotlib.pyplot as plt
     import numpy as np
@@ -442,14 +457,12 @@ def main():
 
     parser = argparse.ArgumentParser(
         description=(
-            "Inspect optimizer Pareto sets: discover the latest run (or analyze a\n"
-            "specified pareto/ directory), compute the ideal point, rank the best\n"
-            "solutions, and visualize objective correlations. Supports filtering by\n"
-            "metric limits and restricting the objective vector."
+            "检查优化器 Pareto 集：发现最新运行（或分析指定的 pareto/ 目录），\n"
+            "计算理想点，排序最佳解并可视化目标相关性。支持按指标限制过滤和约束目标向量。"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=(
-            "Examples:\n"
+            "示例:\n"
             "  python3 src/pareto_store.py\n"
             "  python3 src/pareto_store.py optimize_results/<run>/pareto\n"
             '  python3 src/pareto_store.py -l "peak_recovery_hours_pnl<800"\n'
@@ -463,15 +476,14 @@ def main():
         nargs="?",
         default=None,
         help=(
-            "Path to a pareto/ directory produced by the optimizer or suite. When\n"
-            "omitted the script auto-detects the lexicographically latest run\n"
-            "under optimize_results/ whose pareto/ dir has JSON candidates."
+            "由优化器或套件生成的 pareto/ 目录路径。省略时脚本自动检测\n"
+            "optimize_results/ 下最新的包含 JSON 候选的运行目录。"
         ),
     )
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Emit the textual summary as JSON for consumption by other tools.",
+        help="将文本摘要输出为 JSON 格式，供其他工具使用。",
     )
     parser.add_argument(
         "-w",
@@ -481,9 +493,8 @@ def main():
         dest="weights",
         default=None,
         help=(
-            "Comma-separated weights for the ideal-point offset. Defaults to zeros\n"
-            "which corresponds to the pure component-wise ideal according to each\n"
-            "objective goal. Fewer weights than objectives reuse the last provided value."
+            "理想点偏移的逗号分隔权重。默认为零，即按各目标方向取\n"
+            "分量理想值。权重数量少于目标数时复用最后一个值。"
         ),
     )
     parser.add_argument(
@@ -494,10 +505,10 @@ def main():
         dest="mode",
         default="weighted",
         help=(
-            "Mode for ideal point computation:\n"
-            "  min       – component-wise ideal according to each objective goal\n"
-            "  weighted  – honour the --weights offset from the ideal\n"
-            "  geomedian – geometric median in objective space"
+            "理想点计算模式:\n"
+            "  min       – 按各目标方向取分量理想值\n"
+            "  weighted  – 使用 --weights 从理想点偏移\n"
+            "  geomedian – 目标空间中的几何中位数"
         ),
     )
     parser.add_argument(
@@ -507,11 +518,10 @@ def main():
         dest="limits",
         action="append",
         help=(
-            "Limit filters applied before ranking. Repeat for multiple expressions:\n"
+            "排序前应用的限制过滤器。可重复指定多个表达式:\n"
             '  -l "peak_recovery_hours_pnl<800" -l "position_held_hours_max<400"\n'
-            "Metrics accept optional suffixes (.min/.max/.mean/.std). Without a suffix\n"
-            "suite-level aggregates (if available) are used; otherwise the mean.\n"
-            "Legacy w_i identifiers are still accepted for old result files."
+            "指标可带可选后缀（.min/.max/.mean/.std）。无后缀时使用套件级聚合值（若有），否则取均值。\n"
+            "旧式 w_i 标识仍可用于旧版结果文件。"
         ),
     )
     parser.add_argument(
@@ -519,9 +529,9 @@ def main():
         "--objectives",
         type=str,
         help=(
-            "Restrict the objective vector to the provided comma-separated list\n"
-            "(metric names for new results; legacy w_i identifiers are still accepted\n"
-            "for old runs). By default all stored objectives are used."
+            "将目标向量限制为指定逗号分隔列表\n"
+            "（新版结果使用指标名；旧版运行仍接受 w_i 标识）。\n"
+            "默认使用所有已存储的目标。"
         ),
     )
     args = parser.parse_args()
@@ -531,10 +541,10 @@ def main():
         auto_dir = detect_latest_pareto_dir()
         if auto_dir is None:
             parser.error(
-                "No pareto directory specified and no valid optimize_results/<run>/pareto "
-                "directory with at least one *.json candidate was found. Provide a path explicitly."
+                "未指定 Pareto 目录，且未找到有效的 optimize_results/<run>/pareto 目录"
+                "包含至少一个 *.json 候选文件。请显式提供路径。"
             )
-        print(f"[info] Using latest pareto directory: {auto_dir}")
+        print(f"[信息] 使用最新的 Pareto 目录: {auto_dir}")
         pareto_dir = str(auto_dir)
 
     pareto_dir = pareto_dir.rstrip("/")
@@ -575,7 +585,7 @@ def main():
             try:
                 limit_specs.append(parse_limit_expr(expr))
             except Exception as e:
-                print(f"Skipping invalid limit expression '{expr}': {e}")
+                print(f"跳过无效限制表达式 '{expr}': {e}")
 
     for entry_path in entries:
         try:
@@ -641,17 +651,17 @@ def main():
                 filenames[h] = os.path.split(entry_path)[-1]
         except Exception as e:
             print(f"Error loading {h}: {e}")
-    print(f"Found {len(entries)} Pareto members.")
+    print(f"找到 {len(entries)} 个 Pareto 成员。")
     if args.objectives:
-        print(f"Using objectives: {[metric_name_map.get(k, k) for k in objective_keys]}")
+        print(f"使用目标: {[metric_name_map.get(k, k) for k in objective_keys]}")
     if not points:
-        print("No valid Pareto points found.")
+        print("未找到有效的 Pareto 点。")
         exit(0)
 
     values_matrix = np.array([p[:-1] for p in points])
     hashes = [p[-1] for p in points]
     if values_matrix.shape[1] != len(objective_keys):
-        print("Mismatch between values and keys!")
+        print("值与键数量不匹配！")
         exit(1)
 
     weights = tuple([0.0] * values_matrix.shape[1]) if args.weights is None else args.weights
@@ -690,13 +700,13 @@ def main():
     dists = np.linalg.norm(norm_matrix - ideal_norm, axis=1)
     closest_idx = int(np.argmin(dists))
 
-    print(f"Ideal point ({args.mode}{' ' + str(weights) if args.mode == 'weighted' else ''})")
+    print(f"理想点 ({args.mode}{' ' + str(weights) if args.mode == 'weighted' else ''})")
     paddings = {k: len(v) for k, v in (metric_name_map or {}).items()} or {"": 0}
     paddings = {k: max(paddings.values()) - v for k, v in paddings.items()}
     for i, key in enumerate(objective_keys):
         print(f"  {metric_name_map.get(key, key)} {' ' * paddings.get(key, 0)} = {ideal[i]:.5f}")
     print(
-        f"Closest to ideal: {pareto_dir}/{filenames[hashes[closest_idx]]} | norm_dist={dists[closest_idx]:.5f}"
+        f"最接近理想点: {pareto_dir}/{filenames[hashes[closest_idx]]} | 归一化距离={dists[closest_idx]:.5f}"
     )
     for i, key in enumerate(objective_keys):
         print(
@@ -799,28 +809,27 @@ def main():
 
         fig.show()
     elif len(objective_keys) > 3:
-        # More efficient implementation for high-dimensional Pareto fronts
-        # Focus only on essential visualizations and optimize performance
+        # 高维 Pareto 前沿的高效可视化
         import pandas as pd
 
-        # Convert data to pandas DataFrame for easier handling
+        # 将数据转为 DataFrame 以便处理
         df = pd.DataFrame(values_matrix, columns=objective_keys)
         df["hash"] = hashes
         df["dist_from_ideal"] = dists
 
-        # Sort by distance from ideal
+        # 按与理想点的距离排序
         df_sorted = df.sort_values("dist_from_ideal")
 
-        # Create a streamlined figure with just two key plots
+        # 创建两个关键图表
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
-        # 1. Parallel Coordinates - more efficient implementation
+        # 1. 平行坐标图
         ax = axes[0]
 
-        # Only show up to the top 100 solutions to avoid clutter and improve performance
+        # 仅展示前 200 个解，避免过于密集
         top_indices = df_sorted.index[:200]
 
-        # Plot in one batch for better performance
+        # 批量绘制
         for i in top_indices:
             if i == closest_idx:
                 ax.plot(
@@ -829,10 +838,10 @@ def main():
             else:
                 ax.plot(range(len(objective_keys)), norm_matrix[i], "b-", linewidth=1, alpha=0.3)
 
-        # Plot ideal point
+        # 绘制理想点
         ax.plot(range(len(objective_keys)), ideal_norm, "go--", linewidth=2, markersize=8)
 
-        # Customize appearance
+        # 美化外观
         ax.set_xticks(range(len(objective_keys)))
         ax.set_xticklabels(
             [metric_name_map.get(k, k) for k in objective_keys], rotation=45, ha="right"
@@ -841,17 +850,17 @@ def main():
         ax.set_title(f"Parallel Coordinates (Top {len(top_indices)} Solutions)")
         ax.grid(True, alpha=0.3)
 
-        # 2. Create a heatmap instead of a radar chart (more compatible)
+        # 2. 相关性热力图（替代雷达图，兼容性更好）
         ax = axes[1]
 
-        # Create correlation matrix
+        # 计算相关矩阵
         corr_matrix = np.zeros((len(objective_keys), len(objective_keys)))
         for i, key1 in enumerate(objective_keys):
             for j, key2 in enumerate(objective_keys):
                 vals1 = values_matrix[:, i]
                 vals2 = values_matrix[:, j]
 
-                # Calculate correlation
+                # 计算皮尔逊相关系数
                 mean1, mean2 = np.mean(vals1), np.mean(vals2)
                 num = np.sum((vals1 - mean1) * (vals2 - mean2))
                 den = np.sqrt(np.sum((vals1 - mean1) ** 2) * np.sum((vals2 - mean2) ** 2))
@@ -861,14 +870,14 @@ def main():
                 else:
                     corr_matrix[i, j] = 0
 
-        # Create heatmap
+        # 绘制热力图
         im = ax.imshow(corr_matrix, cmap="coolwarm", vmin=-1, vmax=1)
 
-        # Add colorbar
+        # 添加颜色条
         cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label("Correlation")
+        cbar.set_label("相关性")
 
-        # Add labels
+        # 添加标签
         ax.set_xticks(range(len(objective_keys)))
         ax.set_yticks(range(len(objective_keys)))
         ax.set_xticklabels(
@@ -876,7 +885,7 @@ def main():
         )
         ax.set_yticklabels([metric_name_map.get(k, k) for k in objective_keys])
 
-        # Add correlation values as text
+        # 在格子中标注相关系数
         for i in range(len(objective_keys)):
             for j in range(len(objective_keys)):
                 ax.text(
@@ -888,11 +897,11 @@ def main():
                     color="white" if abs(corr_matrix[i, j]) > 0.6 else "black",
                 )
 
-        ax.set_title("Objective Correlation Matrix")
+        ax.set_title("目标相关性矩阵")
 
         plt.tight_layout()
-        # Print top 5 solutions in a compact table format
-        print("\nTop 5 Solutions Closest to Ideal:")
+        # 以紧凑表格格式输出前 5 个解
+        print("\n最接近理想点的前 5 个解:")
         print("-" * 80)
         header = f"{'Rank':<5} {'Hash':<16} {'Distance':<10} " + " ".join(
             [f"{shorten_str(metric_name_map.get(k, k))[:8]:<10}" for k in objective_keys]
@@ -904,31 +913,31 @@ def main():
             values_str = " ".join([f"{row[k]:<10.4f}" for k in objective_keys])
             print(f"{rank:<5} {row['hash']:<16} {row['dist_from_ideal']:<10.4f} {values_str}")
 
-        # Print key insights
+        # 输出关键洞察
         print("\nKey Insights:")
         print("-" * 80)
 
-        # Find strongly correlated objectives
+        # 查找强相关目标
         strong_correlations = []
         for i in range(len(objective_keys)):
             for j in range(i + 1, len(objective_keys)):
                 corr = corr_matrix[i, j]
                 if abs(corr) > 0.65:
-                    relation = "positively correlated with" if corr > 0 else "trade-off with"
+                    relation = "正相关" if corr > 0 else "权衡关系"
                     strong_correlations.append(
                         (objective_keys[i], objective_keys[j], corr, relation)
                     )
 
         if strong_correlations:
-            print("Strong relationships between objectives:")
+            print("目标间的强相关关系:")
             for obj1, obj2, corr, relation in strong_correlations:
                 name1 = metric_name_map.get(obj1, obj1)
                 name2 = metric_name_map.get(obj2, obj2)
-                print(f"- {name1} is {relation} {name2} (correlation: {corr:.2f})")
+                print(f"- {name1} 与 {name2} {relation} (相关系数: {corr:.2f})")
         else:
-            print("No strong correlations found between objectives.")
+            print("未发现目标间强相关关系。")
 
-        # Calculate diversity of solutions
+        # 计算解的多样性
         diversity_scores = []
         for i in range(len(objective_keys)):
             col_values = values_matrix[:, i]
@@ -938,7 +947,7 @@ def main():
             diversity_scores.append((objective_keys[i], diversity))
 
         diversity_scores.sort(key=lambda x: x[1], reverse=True)
-        print("\nObjective diversity (range of values):")
+        print("\n目标多样性（值范围）:")
         for obj, score in diversity_scores:
             name = metric_name_map.get(obj, obj)
             print(f"- {name}: {pbr.round_dynamic(score, 4)}")

@@ -11,6 +11,7 @@ from warmup_utils import compute_per_coin_warmup_minutes
 
 
 def _apply_config_overrides(config: dict, overrides: dict) -> None:
+    """将点分路径覆盖应用到配置字典。"""
     if not overrides:
         return
     for dotted_path, value in overrides.items():
@@ -34,11 +35,12 @@ def build_optimizer_vector_config(
     key_paths=None,
     overrides_list=None,
 ) -> dict:
+    """将优化向量写回模板配置，并应用覆盖和约束修正。"""
     config = deepcopy(template)
     if key_paths is None:
         key_paths = get_optimization_key_paths(config)
     assert len(vector) == len(key_paths), (
-        f"individual length {len(vector)} does not match optimization key count {len(key_paths)}"
+        f"个体长度 {len(vector)} 与优化键数量 {len(key_paths)} 不匹配"
     )
     for value, (_, path) in zip(vector, key_paths):
         target = config
@@ -72,6 +74,7 @@ def build_optimizer_vector_config(
 
 
 def build_optimizer_max_config(config: dict) -> dict:
+    """构建使用各参数上界的最大配置，用于预热时长计算。"""
     bounds = extract_bounds_tuple_list_from_config(config)
     if not bounds:
         return deepcopy(config)
@@ -87,15 +90,18 @@ def build_optimizer_max_config(config: dict) -> dict:
 
 
 def compute_optimizer_per_coin_warmup_minutes(config: dict) -> dict:
+    """计算各币种的预热时长（分钟）。"""
     return compute_per_coin_warmup_minutes(build_optimizer_max_config(config))
 
 
 def compute_optimizer_backtest_warmup_minutes(config: dict) -> int:
+    """计算回测所需的最大预热时长（分钟）。"""
     warmup_map = compute_optimizer_per_coin_warmup_minutes(config)
     return max((int(value) for value in warmup_map.values()), default=0)
 
 
 def stamp_warmup_metadata(mss: dict, coins: Sequence[str], warmup_map: dict) -> Counter:
+    """为各币种元数据写入预热时长和交易起始索引，返回统计计数。"""
     default_warmup = int(warmup_map.get("__default__", 0))
     stamped: Counter = Counter()
     for coin in coins:

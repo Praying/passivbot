@@ -1,4 +1,4 @@
-"""Optimizer helpers for running suites of backtests per candidate."""
+"""优化套件辅助函数：为每个候选配置运行回测套件。"""
 
 from __future__ import annotations
 
@@ -52,11 +52,11 @@ class ScenarioEvalContext:
     attachments: Dict[str, Dict[str, Any]]
     coin_indices: Dict[str, Optional[List[int]]]
     overrides: Dict[str, Any]
-    # Slice metadata for lazy slicing from master dataset (memory optimization)
+    # 切片元数据：用于从主数据集惰性切片（内存优化）
     master_hlcvs_specs: Optional[Dict[str, Any]] = None
     master_btc_specs: Optional[Dict[str, Any]] = None
-    time_slice: Optional[Dict[str, tuple]] = None  # per-exchange (start_idx, end_idx)
-    coin_slice_indices: Optional[Dict[str, List[int]]] = None  # per-exchange coin indices
+    time_slice: Optional[Dict[str, tuple]] = None  # 按交易所 (start_idx, end_idx)
+    coin_slice_indices: Optional[Dict[str, List[int]]] = None  # 按交易所的币种索引
 
 
 async def prepare_suite_contexts(
@@ -65,7 +65,7 @@ async def prepare_suite_contexts(
     *,
     shared_array_manager,
 ) -> tuple[List[ScenarioEvalContext], Dict[str, Any]]:
-    """Prepare datasets and configs for every optimizer suite scenario."""
+    """为每个优化套件场景准备数据集和配置。"""
 
     base_exchanges = require_config_value(config, "backtest.exchanges")
     for exchange in base_exchanges:
@@ -94,12 +94,12 @@ async def prepare_suite_contexts(
 
     scenarios, aggregate_cfg = build_scenarios(suite_cfg, base_exchanges=base_exchanges)
 
-    # Determine which individual exchange datasets are needed for single-exchange scenarios
+    # 确定单交易所场景所需的数据集
     needed_individual = _determine_needed_individual_exchanges(scenarios, base_exchanges)
 
     suite_coin_sources = collect_suite_coin_sources(config, scenarios)
 
-    # Collect all coins from scenarios (or use base if no scenario-specific coins)
+    # 收集所有场景中的币种（若无场景指定币种则使用基础币种）
     master_coins = set()
     master_ignored = set()
     for scenario in scenarios:
@@ -109,10 +109,10 @@ async def prepare_suite_contexts(
             master_ignored.update(scenario.ignored_coins)
     master_coins.update(suite_coin_sources.keys())
 
-    # If no scenarios define explicit coins, fall back to base_coins_list
+    # 若无场景指定币种则回退到基础币种列表
     if not master_coins and base_coins_list:
         logging.info(
-            "No scenario-specific coins found; using base approved_coins: %s",
+            "未找到场景指定币种；使用基础 approved_coins: %s",
             base_coins_list,
         )
         master_coins = set(base_coins_list)
@@ -148,10 +148,10 @@ async def prepare_suite_contexts(
     for dataset in datasets.values():
         available_coins.update(dataset.coins)
     if not available_coins:
-        raise ValueError("No coins available after preparing master datasets.")
+        raise ValueError("准备主数据集后无可用币种。")
 
     has_combined = "combined" in datasets
-    # Available exchanges exclude "combined" pseudo-exchange
+    # 可用交易所不包括 "combined" 伪交易所
     dataset_available_exchanges = sorted(
         set(ds.exchange for ds in datasets.values() if ds.exchange != "combined")
     ) or (datasets["combined"].available_exchanges if has_combined else [])
@@ -166,13 +166,14 @@ async def prepare_suite_contexts(
         end_idx: int,
         ts_window: Optional[np.ndarray],
     ) -> Dict[str, Any]:
+        """构建惰性切片的 mss 元数据，调整币种索引相对于时间切片。"""
         total_steps = max(1, int(end_idx - start_idx))
         interval = int(dataset.mss.get("__meta__", {}).get("data_interval_minutes", 1) or 1)
         total_steps_1m = total_steps * interval
         mss_slice: Dict[str, Any] = {
             coin: deepcopy(dataset.mss.get(coin, {})) for coin in selected_coins
         }
-        # Adjust per-coin indices relative to the time slice to avoid full hlcvs copies.
+        # 调整各币种索引相对于时间切片，避免完整的 hlcvs 拷贝
         warmup_map = compute_optimizer_per_coin_warmup_minutes(scenario_config)
         for coin, meta in mss_slice.items():
             first_idx = int(meta.get("first_valid_index", 0))
@@ -203,7 +204,7 @@ async def prepare_suite_contexts(
             meta["last_valid_index"] = last_idx
         stamp_warmup_metadata(mss_slice, selected_coins, warmup_map)
 
-        # Meta window details (matches _prepare_dataset_subset semantics without hlcvs copies).
+        # 元数据窗口详情（语义与 _prepare_dataset_subset 一致，但不拷贝 hlcvs）
         start_value = require_config_value(scenario_config, "backtest.start_date")
         end_value = require_config_value(scenario_config, "backtest.end_date")
         start_ts = _normalize_date_to_ts(str(start_value))
@@ -240,14 +241,14 @@ async def prepare_suite_contexts(
                 base_ignored=base_ignored_list,
             )
         except ValueError as exc:
-            logging.warning("Skipping scenario %s: %s", scenario.label, exc)
+            logging.warning("跳过场景 %s: %s", scenario.label, exc)
             continue
         scenario_config = format_config(scenario_config_raw, verbose=False)
         scenario_config = parse_overrides(scenario_config, verbose=False)
         scenario_config.setdefault("backtest", {})
         scenario_config["backtest"]["coins"] = {}
 
-        # Debug visibility to ensure scenario-specific windows/overrides are honored
+        # 调试可见性：确保场景指定的窗口/覆盖生效
         logging.debug(
             "Suite scenario %s | start=%s end=%s coins=%s overrides=%s",
             scenario.label,
@@ -258,30 +259,30 @@ async def prepare_suite_contexts(
             bool(scenario.overrides),
         )
 
-        # Determine which dataset(s) to use based on scenario's exchange restriction
+        # 根据场景的交易所限制确定使用的数据集
         raw_scenario_exchanges = set(scenario.exchanges) if scenario.exchanges else None
         all_exchanges_set = set(dataset_available_exchanges)
 
-        # Filter scenario exchanges to only those actually available in the dataset
+        # 将场景交易所过滤为数据集中实际可用的交易所
         if raw_scenario_exchanges:
             unavailable = raw_scenario_exchanges - all_exchanges_set
             if unavailable:
                 logging.debug(
-                    "Scenario %s: exchanges %s not available in dataset, using %s",
+                    "场景 %s: 交易所 %s 在数据集中不可用，使用 %s",
                     scenario.label,
                     sorted(unavailable),
                     sorted(raw_scenario_exchanges & all_exchanges_set) or "all available",
                 )
             scenario_exchanges = raw_scenario_exchanges & all_exchanges_set
             if not scenario_exchanges:
-                # If no overlap, fall back to all available exchanges
+                # 若无交集，回退到所有可用交易所
                 scenario_exchanges = all_exchanges_set
         else:
             scenario_exchanges = all_exchanges_set
 
-        # Use combined dataset when:
-        # 1. It exists, AND
-        # 2. Scenario uses all available exchanges (or doesn't restrict)
+        # 使用合并数据集当：
+        # 1. 合并数据集存在，且
+        # 2. 场景使用所有可用交易所（或未限制）
         use_combined = has_combined and scenario_exchanges == all_exchanges_set
 
         if use_combined:
@@ -295,7 +296,7 @@ async def prepare_suite_contexts(
             )
             if skipped_coins:
                 logging.warning(
-                    "Scenario %s: skipping %d coin(s) outside allowed exchanges (%s): %s",
+                    "场景 %s: 跳过 %d 个不在允许交易所中的币种 (%s): %s",
                     scenario.label,
                     len(skipped_coins),
                     ",".join(allowed_exchanges),
@@ -303,7 +304,7 @@ async def prepare_suite_contexts(
                 )
             if not selected_coins:
                 logging.warning(
-                    "Skipping scenario %s: no coins remain after exchange filtering.",
+                    "跳过场景 %s: 交易所过滤后无剩余币种。",
                     scenario.label,
                 )
                 continue
@@ -349,7 +350,7 @@ async def prepare_suite_contexts(
                     )
                 )
             else:
-                # Fallback: per-scenario SharedMemory when master specs are unavailable.
+                # 回退：当主规格不可用时，为每个场景创建 SharedMemory
                 (
                     hlcvs_slice,
                     btc_window,
@@ -383,7 +384,7 @@ async def prepare_suite_contexts(
                         shared_hlcvs_np={},
                         shared_btc_np={},
                         attachments={"hlcvs": {}, "btc": {}},
-                        coin_indices={dataset.exchange: None},  # Already sliced
+                        coin_indices={dataset.exchange: None},  # 已切片
                         overrides=deepcopy(scenario.overrides) if scenario.overrides else {},
                         master_hlcvs_specs=None,
                         master_btc_specs=None,
@@ -400,10 +401,10 @@ async def prepare_suite_contexts(
         btc_specs_map: Dict[str, Any] = {}
         exchanges_for_scenario: List[str] = []
 
-        # Use per-exchange datasets for scenarios with exchange restrictions
+        # 对有交易所限制的场景使用各交易所独立数据集
         allowed_exchange_names = set(scenario.exchanges or dataset_available_exchanges)
         for exchange_key, dataset in datasets.items():
-            # Skip "combined" pseudo-dataset; use actual exchange datasets
+            # 跳过 "combined" 伪数据集，使用实际交易所数据集
             if exchange_key == "combined":
                 continue
             if allowed_exchange_names and dataset.exchange not in allowed_exchange_names:
@@ -465,10 +466,10 @@ async def prepare_suite_contexts(
                 timestamps_map[exchange_key] = ts_window
 
         if not exchanges_for_scenario:
-            logging.warning("Skipping scenario %s: no exchanges after filtering.", scenario.label)
+            logging.warning("跳过场景 %s: 过滤后无交易所。", scenario.label)
             continue
 
-        # When using lazy slicing, populate master specs and coin indices per exchange.
+        # 使用惰性切片时，填充各交易所的主规格和币种索引
         master_hlcvs_specs = {}
         master_btc_specs = {}
         coin_slice_indices = {}
@@ -513,21 +514,22 @@ async def prepare_suite_contexts(
         )
 
     if not contexts:
-        raise ValueError("Suite configuration produced no runnable scenarios after filtering.")
+        raise ValueError("套件配置在过滤后未产生可运行场景。")
 
     return contexts, aggregate_cfg
 
 
 def ensure_suite_config(config_path: Path, suite_path: Optional[Path]) -> Dict[str, Any]:
+    """加载并合并配置和套件定义，返回完整的套件配置。"""
     config = load_prepared_config(str(config_path), verbose=False)
     config = parse_overrides(config, verbose=False)
     suite_override = None
     if suite_path:
         override_config = load_prepared_config(str(suite_path), verbose=False)
         override_backtest = override_config.get("backtest", {})
-        # Support both new (scenarios at top level) and legacy (suite wrapper) formats
+        # 同时支持新格式（顶层 scenarios）和旧格式（suite 包装）
         if "suite" in override_backtest:
-            # Legacy format - prefer explicit suite wrapper over template/default scenarios.
+            # 旧格式 — 优先使用显式 suite 包装
             suite_override = override_backtest["suite"]
         elif "scenarios" in override_backtest:
             suite_override = {
@@ -535,13 +537,14 @@ def ensure_suite_config(config_path: Path, suite_path: Optional[Path]) -> Dict[s
                 "aggregate": override_backtest.get("aggregate", {"default": "mean"}),
             }
         else:
-            raise ValueError(f"Suite config {suite_path} must provide backtest.scenarios definition.")
+            raise ValueError(f"套件配置 {suite_path} 必须提供 backtest.scenarios 定义。")
     return extract_suite_config(config, suite_override)
 
 
 def summarized_metrics(
     per_scenario_metrics: Dict[str, Dict[str, float]], aggregate: Dict[str, Any]
 ) -> Dict[str, Any]:
+    """汇总各场景指标为统一结构。"""
     payload = {
         "aggregate": aggregate,
         "scenarios": per_scenario_metrics,
@@ -550,6 +553,6 @@ def summarized_metrics(
 
 
 #
-# Suite configuration is now canonical under backtest.scenarios.
-# Optimizer suite uses the same schema and reads it via suite_runner.extract_suite_config().
+# 套件配置现已统一在 backtest.scollections 下。
+# 优化器套件使用相同 schema，通过 suite_runner.extract_suite_config() 读取。
 #
