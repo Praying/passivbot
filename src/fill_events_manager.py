@@ -92,6 +92,7 @@ class RateLimitCoordinator:
         window_ms: int = _RATE_LIMIT_WINDOW_MS,
         limits: Optional[Dict[str, int]] = None,
     ) -> None:
+        """初始化速率限制协调器。"""
         self.exchange = exchange.lower()
         self.user = user
         self.window_ms = window_ms
@@ -231,6 +232,7 @@ def _day_key(timestamp_ms: int) -> str:
 def _merge_fee_lists(
     fees_a: Optional[Sequence], fees_b: Optional[Sequence]
 ) -> Optional[List[Dict[str, object]]]:
+    """按币种合并两组手续费列表，cost 值累加。"""
     def to_list(fees):
         if not fees:
             return []
@@ -682,6 +684,7 @@ class FillEvent:
         return self.id
 
     def to_dict(self) -> Dict[str, object]:
+        """将成交事件序列化为字典。"""
         return {
             "id": self.id,
             "source_ids": list(self.source_ids) if self.source_ids is not None else [],
@@ -703,6 +706,7 @@ class FillEvent:
 
     @classmethod
     def from_dict(cls, data: Dict[str, object]) -> "FillEvent":
+        """从字典反序列化为 FillEvent 实例。"""
         required = [
             "id",
             "timestamp",
@@ -793,6 +797,7 @@ class FillEventCache:
         self._metadata: Optional[CacheMetadata] = None
 
     def load(self) -> List[FillEvent]:
+        """从磁盘加载所有 JSON 日志文件中的成交事件。"""
         files = sorted(self.root.glob("*.json"))
         events: List[FillEvent] = []
         for path in files:
@@ -825,6 +830,7 @@ class FillEventCache:
         self.save_days(day_map)
 
     def save_days(self, day_events: Dict[str, Sequence[FillEvent]]) -> None:
+        """按天原子性地保存成交事件到独立的 JSON 文件。"""
         for day, events in day_events.items():
             path = self.root / f"{day}.json"
             payload = [event.to_dict() for event in sorted(events, key=lambda ev: ev.timestamp)]
@@ -1109,6 +1115,7 @@ class FakeFetcher(BaseFetcher):
         detail_cache: Dict[str, Tuple[str, str]],
         on_batch: Optional[Callable[[List[Dict[str, object]]], None]] = None,
     ) -> List[Dict[str, object]]:
+        """从模拟交易所账本获取成交事件。"""
         events = list(self.api.get_fill_events(since_ms, until_ms))
         for event in events:
             cache_entry = detail_cache.get(event["id"])
@@ -1137,6 +1144,7 @@ class BitgetFetcher(BaseFetcher):
         now_func: Optional[Callable[[], int]] = None,
         symbol_resolver: Optional[Callable[[Optional[str]], str]] = None,
     ) -> None:
+        """初始化 Bitget 获取器。"""
         self.api = api
         self.product_type = product_type
         self.history_limit = history_limit
@@ -1156,6 +1164,7 @@ class BitgetFetcher(BaseFetcher):
         detail_cache: Dict[str, Tuple[str, str]],
         on_batch: Optional[Callable[[List[Dict[str, object]]], None]] = None,
     ) -> List[Dict[str, object]]:
+        """从 Bitget 获取成交历史并富化订单详情。"""
         buffer_step_ms = 24 * 60 * 60 * 1000
         end_time = int(until_ms) if until_ms is not None else self._now_func() + buffer_step_ms
         params: Dict[str, object] = {
@@ -1298,6 +1307,7 @@ class BitgetFetcher(BaseFetcher):
         event: Dict[str, object],
         cache: Dict[str, Tuple[str, str]],
     ) -> int:
+        """获取 Bitget 订单详情以填充 client_order_id 和 pb_order_type。"""
         if not event.get("order_id"):
             return 0
         logger.debug(
@@ -1338,6 +1348,7 @@ class BitgetFetcher(BaseFetcher):
             return 1
 
     async def _respect_rate_limit(self) -> None:
+        """滑动窗口限速：若窗口内调用已达上限则等待。"""
         window_ms = 60_000
         max_calls = self.detail_calls_per_minute
         q = self._detail_call_timestamps
@@ -1378,6 +1389,7 @@ class BitgetFetcher(BaseFetcher):
         return total
 
     def _normalize_fill(self, raw: Dict[str, object]) -> Dict[str, object]:
+        """将 Bitget 原始成交数据标准化为内部事件格式。"""
         timestamp = int(raw["cTime"])
         side, position_side = deduce_side_pside(raw)
         return {
@@ -1434,6 +1446,7 @@ class BinanceFetcher(BaseFetcher):
         income_limit: int = 1000,
         trade_limit: int = 1000,
     ) -> None:
+        """初始化 Binance 获取器。"""
         self.api = api
         if symbol_resolver is None:
             raise ValueError("BinanceFetcher requires a symbol_resolver callable")
@@ -1448,6 +1461,7 @@ class BinanceFetcher(BaseFetcher):
         self._markets_loaded = False
 
     async def _get_market_symbols(self) -> Optional[set[str]]:
+        """获取交易所支持的所有交易对符号集合。"""
         if self._market_symbols is not None:
             return self._market_symbols
         symbols = getattr(self.api, "symbols", None)
@@ -1481,6 +1495,7 @@ class BinanceFetcher(BaseFetcher):
         detail_cache: Dict[str, Tuple[str, str]],
         on_batch: Optional[Callable[[List[Dict[str, object]]], None]] = None,
     ) -> List[Dict[str, object]]:
+        """合并 income 和 trades 获取 Binance 已实现 PnL 事件。"""
         logger.debug(
             "BinanceFetcher.fetch: start since=%s until=%s",
             _format_ms(since_ms),
@@ -1533,6 +1548,7 @@ class BinanceFetcher(BaseFetcher):
             merged[ev["id"]] = ev
 
         def _event_from_trade(trade: Dict[str, object]) -> Dict[str, object]:
+            """从原始成交构建事件字典。"""
             symbol = trade.get("symbol") or self._resolve_symbol(trade.get("info", {}).get("symbol"))
             timestamp = int(trade.get("timestamp") or 0)
             client_oid = trade.get("client_order_id") or ""
@@ -1555,6 +1571,7 @@ class BinanceFetcher(BaseFetcher):
             return event
 
         def _merge_trade_into_event(event: Dict[str, object], trade: Dict[str, object]) -> None:
+            """将成交数据合并到现有事件中，填充缺失字段。"""
             if not event.get("symbol") and trade.get("symbol"):
                 event["symbol"] = trade["symbol"]
             if not event.get("side") and trade.get("side"):
@@ -1670,6 +1687,7 @@ class BinanceFetcher(BaseFetcher):
         order_id: Optional[str],
         symbol: Optional[str],
     ) -> Optional[Tuple[str, str]]:
+        """获取 Binance 订单详情以提取 client_order_id。"""
         if not order_id or not symbol:
             return None
         try:
@@ -1695,6 +1713,7 @@ class BinanceFetcher(BaseFetcher):
         since_ms: Optional[int],
         until_ms: Optional[int],
     ) -> List[Dict[str, object]]:
+        """按周分页获取 Binance REALIZED_PNL 收入记录。"""
         params: Dict[str, object] = {"incomeType": "REALIZED_PNL", "limit": self.income_limit}
         if until_ms is None:
             if since_ms is None:
@@ -1753,6 +1772,7 @@ class BinanceFetcher(BaseFetcher):
         since_ms: Optional[int],
         until_ms: Optional[int],
     ) -> List[Dict[str, object]]:
+        """按交易对获取 Binance 成交历史，支持时间范围分页。"""
         limit = min(1000, max(1, self.trade_limit))
         try:
             if since_ms is None and until_ms is None:
@@ -1833,6 +1853,7 @@ class BinanceFetcher(BaseFetcher):
             return []
 
     def _normalize_income(self, entry: Dict[str, object]) -> Dict[str, object]:
+        """将 Binance income 记录标准化为内部事件格式。"""
         trade_id = entry.get("tradeId") or entry.get("id") or f"income-{entry.get('time')}"
         timestamp = int(entry.get("time") or entry.get("timestamp") or 0)
         raw_symbol = entry.get("symbol")
@@ -1855,6 +1876,7 @@ class BinanceFetcher(BaseFetcher):
         }
 
     def _normalize_trade(self, trade: Dict[str, object]) -> Dict[str, object]:
+        """将 Binance 成交记录标准化为内部事件格式。"""
         info = trade.get("info") or {}
         trade_id = trade.get("id") or info.get("id")
         timestamp = int(trade.get("timestamp") or info.get("time") or info.get("T") or 0)
@@ -1939,6 +1961,7 @@ class FillEventsManager:
         cache_path: Path,
         rate_limit_coordinator: Optional[RateLimitCoordinator] = None,
     ) -> None:
+        """初始化成交事件管理器。"""
         self.exchange = exchange
         self.user = user
         self.fetcher = fetcher
@@ -1949,6 +1972,7 @@ class FillEventsManager:
         self._lock = asyncio.Lock()
 
     async def ensure_loaded(self) -> None:
+        """从缓存加载成交事件（仅首次调用时执行），过滤无效记录并标注 psize/pprice。"""
         if self._loaded:
             return
         async with self._lock:
@@ -2066,6 +2090,7 @@ class FillEventsManager:
 
     @staticmethod
     def _normalize_fee_dict(fee: Optional[Dict[str, object]]) -> Optional[Dict[str, object]]:
+        """标准化手续费字典，提取 currency、cost 和 rate。"""
         if not isinstance(fee, dict):
             return None
         out: Dict[str, object] = {}
@@ -2085,6 +2110,7 @@ class FillEventsManager:
 
     @staticmethod
     def _extract_bybit_fee_from_trade_row(row: Dict[str, object]) -> Optional[Dict[str, object]]:
+        """从 Bybit 成交行提取手续费信息，优先使用 ccxt fee，回退到 info 字段。"""
         fee = FillEventsManager._normalize_fee_dict(row.get("fee"))
         if fee is not None:
             return fee
@@ -2126,6 +2152,7 @@ class FillEventsManager:
 
     @staticmethod
     def _build_consolidated_bybit_event(group: Sequence[FillEvent]) -> FillEvent:
+        """将一组 Bybit 重复成交合并为单个规范化事件，重新计算 PnL 和手续费。"""
         # 选择最佳基线事件（优先内部去重的，然后是最大唯一覆盖的）。
         best_event = group[0]
         best_rank: Tuple[int, int, float] = (-1, -1, float("-inf"))
@@ -2324,6 +2351,7 @@ class FillEventsManager:
         start_ms: Optional[int] = None,
         end_ms: Optional[int] = None,
     ) -> None:
+        """从交易所获取最新成交事件，增量合并到缓存并持久化受影响的日期文件。"""
         await self.ensure_loaded()
         logger.debug(
             "[fills] refresh: start=%s end=%s current_cache=%d",
@@ -2343,6 +2371,7 @@ class FillEventsManager:
         all_days_persisted: set[str] = set()
 
         def handle_batch(batch: List[Dict[str, object]]) -> None:
+            """增量处理获取到的成交批次：规范化、去重、持久化受影响的日期文件。"""
             ensure_qty_signage(batch)
             days_touched: set[str] = set()
             for raw in batch:
@@ -2758,6 +2787,7 @@ class BybitFetcher(BaseFetcher):
         overlap_days: float = 3.0,
         max_span_days: float = 6.5,
     ) -> None:
+        """初始化 Bybit 获取器。"""
         self.api = api
         self.category = category
         self.trade_limit = max(1, min(trade_limit, 100))
@@ -2772,6 +2802,7 @@ class BybitFetcher(BaseFetcher):
         detail_cache: Dict[str, Tuple[str, str]],
         on_batch: Optional[Callable[[List[Dict[str, object]]], None]] = None,
     ) -> List[Dict[str, object]]:
+        """获取 Bybit 成交和持仓历史，合并后返回规范化事件。"""
         end_ms = until_ms or (self._now_ms() + 60 * 60 * 1000)
         start_ms = since_ms or max(0, end_ms - self._default_span_ms)
 
@@ -2804,6 +2835,7 @@ class BybitFetcher(BaseFetcher):
         return events
 
     async def _fetch_my_trades(self, start_ms: int, end_ms: int) -> List[Dict[str, object]]:
+        """分页获取 Bybit 成交记录，自动去重。"""
         params = {
             "type": "swap",
             "subType": self.category,
@@ -3127,6 +3159,7 @@ class BybitFetcher(BaseFetcher):
 
     @staticmethod
     def _normalize_trade(trade: Dict[str, object]) -> Dict[str, object]:
+        """将 Bybit 成交记录标准化为内部事件格式。"""
         info = trade.get("info", {})
         order_id = str(info.get("orderId", trade.get("order")))
         trade_id = str(trade.get("id") or info.get("execId") or order_id)
@@ -3193,6 +3226,7 @@ class HyperliquidFetcher(BaseFetcher):
         detail_cache: Dict[str, Tuple[str, str]],
         on_batch: Optional[Callable[[List[Dict[str, object]]], None]] = None,
     ) -> List[Dict[str, object]]:
+        """分页获取 Hyperliquid 成交事件，带速率限制重试。"""
         params: Dict[str, object] = {"limit": self.trade_limit}
         if since_ms is not None:
             params["since"] = int(since_ms)
@@ -3305,6 +3339,7 @@ class HyperliquidFetcher(BaseFetcher):
 
     @staticmethod
     def _normalize_trade(trade: Dict[str, object]) -> Dict[str, object]:
+        """将 Hyperliquid 成交记录标准化为内部事件格式。"""
         info = trade.get("info", {}) or {}
         trade_id = str(trade.get("id") or info.get("hash") or info.get("tid") or "")
         order_id = str(trade.get("order") or info.get("oid") or "")
@@ -3374,6 +3409,7 @@ class GateioFetcher(BaseFetcher):
         detail_cache: Dict[str, Tuple[str, str]],
         on_batch: Optional[Callable[[List[Dict[str, object]]], None]] = None,
     ) -> List[Dict[str, object]]:
+        """获取 Gate.io 成交并合并订单级别 PnL。"""
         logger.debug(
             "GateioFetcher.fetch: start (since=%s, until=%s)",
             _format_ms(since_ms),
@@ -3714,6 +3750,7 @@ class KucoinFetcher(BaseFetcher):
         detail_cache: Dict[str, Tuple[str, str]],
         on_batch: Optional[Callable[[List[Dict[str, object]]], None]] = None,
     ) -> List[Dict[str, object]]:
+        """获取 Kucoin 成交，用 positions_history 校准 PnL 后批量富化订单详情。"""
         trades = await self._fetch_trades(since_ms, until_ms)
         if not trades:
             return []
@@ -3751,6 +3788,7 @@ class KucoinFetcher(BaseFetcher):
     async def _fetch_trades(
         self, since_ms: Optional[int], until_ms: Optional[int]
     ) -> List[Dict[str, object]]:
+        """按时间窗口分页获取 Kucoin 成交记录。"""
         now_ms = self._now_func()
         until_ts = int(until_ms) if until_ms is not None else now_ms + 3_600_000
         since_ts = int(since_ms) if since_ms is not None else until_ts - 24 * 60 * 60 * 1000
@@ -3809,6 +3847,7 @@ class KucoinFetcher(BaseFetcher):
         return sorted(collected.values(), key=lambda ev: ev["timestamp"])
 
     async def _fetch_positions_history(self, start_ms: int, end_ms: int) -> List[Dict[str, object]]:
+        """按时间窗口分页获取 Kucoin 持仓历史记录。"""
         results: Dict[str, Dict[str, object]] = {}
         max_fetches = 400
         fetch_count = 0
@@ -3948,6 +3987,7 @@ class KucoinFetcher(BaseFetcher):
     def _log_discrepancies(
         self, local_pnls: Dict[str, float], positions: List[Dict[str, object]]
     ) -> None:
+        """比较本地计算的 PnL 与 positions_history 的 PnL，节流记录显著差异。"""
         if not positions or not local_pnls:
             return
         # 按交易对聚合用于粗略对账
@@ -3992,6 +4032,7 @@ class KucoinFetcher(BaseFetcher):
 
     @staticmethod
     def _normalize_trade(trade: Dict[str, object]) -> Dict[str, object]:
+        """将 Kucoin 成交记录标准化为内部事件格式。"""
         info = trade.get("info", {}) or {}
         trade_id = str(trade.get("id") or info.get("tradeId") or info.get("id") or "")
         order_id = str(trade.get("order") or info.get("orderId") or "")
@@ -4118,6 +4159,7 @@ class KucoinFetcher(BaseFetcher):
             log_interval = 5.0
 
             async def throttled_fetch(order_id: str) -> Tuple[str, Optional[Tuple[str, str]]]:
+                """带并发限制的订单详情获取。"""
                 nonlocal completed, last_log_time
                 async with sem:
                     symbol = order_symbols.get(order_id)
@@ -4181,6 +4223,7 @@ class KucoinFetcher(BaseFetcher):
     async def _enrich_with_order_details(
         self, order_id: Optional[str], symbol: Optional[str]
     ) -> Optional[Tuple[str, str]]:
+        """获取 Kucoin 订单详情以提取 client_order_id。"""
         if not order_id:
             return None
         try:
@@ -4251,6 +4294,7 @@ class OkxFetcher(BaseFetcher):
         detail_cache: Dict[str, Tuple[str, str]],
         on_batch: Optional[Callable[[List[Dict[str, object]]], None]] = None,
     ) -> List[Dict[str, object]]:
+        """从 OKX /fills 和 /fills-history 端点获取成交事件。"""
         now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
         until_ms = until_ms or now_ms
 
@@ -4562,6 +4606,7 @@ EXCHANGE_BOT_CLASSES: Dict[str, Tuple[str, str]] = {
 
 
 def _parse_time_arg(value: Optional[str]) -> Optional[int]:
+    """解析时间参数，支持毫秒时间戳、ISO 格式和 'now' 关键字。"""
     if value is None:
         return None
     value = value.strip()
@@ -4618,7 +4663,9 @@ def _extract_symbol_pool(config: dict, override: Optional[List[str]]) -> List[st
 
 
 def _symbol_resolver(bot) -> Callable[[Optional[str]], str]:
+    """构建交易对符号解析器，将交易所原生符号映射为 CCXT 格式。"""
     def resolver(raw: Optional[str]) -> str:
+        """将交易所原生交易对符号解析为 CCXT 格式。"""
         if not raw:
             return ""
         if isinstance(raw, str) and "/" in raw:
@@ -4649,6 +4696,7 @@ def _symbol_resolver(bot) -> Callable[[Optional[str]], str]:
 
 
 def _build_fetcher_for_bot(bot, symbols: List[str]) -> BaseFetcher:
+    """根据机器人交易所类型创建对应的成交获取器。"""
     exchange = getattr(bot, "exchange", "").lower()
     resolver = _symbol_resolver(bot)
     static_provider = lambda: symbols  # noqa: E731
@@ -4702,6 +4750,7 @@ def _instantiate_bot(config: dict):
 
 
 async def _run_cli(args: argparse.Namespace) -> None:
+    """CLI 入口：解析配置，初始化机器人和管理器，执行刷新操作。"""
     source_config, base_config_path, raw_snapshot = load_input_config(args.config)
     config = prepare_config(
         source_config,
@@ -4752,6 +4801,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    """CLI 主入口：解析命令行参数并运行成交事件缓存刷新。"""
     parser = argparse.ArgumentParser(description="Fill events cache refresher")
     parser.add_argument(
         "--config",

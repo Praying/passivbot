@@ -61,7 +61,7 @@ STANDARD_TO_CCXT_ID = {v: k for k, v in CCXT_ID_TO_STANDARD.items()}
 LEGACY_DIR_PATTERNS = [
     "ohlcvs_binanceusdm",
     "ohlcvs_binance",
-    "ohlcvs_futures",  # Old Binance futures path
+    "ohlcvs_futures",  # 旧版 Binance 合约路径
     "ohlcvs_bybit",
     "ohlcvs_kucoinfutures",
     "ohlcvs_kucoin",
@@ -207,13 +207,13 @@ def merge_duplicate_symbol_directories(
             for sym_dir in symbol_dirs:
                 dir_name = sym_dir.name
 
-                # Try to extract the original symbol and compute canonical path
-                # Pattern: COIN_QUOTE_QUOTE or COIN_QUOTE:QUOTE
-                # e.g., LINK_USDT_USDT or LINK_USDT:USDT
+                # 尝试提取原始符号并计算规范路径
+                # 模式：COIN_QUOTE_QUOTE 或 COIN_QUOTE:QUOTE
+                # 例如，LINK_USDT_USDT 或 LINK_USDT:USDT
 
-                # The canonical form depends on windows_compatibility
-                # On non-Windows: LINK_USDT:USDT
-                # On Windows: LINK_USDT_USDT
+                # 规范形式取决于 windows_compatibility
+                # 非 Windows：LINK_USDT:USDT
+                # Windows：LINK_USDT_USDT
 
                 # 规范化为将两种变体归为一组的键
                 # 将所有 : 替换为 _ 以用于分组

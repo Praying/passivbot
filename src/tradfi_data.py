@@ -595,7 +595,7 @@ class YFinanceProvider(TradFiProvider):
                         start_dt,
                     )
 
-                # Fetch data
+                # 获取数据
                 df = ticker.history(
                     interval="1m",
                     start=start_dt,
@@ -609,9 +609,9 @@ class YFinanceProvider(TradFiProvider):
                 logger.debug("yfinance no data for %s", symbol)
                 return []
 
-            # Convert DataFrame to TradFiCandle list
+            # 将 DataFrame 转换为 TradFiCandle 列表
             for idx, row in df.iterrows():
-                # idx is a timezone-aware datetime
+                # idx 是带时区信息的 datetime
                 ts_ms = int(idx.timestamp() * 1000)
 
                 if start_ts <= ts_ms <= end_ts:
@@ -637,15 +637,15 @@ class YFinanceProvider(TradFiProvider):
 def get_provider(
     name: str, api_key: Optional[str] = None, api_secret: Optional[str] = None
 ) -> TradFiProvider:
-    """Factory function to get a TradFi data provider.
+    """工厂函数：获取 TradFi 数据提供商。
 
     Args:
-        name: Provider name ("alpaca", "polygon", "yfinance", "finnhub", "alphavantage")
-        api_key: API key for the provider (not needed for yfinance)
-        api_secret: API secret for Alpaca (required for alpaca provider)
+        name: 提供商名称（"alpaca"、"polygon"、"yfinance"、"finnhub"、"alphavantage"）
+        api_key: 提供商的 API 密钥（yfinance 不需要）
+        api_secret: Alpaca 的 API 密钥（仅 alpaca 提供商需要）
 
     Returns:
-        TradFiProvider instance
+        TradFiProvider 实例
     """
     if name == "alpaca":
         return AlpacaProvider(api_key=api_key, api_secret=api_secret)
@@ -664,13 +664,13 @@ def get_provider(
 
 
 def candles_to_array(candles: List[TradFiCandle]) -> np.ndarray:
-    """Convert TradFiCandle list to numpy structured array.
+    """将 TradFiCandle 列表转换为 numpy 结构化数组。
 
     Args:
-        candles: List of TradFiCandle objects
+        candles: TradFiCandle 对象列表
 
     Returns:
-        Structured array with CANDLE_DTYPE
+        使用 CANDLE_DTYPE 的结构化数组
     """
     if not candles:
         return np.empty((0,), dtype=CANDLE_DTYPE)
@@ -683,7 +683,7 @@ def candles_to_array(candles: List[TradFiCandle]) -> np.ndarray:
 
 
 class TradFiDataFetcher:
-    """High-level fetcher for TradFi data with caching and rate limiting."""
+    """带缓存和速率限制的高级 TradFi 数据获取器。"""
 
     def __init__(
         self,
@@ -702,7 +702,7 @@ class TradFiDataFetcher:
         await self.provider.__aexit__(exc_type, exc_val, exc_tb)
 
     async def _rate_limit_wait(self):
-        """Wait to respect rate limits."""
+        """等待以遵守速率限制。"""
         elapsed = time.monotonic() - self._last_request_time
         delay = self.provider.rate_limit_delay
         if elapsed < delay:
@@ -714,18 +714,18 @@ class TradFiDataFetcher:
         hip3_symbol: str,
         day_key: str,
     ) -> np.ndarray:
-        """Fetch a full day of 1m candles for a HIP-3 symbol.
+        """获取 HIP-3 符号的完整一天 1 分钟 K 线。
 
         Args:
-            hip3_symbol: HIP-3 symbol (e.g., "xyz:TSLA/USDC:USDC")
-            day_key: Date string (YYYY-MM-DD)
+            hip3_symbol: HIP-3 符号（如 "xyz:TSLA/USDC:USDC"）
+            day_key: 日期字符串（YYYY-MM-DD）
 
         Returns:
-            Structured array with CANDLE_DTYPE (may be sparse for market hours only)
+            使用 CANDLE_DTYPE 的结构化数组（可能仅在交易时段有数据）
         """
         tradfi_symbol = hip3_to_tradfi_symbol(hip3_symbol)
 
-        # Calculate day boundaries (UTC)
+        # 计算日期边界（UTC）
         day_start = datetime.strptime(day_key, "%Y-%m-%d").replace(tzinfo=UTC)
         start_ts = int(day_start.timestamp() * 1000)
         end_ts = start_ts + ONE_DAY_MS - ONE_MIN_MS
@@ -756,15 +756,15 @@ class TradFiDataFetcher:
         start_date: str,
         end_date: str,
     ) -> Dict[str, np.ndarray]:
-        """Fetch candles for a date range.
+        """获取日期范围内的 K 线。
 
         Args:
-            hip3_symbol: HIP-3 symbol
-            start_date: Start date (YYYY-MM-DD)
-            end_date: End date (YYYY-MM-DD)
+            hip3_symbol: HIP-3 符号
+            start_date: 开始日期（YYYY-MM-DD）
+            end_date: 结束日期（YYYY-MM-DD）
 
         Returns:
-            Dict mapping day keys to candle arrays
+            字典，日期键映射到 K 线数组
         """
         results = {}
         start = datetime.strptime(start_date, "%Y-%m-%d")
@@ -781,8 +781,8 @@ class TradFiDataFetcher:
         return results
 
 
-# Known stock tickers available as HIP-3 perps on Hyperliquid/TradeXYZ
-# These can be used with or without the xyz: prefix
+# 已知在 Hyperliquid/TradeXYZ 上可作为 HIP-3 永续合约的股票代号
+# 可使用 xyz: 前缀或不带前缀
 KNOWN_STOCK_TICKERS = {
     "TSLA",
     "NVDA",
@@ -798,26 +798,26 @@ KNOWN_STOCK_TICKERS = {
     "HOOD",
     "CRCL",
     "SBET",
-    "XYZ100",  # Nasdaq-like index
+    "XYZ100",  # 类纳斯达克指数
 }
 
-# Available stock perps with xyz: prefix format
+# 可用的带 xyz: 前缀格式的股票永续合约
 AVAILABLE_STOCK_PERPS = [f"xyz:{ticker}" for ticker in KNOWN_STOCK_TICKERS]
 
 
 def is_stock_ticker(coin: str) -> bool:
-    """Check if a coin name is a known stock ticker.
+    """检查币种名称是否为已知股票代号。
 
-    This allows users to simply add "TSLA" to approved_coins without
-    needing to know the xyz: prefix.
+    允许用户直接将 "TSLA" 添加到 approved_coins，
+    无需了解 xyz: 前缀。
 
     Args:
-        coin: Coin name (e.g., "TSLA", "xyz:TSLA", "XYZ-TSLA", "BTC")
+        coin: 币种名称（如 "TSLA"、"xyz:TSLA"、"XYZ-TSLA"、"BTC"）
 
     Returns:
-        True if this is a known stock ticker
+        如果是已知股票代号则返回 True
     """
-    # Remove any HIP-3 prefix
+    # 移除 HIP-3 前缀
     if coin.startswith("xyz:"):
         coin = coin[4:]
     elif coin.startswith("XYZ-"):
@@ -825,7 +825,7 @@ def is_stock_ticker(coin: str) -> bool:
     elif coin.startswith("XYZ:"):
         coin = coin[4:]
 
-    # Remove any quote suffix (e.g., from CCXT symbols)
+    # 移除报价后缀（例如来自 CCXT 符号）
     if "/" in coin:
         coin = coin.split("/")[0]
 
@@ -833,24 +833,24 @@ def is_stock_ticker(coin: str) -> bool:
 
 
 def is_stock_perp_symbol(symbol: str) -> bool:
-    """Check if a symbol is a stock perp.
+    """检查符号是否为股票永续合约。
 
-    Detects stock perps by:
-    1. xyz: or XYZ- prefix (HIP-3 format)
-    2. Known stock ticker name (TSLA, NVDA, etc.)
+    通过以下方式检测：
+    1. xyz: 或 XYZ- 前缀（HIP-3 格式）
+    2. 已知股票代号名称（TSLA、NVDA 等）
 
     Args:
-        symbol: CCXT-style symbol or coin name
+        symbol: CCXT 风格符号或币种名称
 
     Returns:
-        True if this is a stock perp symbol
+        如果是股票永续合约符号则返回 True
     """
-    # Check for HIP-3 prefixes
+    # 检查 HIP-3 前缀
     if symbol.startswith("xyz:") or symbol.startswith("XYZ-") or symbol.startswith("XYZ:"):
         return True
     base = symbol.split("/")[0] if "/" in symbol else symbol
     if base.startswith("xyz:") or base.startswith("XYZ-") or base.startswith("XYZ:"):
         return True
 
-    # Check if it's a known stock ticker
+    # 检查是否为已知股票代号
     return is_stock_ticker(symbol)

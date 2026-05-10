@@ -170,6 +170,7 @@ class HLCVManager:
         self.tradfi_for_stock_perps = _has_tradfi_provider_config()
 
     def update_date_range(self, new_start_date=None, new_end_date=None):
+        """更新管理器的日期范围，支持时间戳、日期字符串或 None。"""
         if new_start_date is not None:
             if isinstance(new_start_date, (float, int)):
                 self.start_date = ts_to_date(new_start_date)
@@ -195,6 +196,7 @@ class HLCVManager:
         self.end_date = ts_to_date(self.end_ts)
 
     def load_cc(self):
+        """延迟加载 ccxt 交易所实例和 CandlestickManager。"""
         if self.cc is None:
             self.cc = load_ccxt_instance(self.exchange, enable_rate_limit=True)
         if self.cm is None:
@@ -399,6 +401,7 @@ class HLCVManager:
         }
 
     def get_symbol(self, coin: str) -> str:
+        """查找币种对应的交易对符号，支持模糊匹配连字符/冒号变体。"""
         assert self.markets, "needs to call load_markets() first"
         symbol = coin_to_symbol(coin, self.exchange)
         if symbol in self.markets:
@@ -423,6 +426,7 @@ class HLCVManager:
         return symbol and symbol in self.markets
 
     def get_market_specific_settings(self, coin: str) -> dict:
+        """获取币种的市场特定参数（手续费、精度、合约乘数等），含交易所特定修正。"""
         mss = dict(self.markets[self.get_symbol(coin)])
         mss["hedge_mode"] = True
         mss["maker_fee"] = mss.get("maker")
@@ -504,6 +508,7 @@ class HLCVManager:
     def _try_load_ohlcvs_from_source_dir(
         self, coin: str, symbol: str, start_ts: int, end_ts: int
     ) -> Optional[pd.DataFrame]:
+        """尝试从 ohlcv_source_dir 加载 OHLCV 数据，跳过无法通过间隙容差验证的数据。"""
         if not self.ohlcv_source_dir:
             return None
         source_root = Path(self.ohlcv_source_dir)
@@ -597,7 +602,7 @@ class HLCVManager:
         return df.reset_index(drop=True)
 
     async def get_ohlcvs(self, coin: str, start_date=None, end_date=None) -> pd.DataFrame:
-        empty_df = pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+        """获取币种的 OHLCV 数据，支持源目录回退和间隙检测与修复。"""
         if start_date is not None or end_date is not None:
             self.update_date_range(start_date, end_date)
         if not self.markets:
@@ -789,6 +794,7 @@ async def prepare_hlcvs(
     force_refetch_gaps: bool = False,
     skip_v2_local: bool = False,
 ):
+    """为单交易所回测准备 HLCV 数据，含预热期扩展和 BTC/USD 基准获取。"""
     if not skip_v2_local:
         try:
             local_v2 = await try_prepare_hlcvs_v2_local(
@@ -936,6 +942,7 @@ async def prepare_hlcvs(
 async def try_prepare_hlcvs_v2_local(
     config: dict, exchange: str, *, force_refetch_gaps: bool = False
 ) -> Optional[tuple[dict, np.ndarray, np.memmap, np.memmap]]:
+    """尝试从本地 v2 存储准备 HLCV 数据，仅在所有数据本地可用时成功。"""
     if exchange == "combined":
         return None
     if force_refetch_gaps:
@@ -1152,6 +1159,7 @@ async def _resolve_v2_store_range(
     local_hit_log_label: str,
     remote_fetch_log_label: str,
 ):
+    """解析 v2 存储中的数据范围，按需导入旧版数据或远程获取缺失部分。"""
     plan = plan_local_symbol_range(
         catalog=catalog,
         legacy_root=legacy_root,
@@ -1481,6 +1489,7 @@ async def _fetch_invalid_windows_into_v2_store(
     timestamps: np.ndarray,
     valid: np.ndarray,
 ) -> bool:
+    """针对无效窗口逐个远程获取数据并写入 v2 存储。"""
     fetched_any = False
     full_start_ts = int(timestamps[0])
     full_end_ts = int(timestamps[-1])
@@ -1517,6 +1526,7 @@ async def _fetch_coin_range_into_v2_store(
     start_ts: int,
     end_ts: int,
 ) -> bool:
+    """通过 CandlestickManager 获取币种范围的 OHLCV 数据并写入 v2 存储。"""
     interval_ms = 60_000
     if hasattr(om, "update_timestamp_range"):
         om.update_timestamp_range(start_ts, end_ts)
@@ -1684,6 +1694,7 @@ def _sync_persistent_cm_gaps_to_v2_catalog(
     start_ts: int,
     end_ts: int,
 ) -> None:
+    """将 CandlestickManager 中的持久间隙信息同步到 v2 目录。"""
     if om.cm is None or not hasattr(om.cm, "get_gap_summary"):
         return
     try:
@@ -1719,6 +1730,7 @@ async def prepare_hlcvs_internal(
     end_ts,
     om: HLCVManager,
 ):
+    """并行获取多币种数据，对齐时间戳并返回市场设置、时间序列和对齐后的 HLCV 值。"""
     minimum_coin_age_days = float(require_live_value(config, "minimum_coin_age_days"))
     interval_ms = 60_000
 
@@ -1908,6 +1920,7 @@ async def prepare_hlcvs_combined(
     *,
     force_refetch_gaps: bool = False,
 ):
+    """为多交易所合并回测准备 HLCV 数据，含成交量标准化和跨交易所最优选择。"""
     backtest_exchanges = require_config_value(config, "backtest.exchanges")
     exchanges_to_consider = [to_ccxt_exchange_id(e) for e in backtest_exchanges]
     forced_sources = forced_sources or {}
@@ -2095,6 +2108,7 @@ async def _prepare_hlcvs_combined_impl(
     store: OhlcvStore,
     legacy_root: Path | None,
 ):
+    """合并模式的核心实现：并行解析各币种在各交易所的数据，计算成交量比率并对齐。"""
     market_settings_sources = market_settings_sources or {}
     approved = require_live_value(config, "approved_coins")
     coins = sorted(
@@ -2331,6 +2345,7 @@ def _plan_combined_coin(
     forced_sources: Dict[str, str],
     exchanges_to_consider: Sequence[str],
 ) -> Optional[CombinedCoinPlan]:
+    """计算合并模式下单个币种的计划：调整起始时间、确定候选交易所。"""
     is_stock_perp_coin = coin.startswith("xyz:")
     if coin not in first_timestamps_unified and not (is_stock_perp_coin and tradfi_for_stock_perps):
         return None
@@ -2380,6 +2395,7 @@ def _pick_best_combined_candidate(
     forced_exchange: Optional[str],
     candidates: list[CombinedExchangeCandidate],
 ) -> CombinedExchangeCandidate:
+    """从候选交易所中选出最佳数据源，优先覆盖度，其次间隙数和成交量。"""
     if not candidates:
         raise ValueError(f"No exchange data found at all for coin {coin}. Skipping.")
     if forced_exchange:
@@ -2412,6 +2428,7 @@ def _resolve_combined_market_settings(
     per_coin_warmups: dict,
     default_warm: int,
 ) -> dict:
+    """解析合并模式下的市场设置，支持从不同于 OHLCV 来源的交易所获取参数。"""
     settings_exchange = market_settings_sources.get(coin, best_exchange)
     if settings_exchange != best_exchange:
         settings_om = om_dict.get(settings_exchange)
@@ -2461,6 +2478,7 @@ async def _resolve_combined_coin(
     store: OhlcvStore,
     legacy_root: Path | None,
 ) -> Optional[CombinedCoinResolution]:
+    """解析合并模式下单个币种的最佳交易所选择和市场设置。"""
     async with sem:
         plan = _plan_combined_coin(
             coin=coin,
@@ -2536,6 +2554,7 @@ async def _load_combined_coin_candidates(
     legacy_root: Path | None,
     exchanges_to_consider: Sequence[str],
 ) -> list[CombinedExchangeCandidate]:
+    """并行从所有候选交易所加载币种数据，返回有效的候选列表。"""
     tasks = []
     position_map = {ex0: (1 + i) for i, ex0 in enumerate(exchanges_to_consider)}
     for ex in plan.candidate_exchanges:
@@ -2593,6 +2612,7 @@ async def _load_combined_btc_prices(
     store: OhlcvStore,
     legacy_root: Path | None,
 ) -> tuple[pd.DataFrame, Optional[str]]:
+    """为合并模式加载 BTC/USD 基准价格，优先使用主交易所，回退到 binanceusdm。"""
     btc_candidates = [
         exchanges_to_consider[0] if len(exchanges_to_consider) == 1 else "binanceusdm"
     ]
@@ -2674,6 +2694,7 @@ async def fetch_data_for_coin_and_exchange(
     legacy_root: Path | None = None,
     use_v2_local: bool = False,
 ):
+    """从指定交易所获取单个币种的 OHLCV 数据，优先使用 v2 本地存储。"""
     t0 = time.monotonic()
     # 计算近似天数以获得更好的可见性
     days_approx = max(1, (end_ts - effective_start_ts) // (24 * 60 * 60 * 1000))
@@ -2802,6 +2823,7 @@ async def compute_exchange_volume_ratios(
     end_date: str,
     om_dict: Dict[str, HLCVManager] = None,
 ) -> Dict[Tuple[str, str], float]:
+    """计算各交易所之间的日均成交量比率，用于合并模式的成交量标准化。"""
     if om_dict is None:
         om_dict = {ex: HLCVManager(ex, start_date, end_date) for ex in exchanges}
         await asyncio.gather(*[om_dict[ex].load_markets() for ex in om_dict])
