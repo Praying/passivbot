@@ -117,6 +117,7 @@ class OKXBot(CCXTBot):
         return balance
 
     async def fetch_pnls(self, start_time: int = None, end_time: int = None, limit=None):
+        """分页获取 OKX 成交记录，向前回溯直到覆盖 start_time。"""
         if limit is None:
             limit = 100
         if start_time is None and end_time is None:
@@ -258,7 +259,10 @@ class OKXBot(CCXTBot):
                 logging.error("[config] 设置双向持仓模式出错：%s", e)
 
     async def calc_ideal_orders(self):
-        # okx 最多 100 个未成交订单。丢弃价格差异最大的订单。
+        """计算理想订单并裁剪到 OKX 的 100 个未成交订单上限。
+
+        按价格差异排序，保留最接近当前价格的 100 个订单。
+        """
         ideal_orders = await super().calc_ideal_orders()
         ideal_orders_tmp = []
         for s in ideal_orders:

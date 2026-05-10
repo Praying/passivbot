@@ -199,6 +199,10 @@ class BitgetBot(CCXTBot):
     # ═══════════════════ BITGET 特定方法 ═══════════════════
 
     async def fetch_pnls(self, start_time=None, end_time=None, limit=None):
+        """通过 Bitget V2 成交历史端点分页获取 PnL 数据。
+
+        使用 endId 分页和哈希去重，为每条记录补充标准字段。
+        """
         params = {"productType": "USDT-FUTURES"}
         if start_time:
             start_time = int(start_time)
@@ -320,6 +324,11 @@ class BitgetBot(CCXTBot):
                 self._client_oid_cache[evt_id] = (cid, pb)
 
     async def fetch_fill_events(self, start_time=None, end_time=None, limit=None):
+        """获取成交事件并自动补充 clientOid（用于订单类型识别）。
+
+        使用限速包装器查询订单详情获取 clientOid，缓存已知映射
+        以减少 API 调用。分页获取直到覆盖时间范围。
+        """
 
         def _extract_fill(elm: dict) -> dict:
             timestamp = int(elm["cTime"])
@@ -448,6 +457,11 @@ class BitgetBot(CCXTBot):
         return final_result
 
     async def fetch_closed_orders(self, start_time, end_time, limit=100):
+        """通过 fetch_closed_orders 获取已关闭订单并转换为成交事件。
+
+        按时间分页回溯，提取每笔订单的 PnL、方向和自定义 ID，
+        最后按复合键去重并裁剪到指定时间范围。
+        """
         def extract_fill_event_from_co(elm):
             timestamp = int(elm["lastUpdateTimestamp"])
             price = float(elm["price"])
@@ -604,9 +618,10 @@ class BitgetBot(CCXTBot):
                 logging.info(f"{symbol}: {to_print}")
 
     async def calc_ideal_orders(self):
-        # Bitget 每次 fetch_open_orders 最多返回 100 个未成交订单。
-        # 只创建 100 个未成交订单。
-        # 丢弃价格差异最大的订单。
+        """计算理想订单并裁剪到 Bitget 的 100 个未成交订单上限。
+
+        按价格差异排序，保留最接近当前价格的 100 个订单。
+        """
         ideal_orders = await super().calc_ideal_orders()
         ideal_orders_tmp = []
         for s in ideal_orders:

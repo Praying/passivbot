@@ -161,6 +161,10 @@ class BinanceBot(CCXTBot):
         end_time: int = None,
         limit: int = None,
     ):
+        """合并 Binance PnL 和成交记录，按交易对并行获取后统一去重。
+
+        先获取所有 PnL，再按交易对并发获取成交记录，以 tradeId 关联合并。
+        """
         pnls = await self.fetch_pnls_sub(start_time, end_time, limit)
         symbols = sorted(set(self.positions) | set([x["symbol"] for x in pnls]))
         tasks = {}
@@ -195,6 +199,10 @@ class BinanceBot(CCXTBot):
         end_time: int = None,
         limit: int = None,
     ):
+        """获取所有交易对的 PnL，支持 7 天窗口分页。
+
+        Binance 每次最多返回 7 天 PnL，通过滚动 startTime 分页获取全部。
+        """
         # binance 需要指定交易对来获取成交记录
         # 但可以获取所有交易对的 PnL
         # 获取所有有持仓的交易对的成交记录
@@ -254,6 +262,11 @@ class BinanceBot(CCXTBot):
         return events
 
     async def fetch_fills_sub(self, symbol, start_time=None, end_time=None, limit=None):
+        """获取指定交易对的成交记录，支持 7 天窗口分页回溯。
+
+        Binance 每次最多返回 1000 条成交，按 7 天窗口逐步向前获取。
+        为每条记录补充 pnl 和 position_side 字段。
+        """
         if symbol not in self.markets_dict:
             return []
         # limit 最大为 1000

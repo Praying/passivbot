@@ -71,6 +71,10 @@ class GateIOBot(CCXTBot):
         end_time: int = None,
         limit=None,
     ):
+        """通过偏移量分页获取 Gate.io PnL 数据。
+
+        使用 offset 参数向前翻页直到数据量不足或时间戳早于 start_time。
+        """
         if start_time is None:
             return await self.fetch_pnl(limit=limit)
         all_fetched = {}

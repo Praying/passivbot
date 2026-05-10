@@ -50,6 +50,7 @@ class DefxBot(CCXTBot):
         return self._normalize_open_orders(fetched)
 
     async def fetch_positions(self):
+        """获取 Defx 持仓，从 info.positionSide 提取方向字段。"""
         fetched_positions = await self.cca.fetch_positions()
         positions = []
         for p in fetched_positions:
@@ -102,7 +103,7 @@ class DefxBot(CCXTBot):
                 try:
                     fetched[i][k] = float(fetched[i][k])
                 except (ValueError, TypeError):
-                    # Some fields (IDs, strings) can't be converted to float - skip them
+                    # 某些字段（ID、字符串）无法转换为浮点数 - 跳过它们
                     pass
         return fetched
 
@@ -152,10 +153,14 @@ class DefxBot(CCXTBot):
         }
 
     async def update_exchange_config(self):
-        """Defx uses one-way mode; no hedge mode configuration needed."""
+        """Defx 使用单向模式；无需对冲模式配置。"""
         pass
 
     async def update_exchange_config_by_symbols(self, symbols):
+        """为每个交易对并发设置杠杆。
+
+        杠杆取 min(max_leverage, configured_leverage, TWEL*1.1 向上取整)。
+        """
         coros_to_call_leverage = {}
         for symbol in symbols:
             try:

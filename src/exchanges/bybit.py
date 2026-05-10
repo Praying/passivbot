@@ -155,6 +155,7 @@ class BybitBot(CCXTBot):
         start_time: int = None,
         end_time: int = None,
     ):
+        """按 7 天窗口分段获取 Bybit 已实现 PnL，合并返回。"""
         if start_time is None:
             pnls = await self.fetch_pnl(start_time=start_time, end_time=end_time)
         else:
@@ -183,6 +184,10 @@ class BybitBot(CCXTBot):
         end_time: int = None,
         limit: int = None,
     ):
+        """通过 Bybit V5 closed-pnl 端点分页获取已平仓盈亏记录。
+
+        使用 nextPageCursor 分页，按 orderId 去重，直到获取到 start_time 为止。
+        """
         fetched = None
         all_pnls = []
         ids_seen = set()
@@ -230,6 +235,7 @@ class BybitBot(CCXTBot):
         return sorted(all_pnls, key=lambda x: x["updatedTime"])
 
     async def fetch_fills(self, start_time, end_time, limit=None):
+        """通过 ccxt fetch_my_trades 获取成交记录，支持分页回溯。"""
         if start_time is None:
             result = await self.cca.fetch_my_trades()
             return sorted(result, key=lambda x: x["timestamp"])
@@ -261,6 +267,11 @@ class BybitBot(CCXTBot):
         return sorted(all_fetched_fills, key=lambda x: x["timestamp"])
 
     async def fetch_pnls(self, start_time=None, end_time=None, limit=None):
+        """合并成交记录和 PnL 数据，以 orderId 关联并去重。
+
+        先获取成交记录再获取 PnL（Bybit 使用不同端点），
+        将 PnL 值回填到对应成交记录中。
+        """
         # 先获取成交记录，再获取 PnL（bybit 使用不同的端点）
         if start_time:
             if self.get_exchange_time() - start_time < 1000 * 60 * 60 * 4 and limit == 100:
@@ -441,6 +452,10 @@ class BybitBot(CCXTBot):
         return sorted(my_trades_all, key=lambda x: x["timestamp"])
 
     async def fetch_positions_history(self, start_time, end_time, limit=100):
+        """通过 ccxt fetch_positions_history 获取持仓历史，支持分页回溯。
+
+        Bybit 每次最多返回 7 天数据，limit 最大为 100。
+        """
         # ccxt.fetch_positions_history 的包装器
         # limit 最大为 100
 

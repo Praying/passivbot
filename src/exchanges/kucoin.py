@@ -225,7 +225,10 @@ class KucoinBot(CCXTBot):
         return float(fetched["info"]["data"]["marginBalance"])
 
     async def calc_ideal_orders(self):
-        # KuCoin 强制 150 个未成交订单上限；仅保留最接近价格目标的订单。
+        """计算理想订单并裁剪到 KuCoin 的 150 个未成交订单上限。
+
+        按价格差异排序，保留最接近当前价格的订单。
+        """
         ideal_orders = await super().calc_ideal_orders()
         flattened = []
         for symbol, orders in ideal_orders.items():
@@ -246,6 +249,11 @@ class KucoinBot(CCXTBot):
         return filtered
 
     async def fetch_fills(self, start_time=None, end_time=None, limit=None):
+        """获取 KuCoin 成交记录，按天分页回溯。
+
+        使用 until 参数逐步向前获取，以 closeFeePay 是否为 0 判断开平仓方向，
+        最终按 id 去重并裁剪到指定时间范围。
+        """
         if start_time is None:
             logging.warning(
                 "fetch_fills called without start_time; "
@@ -297,6 +305,11 @@ class KucoinBot(CCXTBot):
         return sorted(deduped.values(), key=lambda x: x["timestamp"])
 
     async def fetch_positions_history(self, start_time=None, end_time=None, limit=None):
+        """获取 KuCoin 持仓历史，按天分页回溯。
+
+        以 lastUpdateTimestamp 排序，按 closeId 去重，
+        裁剪到指定的起止时间范围。
+        """
         if start_time is None:
             logging.warning(
                 "fetch_positions_history called without start_time; "
@@ -336,6 +349,11 @@ class KucoinBot(CCXTBot):
         return sorted(deduped.values(), key=lambda x: x["lastUpdateTimestamp"])
 
     async def fetch_pnls(self, start_time=None, end_time=None, limit=None):
+        """合并成交记录和持仓历史，交叉匹配计算真实 PnL。
+
+        先获取全部成交记录筛选平仓交易，再获取对应时间段的持仓历史，
+        按 symbol 和时间戳最近匹配将 realizedPnl 回填到成交记录中。
+        """
         # 获取成交记录...
         mt = await self.fetch_fills(start_time=start_time, end_time=end_time)
         closes = [

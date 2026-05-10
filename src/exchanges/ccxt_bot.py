@@ -541,6 +541,11 @@ class CCXTBot(Passivbot):
         return "cross"
 
     def _normalize_margin_mode(self, value) -> str | None:
+        """将各种保证金模式表示标准化为 'cross' 或 'isolated'。
+
+        处理布尔值、数字字符串（"0"/"1"）以及常见变体拼写。
+        无法识别的值返回 None。
+        """
         if value is None:
             return None
         if isinstance(value, bool):
@@ -559,6 +564,11 @@ class CCXTBot(Passivbot):
         return None
 
     def _extract_live_margin_mode(self, payload: dict | None) -> str | None:
+        """从交易所响应载荷中提取实时保证金模式。
+
+        按优先级检查多个已知字段名（margin_mode、marginMode、marginType、
+        tradeMode、tdMode、mgnMode），包括嵌套的 info 结构和 leverage.type。
+        """
         if not isinstance(payload, dict):
             return None
         candidates = [
@@ -755,6 +765,11 @@ class CCXTBot(Passivbot):
         return min(configured, max_lev)
 
     def _filter_approved_symbols(self, pside: str, symbols: set[str]) -> set[str]:
+        """过滤掉因保证金模式不兼容而被阻止新开仓的交易对。
+
+        受阻止的交易对会记录一次警告（每 pside/symbol/capability 组合仅记录一次），
+        但现有的持仓和订单不受影响。
+        """
         symbols = super()._filter_approved_symbols(pside, symbols)
         kept = set()
         for symbol in symbols:

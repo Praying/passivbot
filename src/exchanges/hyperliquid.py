@@ -249,6 +249,11 @@ class HyperliquidBot(CCXTBot):
         return sorted(dexes)
 
     def _normalize_ccxt_position(self, position: dict) -> dict:
+        """将 CCXT 持仓响应转换为 passivbot 标准格式。
+
+        处理空头持仓的负数合约量、多来源的保证金模式字段，
+        以及嵌套 info.position 结构中的 marginUsed。
+        """
         side = position.get("side")
         contracts = float(position.get("contracts") or 0.0)
         if side == "short":
@@ -359,6 +364,11 @@ class HyperliquidBot(CCXTBot):
             )
 
     async def watch_orders(self):
+        """监听 Hyperliquid WebSocket 订单更新。
+
+        包含指数退避的速率限制处理：连续触发时退避时间翻倍（最长 30 秒），
+        成功后重置计数器。非速率限制错误使用固定 1 秒重试。
+        """
         res = None
         _ws_consecutive_rate_limits = 0
         while True:
@@ -420,6 +430,11 @@ class HyperliquidBot(CCXTBot):
         return self.determine_pos_side(order)
 
     async def _do_fetch_open_orders(self, symbol: str = None):
+        """获取未成交订单，合并核心永续和 dex 作用域的 HIP-3 订单。
+
+        核心永续使用默认路由，HIP-3 品种通过 dex 名称逐个查询，
+        所有结果按 order id 去重后返回。
+        """
         fetched = []
         seen_ids = set()
         query_symbols = [symbol] if symbol is not None else []
@@ -464,6 +479,11 @@ class HyperliquidBot(CCXTBot):
         return self._normalize_open_orders(fetched)
 
     async def _fetch_positions_and_balance(self):
+        """通过 fetch_balance 端点一次性获取持仓和余额。
+
+        解析 assetPositions 中的核心永续持仓和 HIP-3 持仓，
+        计算 balance = accountValue - unrealizedPnl，返回原始快照供缓存复用。
+        """
         info = await self.cca.fetch_balance()
         positions = {}
         for x in info["info"]["assetPositions"]:
@@ -622,6 +642,11 @@ class HyperliquidBot(CCXTBot):
         return False
 
     def _reconcile_balance_from_exchange_state(self, *, include_open_orders: bool) -> bool:
+        """根据交易所状态校正已发布余额。
+
+        将交易所报告的余额加上 HIP-3 全仓持仓保证金储备，
+        并使用滞后滤波器（hysteresis）防止余额小幅波动频繁触发更新。
+        """
         if getattr(self, "balance_override", None) is not None:
             return False
         exchange_reported = float(
@@ -697,6 +722,11 @@ class HyperliquidBot(CCXTBot):
         end_time: int = None,
         limit=None,
     ):
+        """分页获取 Hyperliquid 交易记录用于 PnL 追踪。
+
+        Hyperliquid 从过去向未来分页。使用哈希去重防止重复获取。
+        如果未指定 start_time 则只获取最新一批交易。
+        """
         # hyperliquid 从过去到未来获取
         if limit is None:
             limit = 2000
@@ -843,6 +873,11 @@ class HyperliquidBot(CCXTBot):
             return False
 
     def adjust_min_cost_on_error(self, error, order=None):
+        """从 "$10 最低订单价值" 错误中恢复，动态提高对应品种的 min_cost。
+
+        解析错误 JSON 中的 asset id，匹配到品种后将 min_cost 上调 10%。
+        返回是否有任何品种被调整。
+        """
         any_adjusted = False
         successful_orders = []
         str_e = str(error)
@@ -935,7 +970,11 @@ class HyperliquidBot(CCXTBot):
         pass
 
     async def calc_ideal_orders(self):
-        # hyperliquid 需要自定义价格舍入
+        """计算理想订单并在 Hyperliquid 上应用自定义价格舍入。
+
+        卖单向上取整（round_dynamic_up），买单向下取整（round_dynamic_dn），
+        然后按 price_steps 对齐。
+        """
         ideal_orders = await super().calc_ideal_orders()
         for sym in ideal_orders:
             for i in range(len(ideal_orders[sym])):
