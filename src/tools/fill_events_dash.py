@@ -92,14 +92,14 @@ def _get_or_create_event_loop() -> asyncio.AbstractEventLoop:
 
 
 def _run_async(coro):
-    """Run an async coroutine on the persistent event loop."""
+    """在持久事件循环上运行异步协程。"""
     loop = _get_or_create_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
     return future.result(timeout=600)  # 10 minute timeout
 
 
 class DashLogHandler(logging.Handler):
-    """Custom log handler that captures logs for the dashboard."""
+    """将日志捕获到仪表板显示的自定义日志处理器。"""
 
     def emit(self, record):
         try:
@@ -111,12 +111,13 @@ class DashLogHandler(logging.Handler):
 
 
 def _get_log_messages() -> str:
-    """Get recent log messages for display."""
+    """获取最近的日志消息用于显示。"""
     with _LOG_LOCK:
         return "\n".join(_LOG_BUFFER)
 
 
 def _normalize_fee_cost(fees: Optional[object]) -> float:
+    """从费用对象（字典或列表）中提取并汇总手续费金额。"""
     if fees is None:
         return 0.0
     total = 0.0
@@ -134,16 +135,16 @@ def _normalize_fee_cost(fees: Optional[object]) -> float:
 
 
 def _format_datetime_str(dt: pd.Timestamp) -> str:
-    """Format datetime consistently as 'YYYY-MM-DD HH:MM:SS' for display."""
+    """将日期时间统一格式化为 'YYYY-MM-DD HH:MM:SS' 用于显示。"""
     if pd.isna(dt):
         return ""
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _extract_base_coin(symbol: str) -> str:
-    """Extract base coin from symbol, normalizing across quote currencies.
+    """从符号中提取基础币种，跨计价货币归一化。
 
-    Examples:
+    示例：
         BTC/USDT:USDT -> BTC
         BTC/USDC:USDC -> BTC
         ETH/USDT:USDT -> ETH
@@ -162,6 +163,7 @@ def _extract_base_coin(symbol: str) -> str:
 
 
 def _events_to_dataframe(events: List[dict], account_label: str) -> pd.DataFrame:
+    """将成交事件列表转换为 DataFrame，计算手续费和标准化币种列。"""
     if not events:
         return pd.DataFrame()
     df = pd.DataFrame(events)
@@ -186,7 +188,7 @@ def _build_managers(
     cache_root: str,
     symbols_override: Optional[List[str]],
 ) -> Dict[str, Dict[str, Any]]:
-    """Build managers and store bot references."""
+    """为每个用户构建 FillEventsManager 并存储 bot 引用。"""
     result: Dict[str, Dict[str, Any]] = {}
     for user in users:
         try:
@@ -219,7 +221,7 @@ def _build_managers(
 
 
 def _ensure_loaded(accounts: Dict[str, Dict[str, Any]]) -> None:
-    """Load cached data for all accounts."""
+    """加载所有账户的缓存数据。"""
     for key, data in accounts.items():
         try:
             _run_async(data["manager"].ensure_loaded())
@@ -228,7 +230,7 @@ def _ensure_loaded(accounts: Dict[str, Dict[str, Any]]) -> None:
 
 
 def _rebuild_manager(data: Dict[str, Any]) -> None:
-    """Rebuild a manager with fresh bot/fetcher instances to avoid stale connections."""
+    """重建管理器，使用新的 bot/fetcher 实例避免过期连接。"""
     try:
         config = load_prepared_config(
             data["config_path"],
@@ -253,7 +255,7 @@ def _rebuild_manager(data: Dict[str, Any]) -> None:
 
 
 async def _refresh_single(data: Dict[str, Any], start_ms: int, end_ms: int) -> int:
-    """Refresh a single account. Returns number of events after refresh."""
+    """刷新单个账户数据，返回刷新后的成交事件数量。"""
     try:
         await data["manager"].refresh_range(start_ms, end_ms)
         # 从磁盘重新加载以获取新数据
@@ -267,7 +269,7 @@ async def _refresh_single(data: Dict[str, Any], start_ms: int, end_ms: int) -> i
 async def _refresh_all_parallel(
     accounts: Dict[str, Dict[str, Any]], selected_accounts: List[str], start_ms: int, end_ms: int
 ) -> Dict[str, int]:
-    """Refresh all selected accounts in parallel. Returns event counts."""
+    """并行刷新所有选定账户，返回各账户事件数量。"""
     tasks = {}
     for account in selected_accounts:
         data = accounts.get(account)
@@ -292,7 +294,7 @@ async def _refresh_all_parallel(
 def _refresh_range(
     accounts: Dict[str, Dict[str, Any]], selected_accounts: List[str], start_ms: int, end_ms: int
 ) -> Dict[str, int]:
-    """Refresh accounts in parallel using persistent event loop."""
+    """使用持久事件循环并行刷新账户数据。"""
     # 在刷新前重建管理器以获取新的连接
     for account in selected_accounts:
         data = accounts.get(account)
@@ -305,7 +307,7 @@ def _refresh_range(
 def _start_background_refresh(
     accounts: Dict[str, Dict[str, Any]], selected_accounts: List[str], start_ms: int, end_ms: int
 ) -> bool:
-    """Start a background refresh if not already running. Returns True if started."""
+    """启动后台刷新（如未在运行），返回是否成功启动。"""
     with _REFRESH_LOCK:
         if _REFRESH_STATE["is_running"]:
             return False
@@ -351,7 +353,7 @@ def _start_background_refresh(
 
 
 def _get_refresh_state() -> Dict[str, Any]:
-    """Get current refresh state (thread-safe copy)."""
+    """获取当前刷新状态（线程安全副本）。"""
     with _REFRESH_LOCK:
         return {
             "is_running": _REFRESH_STATE["is_running"],
@@ -362,7 +364,7 @@ def _get_refresh_state() -> Dict[str, Any]:
 
 
 def _clear_refresh_result():
-    """Clear the refresh result after consuming it."""
+    """消费后清除刷新结果。"""
     with _REFRESH_LOCK:
         _REFRESH_STATE["result"] = None
         _REFRESH_STATE["error"] = None
@@ -375,7 +377,7 @@ def _aggregate_accounts(
     end_ms: Optional[int],
     coins_filter: Optional[List[str]],
 ) -> pd.DataFrame:
-    """Aggregate events from all selected accounts into a DataFrame."""
+    """从所有选定账户聚合成交事件到 DataFrame。"""
     frames: List[pd.DataFrame] = []
     for account, data in accounts.items():
         if selected_accounts and account not in selected_accounts:
@@ -400,7 +402,7 @@ def _aggregate_accounts(
 def _get_coverage_summaries(
     accounts: Dict[str, Dict[str, Any]], selected_accounts: List[str]
 ) -> List[Dict[str, Any]]:
-    """Get cache coverage summaries for selected accounts."""
+    """获取选定账户的缓存覆盖摘要。"""
     summaries = []
     for account in selected_accounts:
         data = accounts.get(account)
@@ -416,10 +418,9 @@ def _get_coverage_summaries(
 
 
 def build_figures(df: pd.DataFrame):
-    """Build the main dashboard figures.
+    """构建主要仪表板图表。
 
-    Note: Uses raw PnL instead of pnl_with_fees since fee data is
-    inconsistent/unavailable across different exchanges.
+    注意：使用原始 PnL 而非含手续费的 PnL，因为不同交易所的手续费数据不一致或不可用。
     """
     if df.empty:
         return (
@@ -470,7 +471,7 @@ def build_figures(df: pd.DataFrame):
 
 
 def build_symbol_chart(df: pd.DataFrame, symbol: str) -> go.Figure:
-    """Build a chart for a single symbol."""
+    """构建单个交易对的成交散点图。"""
     symbol_df = df[df["symbol"] == symbol].copy()
     if symbol_df.empty:
         return px.scatter(title=f"No fills for {symbol}")
@@ -493,7 +494,7 @@ def build_symbol_chart(df: pd.DataFrame, symbol: str) -> go.Figure:
 
 
 def build_coin_chart(df: pd.DataFrame, coin: str) -> go.Figure:
-    """Build a chart for a coin (base asset), merging fills across quote currencies."""
+    """构建币种（基础资产）图表，合并跨计价货币的成交记录。"""
     coin_df = df[df["coin"] == coin].copy()
     if coin_df.empty:
         return px.scatter(title=f"No fills for {coin}")
@@ -517,7 +518,7 @@ def build_coin_chart(df: pd.DataFrame, coin: str) -> go.Figure:
 
 
 def build_cache_health_panel(summaries: List[Dict[str, Any]]) -> html.Div:
-    """Build a panel showing cache health for each account."""
+    """构建缓存健康面板，展示每个账户的覆盖情况和已知间隙。"""
     if not summaries:
         return html.Div("No accounts selected", className="text-muted")
 
@@ -582,7 +583,7 @@ def build_cache_health_panel(summaries: List[Dict[str, Any]]) -> html.Div:
 
 
 def serve_dash(accounts: Dict[str, Dict[str, Any]], default_days: int = 30, port: int = 8050) -> None:
-    """Serve the Dash application."""
+    """启动成交事件仪表板 Dash 应用。"""
     _ensure_loaded(accounts)
     now = pd.Timestamp.utcnow()
     start_default = now - pd.Timedelta(days=default_days)

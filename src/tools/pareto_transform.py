@@ -53,8 +53,8 @@ def _is_number(value: Any) -> bool:
 
 def convert_entry(entry: MutableMapping[str, Any]) -> bool:
     """
-    Convert legacy ``analyses_combined`` stats/objectives payloads to the
-    structured ``metrics`` schema. Returns ``True`` if the entry was mutated.
+    将旧版 ``analyses_combined`` 统计/目标载荷转换为结构化的 ``metrics`` schema。
+    若条目被修改则返回 ``True``。
     """
 
     analyses = entry.get("analyses_combined")
@@ -184,9 +184,10 @@ def select_prune_indices(
     seed: int | None = None,
 ) -> List[int]:
     """
-    Determine which entry indices to keep when pruning to ``target`` members.
-    Preference is given to entries lacking objective data (they are always kept),
-    and the remainder are selected via farthest-point sampling for diversity.
+    确定修剪到 ``target`` 个成员时应保留的条目索引。
+
+    优先保留缺少目标数据的条目（始终保留），
+    其余通过最远点采样选择以保持多样性。
     """
 
     total = len(entries)
@@ -253,6 +254,7 @@ def process_directory(
     sort_keys: bool,
     seed: int | None,
 ) -> Tuple[int, int]:
+    """处理目录中的 Pareto JSON 文件，执行指标转换和/或修剪。返回 (重写数, 移除数)。"""
     entries: List[ParetoEntry] = []
 
     for file_path in files:
@@ -294,49 +296,49 @@ def process_directory(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Apply bulk transformations to Pareto front JSON artifacts.",
+        description="对 Pareto 前沿 JSON 产物进行批量转换。",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("paths", nargs="+", help="Pareto directories or JSON files to process.")
+    parser.add_argument("paths", nargs="+", help="要处理的 Pareto 目录或 JSON 文件。")
     parser.add_argument(
         "--convert-metrics",
         action="store_true",
-        help="Convert legacy analyses payloads to the structured metrics schema.",
+        help="将旧版 analyses 载荷转换为结构化 metrics schema。",
     )
     parser.add_argument(
         "--prune",
         type=int,
         metavar="N",
-        help="Reduce each directory to at most N members using objective-space sampling.",
+        help="使用目标空间采样将每个目录缩减至最多 N 个成员。",
     )
     parser.add_argument(
         "--seed",
         type=int,
         default=None,
-        help="Random seed for deterministic pruning tie-breaks.",
+        help="确定性修剪中用于打破平局的随机种子。",
     )
     parser.add_argument(
         "--max-inline",
         type=int,
         default=72,
-        help="Inline containers up to this character length when rewriting JSON.",
+        help="重写 JSON 时内联容器的最大字符长度。",
     )
     parser.add_argument(
         "--indent",
         type=int,
         default=4,
-        help="Indentation level for rewritten JSON.",
+        help="重写 JSON 的缩进级别。",
     )
     parser.add_argument(
         "--sort-keys",
         action="store_true",
-        help="Sort dictionary keys when emitting JSON.",
+        help="输出 JSON 时排序字典键。",
     )
     parser.add_argument(
         "--apply",
         dest="dry_run",
         action="store_false",
-        help="Persist changes instead of running in dry-run mode.",
+        help="持久化更改而非以 dry-run 模式运行。",
     )
     parser.add_argument(
         "--dry-run",
@@ -353,15 +355,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if not args.convert_metrics and args.prune is None:
-        parser.error("Specify at least one action (--convert-metrics or --prune).")
+        parser.error("至少指定一个操作（--convert-metrics 或 --prune）。")
 
     if args.prune is not None and args.prune < 1:
-        parser.error("--prune requires a value greater than zero.")
+        parser.error("--prune 需要大于零的值。")
 
     paths = [Path(p) for p in args.paths]
     directories = _gather_targets(paths)
     if not directories:
-        parser.error("No JSON files found under the provided paths.")
+        parser.error("未在提供的路径下找到 JSON 文件。")
 
     total_rewritten = 0
     total_removed = 0
@@ -382,7 +384,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         total_removed += removed
 
     mode = "Dry-run" if args.dry_run else "Applied"
-    print(f"{mode} complete: {total_rewritten} rewrites, {total_removed} removals.")
+    print(f"{mode} 完成：{total_rewritten} 次重写，{total_removed} 次移除。")
     return 0
 
 

@@ -166,9 +166,7 @@ def format_number(value: Optional[float]) -> str:
 
 
 def summarize_limit(info: LimitInfo) -> Tuple[str, str, str]:
-    """
-    Returns (constraint, delta, status) for display purposes.
-    """
+    """返回限制检查的 (约束条件, 偏差, 状态) 元组用于显示。"""
     if info.mode == "greater_than":
         constraint = f"≤ {format_number(info.bound)}"
         if info.value is None or info.bound is None:
@@ -232,7 +230,7 @@ def summarize_limit(info: LimitInfo) -> Tuple[str, str, str]:
         if low <= info.value <= high:
             diff = min(info.value - low, high - info.value)
             return constraint, format_number(diff), "VIOL"
-        # outside the forbidden band
+        # 在禁止区间之外
         if info.value < low:
             diff = low - info.value
         else:
@@ -252,6 +250,7 @@ def format_diff(current: Optional[float], reference: Optional[float]) -> str:
 
 
 def flatten_bot_config(data: Any, prefix: Tuple[str, ...] = ()) -> Dict[str, Any]:
+    """递归展开 bot 配置字典为点分路径 -> 值的扁平映射。"""
     flat: Dict[str, Any] = {}
     if isinstance(data, dict):
         for key in sorted(data.keys()):
@@ -280,7 +279,7 @@ def format_param_value(value: Any) -> str:
 
 
 def combine_analyses(analyses: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
-    """Build structured stats for a scenario."""
+    """构建场景的结构化统计信息。"""
 
     return build_scenario_metrics(analyses)
 
@@ -302,6 +301,7 @@ def build_limit_checks(
 def resolve_metric_value(
     metric_name: str, combined: Dict[str, Any]
 ) -> Tuple[Optional[float], Optional[str]]:
+    """在合并分析中查找指标值，尝试多种命名变体（含 USD/BTC 后缀）。"""
     from itertools import permutations
 
     parts = metric_name.split("_")
@@ -347,6 +347,7 @@ def calc_score_vector(
     scoring_weights: Dict[str, float],
     limit_checks: List[Dict[str, Any]],
 ) -> Tuple[Tuple[float, ...], float]:
+    """计算评分向量和限制惩罚修正量。"""
     objective_specs = list(objective_specs)
     per_objective_modifier = [0.0] * len(objective_specs)
     modifier = 0.0
@@ -424,7 +425,7 @@ def make_run_signature(config: Dict[str, Any]) -> str:
 
 
 def make_backtest_signature(config: Dict[str, Any]) -> str:
-    # Kept as a compatibility wrapper for existing imports/tests in this branch.
+    # 保留为兼容包装器，供现有导入/测试使用。
     return make_dataset_signature(config)
 
 
@@ -459,6 +460,7 @@ def parse_override_value(raw: str) -> Any:
 
 
 def parse_cli_override(entry: str) -> Tuple[List[str], Any]:
+    """解析 CLI 覆盖条目（dotted.path=value），返回 (路径列表, 解析值)。"""
     match = CLI_OVERRIDE_RE.match(entry.strip())
     if match is None:
         raise ValueError(
@@ -481,6 +483,7 @@ def parse_cli_override(entry: str) -> Tuple[List[str], Any]:
 
 
 def apply_cli_overrides(config: Dict[str, Any], overrides: Iterable[str]) -> Dict[str, Any]:
+    """将 CLI 覆盖应用到配置，返回修改后的配置副本。"""
     result = deepcopy(config)
     for entry in overrides:
         path_parts, value = parse_cli_override(entry)
@@ -545,14 +548,14 @@ class IterativeBacktestSession:
         if self.cli_overrides:
             config = apply_cli_overrides(config, self.cli_overrides)
             logging.info("Applied iterative overrides: %s", self.cli_overrides)
-        # Configure logging lazily based on CLI/debug preference
+        # 根据 CLI/调试偏好延迟配置日志
         level = resolve_log_level(
             self.log_level, get_optional_config_value(config, "logging.level", None), fallback=1
         )
         configure_logging(debug=level)
         config.setdefault("logging", {})
         config["logging"]["level"] = level
-        # Ensure exchanges have markets loaded and live coin lists expanded
+        # 确保交易所已加载市场数据并展开活跃币种列表
         for ex in require_config_value(config, "backtest.exchanges"):
             await load_markets(ex, verbose=False)
         await format_approved_ignored_coins(
@@ -631,6 +634,7 @@ class IterativeBacktestSession:
 
     # ------------------------------------------------------------------
     async def run_once(self) -> Tuple[RunSummary, bool]:
+        """执行一次回测，返回 (RunSummary, 是否复用缓存)。"""
         config = await self._load_config()
         current_signature = make_backtest_signature(config)
         if current_signature != self.backtest_signature:
@@ -646,7 +650,7 @@ class IterativeBacktestSession:
             )
             return cached, True
 
-        # Inject cached metadata
+        # 注入缓存元数据
         config.setdefault("backtest", {})
         config["backtest"].setdefault("coins", {})
         config["backtest"].setdefault("cache_dir", {})
@@ -936,6 +940,7 @@ class IterativeBacktestSession:
         score_vector: Tuple[float, ...],
         modifier: float,
     ) -> Path:
+        """将单次回测结果和分析数据写入磁盘，返回结果目录路径。"""
         if self.session_dir is None:
             raise RuntimeError("session directory not initialised")
         timestamp_str = format_timestamp(run_ts).replace(" ", "_").replace(":", "")
@@ -962,6 +967,7 @@ class IterativeBacktestSession:
 
     # ------------------------------------------------------------------
     def print_summary(self, run: RunSummary, reused: bool = False) -> None:
+        """打印回测运行摘要：评分、指标表、限制检查及 Pareto 状态。"""
         if not self.history:
             print("No runs executed yet.")
             return
@@ -1121,6 +1127,7 @@ class IterativeBacktestSession:
 
     # ------------------------------------------------------------------
     async def interactive_loop(self) -> None:
+        """交互式命令循环：支持 run/best/history/reload/quit 命令。"""
         print("Iterative backtester ready.")
         print("Commands: [Enter] run | best | history | reload | quit")
         if self.auto_run:

@@ -49,12 +49,12 @@ def symbol_to_safe_path(symbol: str) -> str:
 
 
 def load_legacy_shard(path: str) -> Optional[np.ndarray]:
-    """Load a legacy .npy shard and convert to CANDLE_DTYPE."""
+    """加载旧版 .npy 分片并转换为 CANDLE_DTYPE。"""
     try:
         arr = np.load(path, allow_pickle=False)
         if isinstance(arr, np.ndarray) and arr.dtype == CANDLE_DTYPE:
             return arr
-        # Legacy format: 2D float array [timestamp, open, high, low, close, volume]
+        # 旧版格式：2D float 数组 [timestamp, open, high, low, close, volume]
         if isinstance(arr, np.ndarray) and arr.ndim == 2 and arr.shape[1] >= 6:
             raw = np.asarray(arr[:, :6], dtype=np.float64)
             out = np.empty((raw.shape[0],), dtype=CANDLE_DTYPE)
@@ -74,10 +74,10 @@ def load_legacy_shard(path: str) -> Optional[np.ndarray]:
 
 def scan_legacy_data(exchange: str) -> Dict[str, List[Tuple[str, str]]]:
     """
-    Scan historical_data/ for legacy shards.
+    扫描 historical_data/ 中的旧版分片。
 
     Returns:
-        Dict of coin -> [(date_key, path), ...]
+        coin -> [(date_key, path), ...] 的字典
     """
     legacy_dir = Path(f"historical_data/ohlcvs_{exchange}")
     if not legacy_dir.exists():
@@ -91,7 +91,7 @@ def scan_legacy_data(exchange: str) -> Dict[str, List[Tuple[str, str]]]:
         shards = []
         for npy_file in coin_dir.glob("*.npy"):
             name = npy_file.stem
-            # Accept YYYY-MM-DD format
+            # 接受 YYYY-MM-DD 格式
             if len(name) == 10 and name[4] == "-" and name[7] == "-":
                 shards.append((name, str(npy_file)))
         if shards:
@@ -100,7 +100,7 @@ def scan_legacy_data(exchange: str) -> Dict[str, List[Tuple[str, str]]]:
 
 
 def compute_crc32(arr: np.ndarray) -> int:
-    """Compute CRC32 of numpy array bytes."""
+    """计算 numpy 数组字节的 CRC32。"""
     return zlib.crc32(arr.tobytes()) & 0xFFFFFFFF
 
 
@@ -112,7 +112,7 @@ def migrate_coin(
     dry_run: bool = True,
 ) -> Tuple[int, int, int]:
     """
-    Migrate a single coin's data from legacy to new format.
+    将单个币种的数据从旧版迁移到新格式。
 
     Returns:
         (migrated_count, skipped_count, error_count)
@@ -122,7 +122,7 @@ def migrate_coin(
     target_dir = Path(cache_dir) / "ohlcv" / exchange / "1m" / safe_symbol
     index_path = target_dir / "index.json"
 
-    # Load existing index if present
+    # 加载已有索引（如果存在）
     existing_shards = {}
     if index_path.exists():
         try:
@@ -140,18 +140,18 @@ def migrate_coin(
     for date_key, legacy_path in shards:
         target_path = target_dir / f"{date_key}.npy"
 
-        # Skip if already exists
+        # 跳过已存在的
         if date_key in existing_shards or target_path.exists():
             skipped += 1
             continue
 
-        # Load and convert
+        # 加载并转换
         arr = load_legacy_shard(legacy_path)
         if arr is None or arr.size == 0:
             errors += 1
             continue
 
-        # Sort by timestamp
+        # 按时间戳排序
         arr = np.sort(arr, order="ts")
 
         if dry_run:
@@ -161,11 +161,11 @@ def migrate_coin(
             migrated += 1
             continue
 
-        # Create directory and save
+        # 创建目录并保存
         target_dir.mkdir(parents=True, exist_ok=True)
         np.save(str(target_path), arr)
 
-        # Add to index
+        # 添加到索引
         ts_arr = arr["ts"]
         new_shards[date_key] = {
             "path": str(target_path),
@@ -177,7 +177,7 @@ def migrate_coin(
         migrated += 1
         logging.info(f"  Migrated {date_key}: {arr.size} rows")
 
-    # Update index if we migrated any shards
+    # 若迁移了任何分片则更新索引
     if new_shards and not dry_run:
         if index_path.exists():
             try:
@@ -191,7 +191,7 @@ def migrate_coin(
         idx["shards"].update(new_shards)
         idx["meta"]["last_refresh_ms"] = int(time.time() * 1000)
 
-        # Atomic write
+        # 原子写入
         tmp_path = str(index_path) + ".tmp"
         with open(tmp_path, "w") as f:
             json.dump(idx, f, indent=2)
@@ -204,10 +204,10 @@ def migrate_coin(
 
 def delete_legacy_data(exchange: str, coins: Optional[List[str]] = None) -> int:
     """
-    Delete legacy data for specified coins (or all if None).
+    删除指定币种（或全部，若为 None）的旧版数据。
 
     Returns:
-        Number of directories deleted
+        删除的目录数量
     """
     legacy_dir = Path(f"historical_data/ohlcvs_{exchange}")
     if not legacy_dir.exists():
@@ -215,7 +215,7 @@ def delete_legacy_data(exchange: str, coins: Optional[List[str]] = None) -> int:
 
     deleted = 0
     if coins is None:
-        # Delete entire exchange directory
+        # 删除整个交易所目录
         shutil.rmtree(str(legacy_dir))
         logging.info(f"Deleted {legacy_dir}")
         deleted = 1
@@ -232,60 +232,60 @@ def delete_legacy_data(exchange: str, coins: Optional[List[str]] = None) -> int:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Migrate historical_data/ to caches/ohlcv/ structure.",
+        description="将 historical_data/ 迁移到 caches/ohlcv/ 结构。",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-    # Preview what would be migrated
+示例：
+    # 预览将迁移的内容
     python src/tools/migrate_historical_data.py --exchange binanceusdm --dry-run
 
-    # Migrate specific coins
+    # 迁移指定币种
     python src/tools/migrate_historical_data.py --exchange binanceusdm --coins BTC,ETH --execute
 
-    # Migrate all and delete legacy
+    # 迁移全部并删除旧版数据
     python src/tools/migrate_historical_data.py --exchange binanceusdm --execute --delete-legacy
         """,
     )
     parser.add_argument(
         "--exchange",
         required=True,
-        help="Exchange to migrate (e.g., binanceusdm, bybit, bitget)",
+        help="要迁移的交易所（如 binanceusdm、bybit、bitget）",
     )
     parser.add_argument(
         "--coins",
         type=str,
         default=None,
-        help="Comma-separated list of coins to migrate (default: all)",
+        help="要迁移的逗号分隔币种列表（默认：全部）",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Preview migration without making changes",
+        help="预览迁移但不做实际更改",
     )
     parser.add_argument(
         "--execute",
         action="store_true",
-        help="Actually perform the migration",
+        help="实际执行迁移",
     )
     parser.add_argument(
         "--delete-legacy",
         action="store_true",
-        help="Delete legacy data after successful migration (requires --execute)",
+        help="迁移成功后删除旧版数据（需要 --execute）",
     )
     parser.add_argument(
         "--cache-dir",
         type=str,
         default="caches",
-        help="Target cache directory (default: caches)",
+        help="目标缓存目录（默认：caches）",
     )
 
     args = parser.parse_args()
 
     if not args.dry_run and not args.execute:
-        parser.error("Must specify either --dry-run or --execute")
+        parser.error("必须指定 --dry-run 或 --execute")
 
     if args.delete_legacy and not args.execute:
-        parser.error("--delete-legacy requires --execute")
+        parser.error("--delete-legacy 需要 --execute")
 
     exchange = to_ccxt_exchange_id(args.exchange)
     logging.info(f"Scanning legacy data for {exchange}...")
@@ -295,7 +295,7 @@ Examples:
         logging.info("No legacy data found to migrate.")
         return
 
-    # Filter by coins if specified
+    # 按指定币种过滤
     if args.coins:
         requested_coins = [c.strip().upper() for c in args.coins.split(",")]
         legacy_data = {k: v for k, v in legacy_data.items() if k.upper() in requested_coins}
@@ -307,7 +307,7 @@ Examples:
     total_shards = sum(len(v) for v in legacy_data.values())
     logging.info(f"Found {len(legacy_data)} coins with {total_shards} shards to migrate")
 
-    # Calculate disk space
+    # 计算磁盘空间
     total_size = 0
     for coin, shards in legacy_data.items():
         for _, path in shards:
@@ -317,7 +317,7 @@ Examples:
                 pass
     logging.info(f"Total legacy data size: {total_size / (1024 * 1024):.2f} MB")
 
-    # Migrate each coin
+    # 迁移每个币种
     total_migrated = 0
     total_skipped = 0
     total_errors = 0
@@ -342,7 +342,7 @@ Examples:
         if migrated > 0 or skipped > 0:
             successful_coins.append(coin)
 
-    # Summary
+    # 汇总
     logging.info("=" * 60)
     logging.info("Migration Summary:")
     logging.info(f"  Coins processed: {len(legacy_data)}")
@@ -356,7 +356,7 @@ Examples:
     else:
         logging.info("  Mode: EXECUTED")
 
-        # Delete legacy if requested
+        # 按要求删除旧版数据
         if args.delete_legacy and total_errors == 0:
             logging.info("Deleting legacy data...")
             deleted = delete_legacy_data(exchange, successful_coins if args.coins else None)

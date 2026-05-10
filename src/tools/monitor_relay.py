@@ -50,19 +50,19 @@ def _parse_args() -> argparse.Namespace:
         "--queue-size",
         type=int,
         default=1000,
-        help="Per-subscriber outbound queue size before a resync is required.",
+        help="每个订阅者的出站队列大小，超出后需重新同步。",
     )
     parser.add_argument(
         "--ws-replay-limit",
         type=int,
         default=50,
-        help="How many recent lines per current event/history file to replay on websocket connect.",
+        help="websocket 连接时每个当前事件/历史文件回放的最近行数。",
     )
     parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
-        help="Logging level for the relay process.",
+        help="中继进程的日志级别。",
     )
     return parser.parse_args()
 

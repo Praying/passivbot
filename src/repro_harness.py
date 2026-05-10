@@ -102,6 +102,7 @@ def _coin_source_map(
 
 
 async def run_optimizer_replay(config: Dict[str, Any]) -> Dict[str, Any]:
+    """通过优化器评估路径重放配置，返回目标值与指标。"""
     from backtest import prepare_hlcvs_mss
     from optimize import Evaluator, _maybe_aggregate_backtest_data, config_to_individual
 
@@ -181,6 +182,7 @@ async def run_optimizer_replay(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def run_backtest_replay(config: Dict[str, Any]) -> Dict[str, Any]:
+    """通过回测路径重放配置，返回回测指标与选币信息。"""
     from backtest import prepare_hlcvs_mss, run_backtest
     from suite_runner import run_backtest_suite_async
 
@@ -256,6 +258,7 @@ def build_report(
     rust: Dict[str, Any],
     metric_keys: Optional[Iterable[str]] = None,
 ) -> Dict[str, Any]:
+    """构建包含存储/优化器/回测指标及差异的报告字典。"""
     optimizer_metrics = optimizer.get("metrics", {})
     backtest_metrics_raw = backtest.get("metrics", {})
     if optimizer.get("mode") == "single" and backtest.get("mode") == "single" and all(
@@ -328,6 +331,7 @@ def print_report(report: Dict[str, Any]) -> None:
 
 
 async def async_main(args: argparse.Namespace) -> int:
+    """异步主入口：加载配置、运行优化器和回测重放，并构建比较报告。"""
     configure_logging(resolve_log_level(args.log_level, None))
     raw_path = Path(args.config_path)
     raw_loaded: Dict[str, Any] | None = None

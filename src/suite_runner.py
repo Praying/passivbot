@@ -418,7 +418,7 @@ def _determine_needed_individual_exchanges(
     for scenario in scenarios:
         if scenario.exchanges:
             scenario_set = set(scenario.exchanges)
-            # If scenario uses a strict subset, we need individual datasets for those exchanges
+            # 场景使用严格子集时，需要为这些交易所准备单独数据集
             if scenario_set and scenario_set != base_set:
                 needed.update(scenario_set)
 
@@ -452,6 +452,7 @@ async def prepare_master_datasets(
     needed_individual_exchanges: Optional[Set[str]] = None,
     candle_interval_minutes: int = 1,
 ) -> Dict[str, ExchangeDataset]:
+    """为主数据集准备 OHLCV 数据：单交易所或按币种最优组合，可选共享内存。"""
     from backtest import prepare_hlcvs_mss
 
     datasets: Dict[str, ExchangeDataset] = {}
@@ -476,12 +477,12 @@ async def prepare_master_datasets(
         hlcvs_spec = None
         btc_spec = None
         if shared_array_manager is not None:
-            # Copy to SharedMemory, then reassign to view (frees intermediate copy)
+            # 复制到共享内存，然后重新赋值为视图（释放中间副本）
             hlcvs_spec, hlcvs_view = shared_array_manager.create_from(hlcvs_array)
-            del hlcvs_array  # Free intermediate contiguous array
+            del hlcvs_array  # 释放中间连续数组
             hlcvs_array = hlcvs_view
             btc_spec, btc_view = shared_array_manager.create_from(btc_array)
-            del btc_array  # Free intermediate contiguous array
+            del btc_array  # 释放中间连续数组
             btc_array = btc_view
         return ExchangeDataset(
             exchange=exchange_label,
@@ -615,6 +616,7 @@ def apply_scenario(
     base_ignored: Optional[List[str]] = None,
     quiet: bool = False,
 ) -> Tuple[Dict[str, Any], List[str]]:
+    """将场景覆盖应用到基础配置，返回修改后的配置和过滤后的币种列表。"""
     cfg = deepcopy(base_config)
     tracker = ConfigTransformTracker()
     backtest_section = cfg.setdefault("backtest", {})
@@ -790,7 +792,7 @@ def _build_scenario_signature(
 ) -> str:
     """构建场景去重的稳定签名。"""
     payload = deepcopy(scenario_config)
-    # 忽略转换元数据；每个场景不同但不影响结果。
+    # 忽略转换元数据；各场景不同但不影响结果
     payload.pop("_transform_log", None)
     backtest_section = payload.setdefault("backtest", {})
     coins_by_ex = _normalize_coins_by_exchange(coin_exchange)
@@ -956,6 +958,7 @@ def _run_combined_dataset(
     post_process_fn,
     plot_context_factory,
 ) -> Dict[str, Dict[str, Any]]:
+    """使用组合数据集运行场景回测，按交易所分配过滤币种。"""
     per_exchange: Dict[str, Dict[str, Any]] = {}
 
     allowed_exchanges = (
@@ -1042,6 +1045,7 @@ def _run_multi_dataset(
     plot_context_factory,
     available_exchanges: List[str],
 ) -> Dict[str, Dict[str, Any]]:
+    """按交易所分别运行场景回测，合并每个交易所的分析结果。"""
     per_exchange: Dict[str, Dict[str, Any]] = {}
     allowed_exchanges = set(scenario.exchanges or available_exchanges)
     for exchange_key, dataset in datasets.items():
@@ -1171,6 +1175,7 @@ def _prepare_dataset_subset(
     selected_coins: Sequence[str],
     scenario_label: str,
 ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Dict[str, Any]]:
+    """从主数据集切片出场景所需的时间窗口和币种子集，并调整元数据索引。"""
     start_value = require_config_value(scenario_config, "backtest.start_date")
     end_value = require_config_value(scenario_config, "backtest.end_date")
     start_ts = _normalize_date_to_ts(str(start_value))
@@ -1258,6 +1263,7 @@ def _prepare_dataset_subset(
 def _recompute_index_metadata(
     mss: Dict[str, Any], hlcvs: np.ndarray, coins: Sequence[str], warmup_map: Optional[Dict[str, int]]
 ) -> None:
+    """在数据集切片后重新计算各币种的 valid index、warmup 和 trade_start 元数据。"""
     total_steps = hlcvs.shape[0]
     interval = int(mss.get("__meta__", {}).get("data_interval_minutes", 1) or 1)
     total_steps_1m = total_steps * interval
@@ -1299,6 +1305,7 @@ def _recompute_index_metadata(
 def aggregate_metrics(
     results: Sequence[ScenarioResult], aggregate_cfg: Dict[str, Any]
 ) -> Dict[str, Any]:
+    """根据聚合配置，对场景结果的指标统计值进行均值/最大/最小/中位数聚合。"""
     if not results:
         return {"aggregated": {}, "stats": {}}
     metrics_values: Dict[str, List[float]] = {}
@@ -1398,6 +1405,7 @@ async def run_backtest_suite_async(
     disable_plotting: bool,
     suite_output_root: Optional[Path] = None,
 ) -> SuiteSummary:
+    """异步运行完整回测套件：准备数据、逐场景执行、聚合指标并保存摘要。"""
     base_exchanges = require_config_value(config, "backtest.exchanges")
 
     base_start = require_config_value(config, "backtest.start_date")
@@ -1569,6 +1577,7 @@ def run_backtest_suite_sync(
     suite_config_path: Optional[Path] = None,
     disable_plotting: bool = False,
 ) -> SuiteSummary:
+    """同步运行回测套件的便捷入口，供 CLI 和外部调用使用。"""
     configure_logging()
     config_path_str = str(config_path)
     if config_path_str in {"", "."}:
@@ -1613,6 +1622,7 @@ def run_backtest_suite_sync(
 
 
 def cli_entrypoint(config_path: str, suite_config_path: Optional[str] = None) -> None:
+    """旧版兼容入口点，供外部工具调用。"""
     summary = run_backtest_suite_sync(
         Path(config_path) if config_path else Path(),
         suite_config_path=Path(suite_config_path) if suite_config_path else None,

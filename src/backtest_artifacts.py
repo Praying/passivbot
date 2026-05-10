@@ -251,6 +251,7 @@ def _select_coin_fills(
 
 
 def _plot_fill_markers(ax, fills: pd.DataFrame) -> None:
+    """在坐标轴上绘制成交标记（多空入场/平仓散点）。"""
     if fills.empty:
         return
     required = {"timestamp", "type", "price"}
@@ -309,6 +310,7 @@ def _plot_fill_markers(ax, fills: pd.DataFrame) -> None:
 
 
 def _plot_position_prices(ax, candles: pd.DataFrame, fills: pd.DataFrame) -> None:
+    """在坐标轴上绘制仓位的持仓均价连线。"""
     if fills.empty or not {"timestamp", "type", "pprice", "psize"}.issubset(fills.columns):
         return
     candle_index = pd.DatetimeIndex(candles["timestamp"])

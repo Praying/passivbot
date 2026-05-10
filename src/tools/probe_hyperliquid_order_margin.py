@@ -20,6 +20,7 @@ from tools.hyperliquid_probe_common import (
 
 
 async def _main() -> int:
+    """在 Hyperliquid 上下一个小额 post-only 订单，观察保证金变化后取消。"""
     parser = argparse.ArgumentParser(
         description=(
             "修改性 Hyperliquid 诊断。下一个微小的 post-only 订单，等待余额状态稳定，"
@@ -51,24 +52,24 @@ async def _main() -> int:
         "--settle-seconds",
         type=float,
         default=2.0,
-        help="sleep after create/cancel before refetching balances",
+        help="创建/取消后重新获取余额前的等待秒数",
     )
     parser.add_argument(
         "--set-margin-mode",
         choices=("cross", "isolated"),
         default=None,
-        help="optionally set margin mode on the symbol before placing the test order",
+        help="可选：在下测试订单前设置保证金模式",
     )
     parser.add_argument(
         "--leverage",
         type=int,
         default=2,
-        help="leverage to use if --set-margin-mode is supplied",
+        help="如果指定 --set-margin-mode 时使用的杠杆倍数",
     )
     parser.add_argument(
         "--dump-raw-info",
         action="store_true",
-        help="include raw balance info and fetched position payloads before/create/cancel",
+        help="在输出中包含原始余额信息和获取的仓位载荷",
     )
     args = parser.parse_args()
     require_live_mutation_confirmation(

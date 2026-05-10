@@ -203,6 +203,7 @@ def collect_shm_listing(limit: int = 50) -> list[dict[str, Any]] | None:
 
 
 def make_sample(rows: list[ProcessInfo], root_pid: int, top_n_global: int) -> dict[str, Any]:
+    """构建单个采样快照，包含进程树、系统内存和 /dev/shm 信息。"""
     tree = build_descendant_tree(rows, root_pid)
     total_rss_kb = sum(row.rss_kb for row in tree)
     total_vsz_kb = sum(row.vsz_kb for row in tree)
@@ -266,6 +267,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """主循环：定位目标进程，周期性采样内存与系统指标，写入 JSON 文件。"""
     args = parse_args()
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

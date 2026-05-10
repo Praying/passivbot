@@ -199,6 +199,7 @@ def sha256_file(path: str | Path | None) -> Optional[str]:
 
 
 def collect_runtime_provenance() -> dict:
+    """收集当前进程中 Rust 扩展的运行时来源信息（路径、哈希、时间戳等）。"""
     preferred_path = preferred_compiled_path()
     preferred_str = str(preferred_path) if preferred_path is not None else None
     preferred_hash = sha256_file(preferred_str)
@@ -338,6 +339,7 @@ def extension_needs_rebuild(
 
 
 def acquire_lock(lock_file: Path = LOCK_FILE) -> bool:
+    """获取编译锁文件，超时后自动移除过期锁。成功返回 True。"""
     import time
 
     start = time.time()

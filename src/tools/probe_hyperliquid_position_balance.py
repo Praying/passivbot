@@ -20,6 +20,7 @@ from tools.hyperliquid_probe_common import (
 
 
 async def _main() -> int:
+    """在 Hyperliquid 上开微小仓位，快照余额/仓位，可选挂单后平仓。"""
     parser = argparse.ArgumentParser(
         description=(
             "修改性 Hyperliquid 诊断。开一个微小仓位，可选地添加挂单的"
@@ -52,33 +53,33 @@ async def _main() -> int:
     parser.add_argument(
         "--place-reduce-only-close-order",
         action="store_true",
-        help="after opening the position, place a resting reduce-only close order before flattening",
+        help="开仓后，在平仓前挂一个 reduce-only 平仓单",
     )
     parser.add_argument(
         "--place-resting-entry-order",
         action="store_true",
-        help="after opening the position, place an extra resting non-reduce-only entry order",
+        help="开仓后，额外挂一个非 reduce-only 的入场单",
     )
     parser.add_argument(
         "--leave-open-after-entry",
         action="store_true",
-        help="open the starter position and exit without placing follow-up orders or flattening",
+        help="开仓后退出，不追加订单也不平仓",
     )
     parser.add_argument(
         "--flatten-only",
         action="store_true",
-        help="if a position exists on the symbol, flatten it and exit without opening a new one",
+        help="如果该交易对已有仓位，直接平仓后退出，不开新仓",
     )
     parser.add_argument(
         "--close-order-distance-pct",
         type=float,
         default=0.25,
-        help="distance for the optional resting reduce-only close order",
+        help="可选的 reduce-only 平仓单的距离",
     )
     parser.add_argument(
         "--dump-raw-info",
         action="store_true",
-        help="include raw balance payloads in the output",
+        help="在输出中包含原始余额载荷",
     )
     args = parser.parse_args()
     require_live_mutation_confirmation(

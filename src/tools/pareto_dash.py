@@ -167,6 +167,7 @@ def _resolve_objective_columns(entry: dict, objective_keys: Iterable[str]) -> Li
 
 
 def _extract_objectives(entry: dict) -> Tuple[Dict[str, float], Dict[str, str], List[str]]:
+    """从优化结果条目中提取目标函数值、显示标签和评分列。"""
     metrics_block = entry.get("metrics") or {}
     objectives = metrics_block.get("objectives") or {}
     flattened: Dict[str, float] = {}
@@ -221,6 +222,7 @@ def _plot_metric_labels(run_data: RunData, metrics: Iterable[Optional[str]]) -> 
 
 
 def load_pareto_dataframe(run_dir: str) -> RunData:
+    """从 Pareto 目录加载优化结果，构建包含指标、参数和原始配置的 DataFrame。"""
     pareto_dir = os.path.join(run_dir, "pareto")
     rows: List[Dict[str, float]] = []
     scenario_metric_map: Dict[str, set] = defaultdict(set)
@@ -355,6 +357,7 @@ def _extract_limit_metrics(exprs: Iterable[str]) -> List[str]:
 
 
 def _apply_limits(df: pd.DataFrame, exprs: Optional[str]) -> pd.Series:
+    """对 DataFrame 应用限制表达式，返回布尔掩码 Series。"""
     if not exprs:
         return pd.Series(True, index=df.index)
     mask = pd.Series(True, index=df.index)
@@ -442,10 +445,7 @@ HISTORY_CACHE: Dict[str, pd.DataFrame] = {}
 
 
 def compute_weighted_score(df: pd.DataFrame, weights: Dict[str, float]) -> pd.Series:
-    """Compute a weighted score for each row based on normalized metrics.
-
-    Higher weights = more important. Metrics are normalized 0-1 and summed.
-    """
+    """基于归一化指标计算每行的加权得分。权重越高越重要，指标归一化到 0-1 后加权求和。"""
     if df.empty or not weights:
         return pd.Series(0.0, index=df.index)
 
@@ -471,11 +471,7 @@ def compute_weighted_score(df: pd.DataFrame, weights: Dict[str, float]) -> pd.Se
 
 
 def compute_pareto_frontier(df: pd.DataFrame, metrics: List[str], maximize: bool = True) -> pd.Series:
-    """Compute which points are on the Pareto frontier.
-
-    Returns a boolean Series indicating frontier membership.
-    Assumes higher is better for all metrics if maximize=True.
-    """
+    """计算 Pareto 前沿。返回布尔 Series 标记前沿成员，maximize=True 时值越大越好。"""
     if df.empty or not metrics:
         return pd.Series(False, index=df.index)
 
@@ -519,6 +515,7 @@ def get_history_dataframe(run_dir: str) -> pd.DataFrame:
 
 
 def serve_dash(data_root: str, host: str = "127.0.0.1", port: int = 8050):
+    """启动 Pareto 仪表板 Dash 应用。"""
     try:
         from dash import (
             Dash,
@@ -556,7 +553,7 @@ def serve_dash(data_root: str, host: str = "127.0.0.1", port: int = 8050):
     # =========================================================================
 
     def make_control_card(title: str, children: list, id_prefix: str = "") -> dbc.Card:
-        """Create a collapsible control card."""
+        """创建可折叠的控制卡片。"""
         collapse_id = (
             f"{id_prefix}-collapse" if id_prefix else f"{title.lower().replace(' ', '-')}-collapse"
         )
@@ -806,7 +803,7 @@ def serve_dash(data_root: str, host: str = "127.0.0.1", port: int = 8050):
         return html.Div("Select a tab")
 
     def render_overview_tab(run_data: RunData, df: pd.DataFrame, selected_id: str):
-        """Overview tab with main scatter plot and summary stats."""
+        """概览标签页：主散点图和摘要统计。"""
         n_configs = len(df)
         n_params = len(run_data.param_metrics)
         n_metrics = len(run_data.aggregated_metrics)
@@ -910,7 +907,7 @@ def serve_dash(data_root: str, host: str = "127.0.0.1", port: int = 8050):
         )
 
     def render_explorer_tab(run_data: RunData, df: pd.DataFrame, selected_id: str):
-        """Explorer tab with detailed plots and config details."""
+        """探索器标签页：详细图表和配置详情。"""
         return html.Div(
             [
                 dbc.Row(
@@ -983,7 +980,7 @@ def serve_dash(data_root: str, host: str = "127.0.0.1", port: int = 8050):
         )
 
     def render_compare_tab(run_data: RunData, df: pd.DataFrame):
-        """Compare tab for side-by-side config comparison."""
+        """比较标签页：并排配置对比。"""
         return html.Div(
             [
                 dbc.Row(
@@ -1060,7 +1057,7 @@ def serve_dash(data_root: str, host: str = "127.0.0.1", port: int = 8050):
         )
 
     def render_export_tab(run_data: RunData, df: pd.DataFrame, selected_id: str):
-        """Export tab for saving configs."""
+        """导出标签页：保存配置。"""
         return html.Div(
             [
                 dbc.Row(
@@ -1316,7 +1313,7 @@ def serve_dash(data_root: str, host: str = "127.0.0.1", port: int = 8050):
         frontier_metrics,
         scoring_weights,
     ):
-        """Build scatter plot figure - shared logic for both tabs."""
+        """构建散点图 — 两个标签页共享的逻辑。"""
         run_data = get_run_data(run_dir)
         df = run_data.dataframe
 
@@ -1488,7 +1485,7 @@ def serve_dash(data_root: str, host: str = "127.0.0.1", port: int = 8050):
         )
 
     def _extract_config_id_from_click(click_data):
-        """Extract config ID from scatter plot click data."""
+        """从散点图点击数据中提取配置 ID。"""
         if click_data and "points" in click_data and click_data["points"]:
             point = click_data["points"][0]
             if "customdata" in point and point["customdata"]:
@@ -1539,7 +1536,7 @@ def serve_dash(data_root: str, host: str = "127.0.0.1", port: int = 8050):
         Input("run-selection", "value"),
     )
     def update_selected_config_summary(selected_id, run_dir):
-        """Update config summary in Overview tab."""
+        """更新概览标签页中的配置摘要。"""
         if not selected_id:
             return html.P("Click on a point to select a config", className="text-muted")
 
@@ -1567,7 +1564,7 @@ def serve_dash(data_root: str, host: str = "127.0.0.1", port: int = 8050):
         Input("run-selection", "value"),
     )
     def update_config_details_panel(selected_id, run_dir):
-        """Update config details in Explorer tab."""
+        """更新探索器标签页中的配置详情。"""
         if not selected_id:
             return html.P("Click on a point to select a config", className="text-muted")
 

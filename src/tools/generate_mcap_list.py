@@ -31,6 +31,7 @@ def is_stablecoin(elm):
 
 
 def get_top_market_caps(n_coins, minimum_market_cap_millions, exchange=None):
+    """按市值获取前 N 个币种，可选按交易所过滤。"""
     # 按市值获取前 N 个币种
     markets_url = "https://api.coingecko.com/api/v3/coins/markets"
     per_page = 150
@@ -88,11 +89,11 @@ def get_top_market_caps(n_coins, minimum_market_cap_millions, exchange=None):
         disapproved = {}
         for elm in market_data:
             circulating = elm.get("circulating_supply") or 0.0
-            total = elm.get("total_supply") or elm.get("max_supply") or 1.0  # Avoid divide-by-zero
+            total = elm.get("total_supply") or elm.get("max_supply") or 1.0  # 避免除以零
             price = elm.get("current_price") or 0.0
             mcap = circulating * price
             supply_ratio = circulating / total if total > 0 else 0.0
-            penalized_mcap = mcap * supply_ratio  # downweight based on concentration
+            penalized_mcap = mcap * supply_ratio  # 根据集中度降权
             elm["supply_ratio"] = supply_ratio
             elm["penalized_mcap"] = penalized_mcap
             elm["liquidity_ratio"] = elm["total_volume"] / elm["market_cap"]
@@ -138,7 +139,7 @@ if __name__ == "__main__":
         dest="n_coins",
         required=False,
         default=100,
-        help=f"Maxiumum number of top market cap coins. Default=100",
+        help=f"按市值获取的最大币种数量。默认=100",
     )
     parser.add_argument(
         f"--minimum_market_cap_dollars",
@@ -147,7 +148,7 @@ if __name__ == "__main__":
         dest="minimum_market_cap_millions",
         required=False,
         default=300.0,
-        help=f"Minimum market cap in millions of USD. Default=300.0",
+        help=f"最低市值（百万美元）。默认=300.0",
     )
     parser.add_argument(
         f"--exchange",
@@ -156,7 +157,7 @@ if __name__ == "__main__":
         dest="exchange",
         required=False,
         default=None,
-        help=f"Optional: filter by coins available on exchange. Comma separated values. Default=None",
+        help=f"可选：按交易所可用币种过滤。逗号分隔。默认=None",
     )
     parser.add_argument(
         f"--output",
@@ -165,7 +166,7 @@ if __name__ == "__main__":
         dest="output",
         required=False,
         default=None,
-        help="Optional: Output path. Default=configs/approved_coins_{n_coins}_{min_mcap}.json",
+        help="可选：输出路径。默认=configs/approved_coins_{n_coins}_{min_mcap}.json",
     )
     args = parser.parse_args()
 

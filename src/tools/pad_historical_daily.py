@@ -95,19 +95,19 @@ def canonicalize_roots(roots: List[Path], dry_run: bool) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Pad historical daily OHLCV files to 1440 minutes.",
+        description="将每日 OHLCV 文件填充至 1440 分钟。",
     )
     parser.add_argument(
         "roots",
         nargs="*",
         type=Path,
         default=[Path("historical_data")],
-        help="Root directories to scan (default: historical_data).",
+        help="要扫描的根目录（默认：historical_data）。",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Report files that would be modified without overwriting them.",
+        help="仅报告将被修改的文件，不实际覆写。",
     )
     return parser
 

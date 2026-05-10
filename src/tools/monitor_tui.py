@@ -49,19 +49,19 @@ def _parse_args() -> argparse.Namespace:
         "--snapshot-refresh-seconds",
         type=float,
         default=2.0,
-        help="How often to refresh /snapshot for current-state panels.",
+        help="当前状态面板刷新 /snapshot 的频率。",
     )
     parser.add_argument(
         "--render-interval-ms",
         type=int,
         default=250,
-        help="How often to redraw the terminal.",
+        help="终端重绘频率。",
     )
     parser.add_argument(
         "--log-level",
         type=str,
         default="WARNING",
-        help="Logging level for relay connectivity diagnostics.",
+        help="中继连接诊断的日志级别。",
     )
     return parser.parse_args()
 

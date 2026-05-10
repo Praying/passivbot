@@ -292,6 +292,7 @@ def _environment_mismatch_message(prefix: Path, actual_python: Path) -> str:
 
 
 def _ensure_expected_environment() -> None:
+    """确保当前进程在预期的虚拟环境中运行，必要时自动重新执行。"""
     if os.environ.get(ENV_MISMATCH_IGNORE_ENV):
         return
 
@@ -356,6 +357,7 @@ def _invoke_module_main(module_name: str) -> tuple[bool, int]:
 
 
 def _run_module(module_name: str, prog_name: str, argv: list[str], requires_full: bool = False) -> int:
+    """运行指定模块的 main 函数或 __main__ 入口，返回退出码。"""
     if requires_full and not _is_help_request(argv):
         if _missing_full_install_markers():
             print(_full_install_message(prog_name), file=sys.stderr)
@@ -388,6 +390,7 @@ def _run_module(module_name: str, prog_name: str, argv: list[str], requires_full
 
 
 def _dispatch_tool(argv: list[str]) -> int:
+    """分发辅助工具命令到对应模块。"""
     parser = _build_tool_parser()
     if not argv or argv[0] in {"-h", "--help"}:
         parser.print_help()
@@ -409,6 +412,7 @@ def _dispatch_tool(argv: list[str]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI 主入口：解析命令并分发到对应子模块。"""
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = _build_root_parser()
     if not argv or argv[0] in {"-h", "--help"}:

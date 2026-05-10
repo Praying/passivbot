@@ -168,7 +168,7 @@ def parse_disabled_plot_groups(value) -> set[str]:
 
 ANALYSIS_SHARED_PREFIXES = ("hard_stop_",)
 
-# Fallback stubs for test environments without full extension symbols
+# 测试环境缺少完整扩展符号时的回退桩
 if not hasattr(pbr, "HlcvsBundle"):  # pragma: no cover
 
     class HlcvsBundle:
@@ -176,7 +176,7 @@ if not hasattr(pbr, "HlcvsBundle"):  # pragma: no cover
 
     pbr.HlcvsBundle = HlcvsBundle  # type: ignore
 
-# on Windows this will pick the SelectorEventLoopPolicy
+# 在 Windows 上使用 SelectorEventLoopPolicy
 set_windows_event_loop_policy()
 
 
@@ -296,6 +296,7 @@ def _build_coin_metadata_entries(
     warmup_minutes,
     trade_start_indices,
 ):
+    """构建每个币种的元数据条目列表，包含符号、费率及索引范围信息。"""
     entries = []
     for idx, coin in enumerate(coins_order):
         entry = mss.get(coin, {}) if isinstance(mss, dict) else {}
@@ -356,6 +357,7 @@ def _build_hlcvs_bundle(
     *,
     coin_indices: list[int] | None = None,
 ) -> pbr.HlcvsBundle:
+    """构建 Rust 引擎所需的 HlcvsBundle，包含 OHLCV 数组、BTC 价格、时间戳及币种元数据。"""
     subset_positions = None
     if coin_indices is not None:
         if len(coin_indices) != len(coins_order):
@@ -374,7 +376,7 @@ def _build_hlcvs_bundle(
             return None
         try:
             rss_kb = _resource.getrusage(_resource.RUSAGE_SELF).ru_maxrss
-            # Linux reports in KB, macOS in bytes.
+            # Linux 报告 KB，macOS 报告字节。
             if sys.platform == "darwin":
                 return rss_kb / (1024**2)
             return rss_kb / 1024
@@ -393,12 +395,14 @@ def _build_hlcvs_bundle(
             f"{rss_before:.1f}" if rss_before is not None else "na",
         )
     if subset_positions is not None:
+        # 仅选取指定币种子集，创建连续内存副本
         hlcvs_view = hlcvs[:, subset_positions, :]
         hlcvs_arr = np.ascontiguousarray(hlcvs_view, dtype=np.float64)
     else:
         hlcvs_arr = _as_c_contiguous_native_array(hlcvs, np.float64)
     btc_arr = _as_c_contiguous_native_array(btc_usd_prices, np.float64)
     if timestamps is None:
+        # 无时间戳时生成默认递增序列
         timestamps_arr = np.arange(hlcvs_arr.shape[0], dtype=np.int64)
     else:
         timestamps_arr = _as_c_contiguous_native_array(timestamps, np.int64)
@@ -433,7 +437,7 @@ class BacktestExecutionSettings:
 
 @dataclass
 class BacktestPayload:
-    """Container for everything needed to run a backtest via the Rust engine."""
+    """通过 Rust 引擎运行回测所需的所有数据的容器。"""
 
     bundle: Any
     bot_params_list: list
@@ -455,7 +459,7 @@ def build_backtest_payload(
     metrics_only: bool = False,
 ) -> BacktestPayload:
     """
-    Assemble the bundle, bot params, and metadata needed to execute a backtest.
+    组装执行回测所需的 bundle、bot 参数和元数据。
     """
 
     runtime_config = compile_runtime_config(config, runtime="backtest", record_step=False)
@@ -471,7 +475,7 @@ def build_backtest_payload(
     backtest_params = dict(backtest_params)
     coins_order = backtest_params.get("coins", [])
 
-    # Read candle interval from config (default to 1m)
+    # 从配置读取 K 线间隔（默认 1m）
     candle_interval = config.get("backtest", {}).get("candle_interval_minutes", 1)
     if isinstance(candle_interval, numbers.Real):
         candle_interval_float = float(candle_interval)
@@ -503,7 +507,7 @@ def build_backtest_payload(
             f"Input data interval {data_interval} does not match candle_interval_minutes={candle_interval}"
         )
 
-    # Aggregate candles if using coarser interval and data is still 1m
+    # 若使用更粗粒度且数据仍为 1m，则聚合 K 线
     if candle_interval > 1 and data_interval == 1:
         n_before = hlcvs.shape[0]
         hlcvs, timestamps, btc_usd_prices, offset_bars = align_and_aggregate_hlcvs(
@@ -520,13 +524,13 @@ def build_backtest_payload(
             offset_bars,
         )
 
-    # Inject first timestamp (ms) into backtest params; default to 0 if unknown
+    # 将首个时间戳（毫秒）注入回测参数；未知时默认为 0
     try:
         first_ts_ms = int(timestamps[0]) if (timestamps is not None and len(timestamps) > 0) else 0
     except Exception:
         first_ts_ms = 0
 
-    # Ensure timestamp alignment for aggregated data
+    # 确保聚合数据的时间戳对齐
     if candle_interval > 1 and first_ts_ms > 0:
         interval_ms = candle_interval * 60_000
         remainder = first_ts_ms % interval_ms
@@ -546,7 +550,7 @@ def build_backtest_payload(
     source_steps_1m = total_steps * (candle_interval if candle_interval > 1 else 1)
     for idx, coin in enumerate(coins_order):
         meta = mss.get(coin, {}) if isinstance(mss, dict) else {}
-        # Metadata indices are based on 1m candles; adjust for aggregated interval
+        # 元数据索引基于 1m K 线；为聚合间隔做调整
         first_idx_1m = int(meta.get("first_valid_index", 0)) - offset_bars
         last_idx_1m = int(meta.get("last_valid_index", source_steps_1m - 1)) - offset_bars
         if first_idx_1m < 0:
@@ -569,10 +573,10 @@ def build_backtest_payload(
             last_idx = total_steps - 1
         first_valid_indices.append(first_idx)
         last_valid_indices.append(last_idx)
-        # warmup_minutes stay in minutes (Rust adjusts based on interval)
+        # warmup_minutes 保持分钟单位（Rust 引擎根据间隔自动调整）
         warm = int(meta.get("warmup_minutes", warmup_map.get(coin, default_warm)))
         warmup_minutes.append(warm)
-        # trade_start_idx is in candle units, adjust warm from minutes to candle periods
+        # trade_start_idx 以 K 线为单位，将预热从分钟转换为 K 线周期
         warm_bars = int(math.ceil(warm / candle_interval)) if candle_interval > 1 else int(warm)
         if first_idx > last_idx:
             trade_idx = first_idx
@@ -656,7 +660,7 @@ def build_backtest_payload(
 
 def execute_backtest(payload: BacktestPayload, config: dict):
     """
-    Execute a prepared backtest payload and expand the resulting analysis.
+    执行已准备好的回测负载并展开结果分析。
     """
 
     backtest_result = pbr.run_backtest_bundle(
@@ -706,12 +710,12 @@ def subset_backtest_payload(
     coin_symbols: Iterable[str] | None = None,
 ) -> BacktestPayload:
     """
-    Return a new payload sliced down to a subset of coins.
+    返回切片到币种子集的新负载。
 
     Args:
-        payload: Source payload produced by build_backtest_payload.
-        coin_indices: Ordered iterable of integer positions to keep.
-        coin_symbols: Optional iterable of symbol strings (either full symbol or shorthand coin).
+        payload: 由 build_backtest_payload 生成的源负载。
+        coin_indices: 要保留的整数位置有序可迭代对象。
+        coin_symbols: 可选的符号字符串可迭代对象（完整符号或简写币种）。
     """
 
     if coin_indices is None and coin_symbols is None:
@@ -784,6 +788,7 @@ def process_forager_fills(
     equities_array,
     balance_sample_divider: int = 60,
 ):
+    """处理 Forager 成交记录，计算 PnL 比率、资金曲线及平衡/权益时间序列。"""
     fdf = pd.DataFrame(
         fills,
         columns=[
@@ -866,7 +871,7 @@ def process_forager_fills(
         btc_total_balance_series = (
             fdf.groupby(bucket)["btc_total_balance"].last().rename("btc_total_balance")
         )
-        # convert to datetime index for easier alignment
+        # 转换为 datetime 索引以便对齐
         usd_cash_series.index = pd.to_datetime(usd_cash_series.index, unit="ns")
         usd_total_balance_series.index = pd.to_datetime(usd_total_balance_series.index, unit="ns")
         btc_cash_series.index = pd.to_datetime(btc_cash_series.index, unit="ns")
@@ -1124,11 +1129,12 @@ def _get_hlcvs_cache_dir_for_save(config, exchange, coins, cache_hash, timestamp
 
 
 def load_coins_hlcvs_from_cache(config, exchange, warmup_minutes=0):
+    """从磁盘缓存加载 OHLCV 数据；预热不足时返回 None 以触发重新获取。"""
     cache_hash = get_cache_hash(config, exchange)
     cache_dir = _resolve_hlcvs_cache_dir(cache_hash)
     compress_cache = bool(require_config_value(config, "backtest.compress_cache"))
     if cache_dir and os.path.exists(cache_dir):
-        # Check warmup sufficiency: cached data must cover at least the needed warmup
+        # 检查预热充分性：缓存数据必须覆盖所需预热期
         meta_path = cache_dir / "cache_meta.json"
         if meta_path.exists():
             try:
@@ -1151,7 +1157,7 @@ def load_coins_hlcvs_from_cache(config, exchange, warmup_minutes=0):
             logging.info(f"{exchange} Attempting to load hlcvs data from cache {fname}...")
             with gzip.open(fname, "rb") as f:
                 hlcvs = np.load(f)
-            # Load optional timestamps if present
+            # 加载可选的时间戳（如存在）
             ts_fname = cache_dir / "timestamps.npy.gz"
             timestamps = None
             if os.path.exists(ts_fname):
@@ -1209,6 +1215,7 @@ def save_coins_hlcvs_to_cache(
     timestamps=None,
     warmup_minutes=0,
 ):
+    """将 OHLCV 数据、BTC 价格及市场设置持久化到磁盘缓存。"""
     cache_hash = get_cache_hash(config, exchange)
     cache_dir = _get_hlcvs_cache_dir_for_save(
         config,
@@ -1278,6 +1285,7 @@ def save_coins_hlcvs_to_cache(
 
 
 def ensure_valid_index_metadata(mss, hlcvs, coins, warmup_map=None):
+    """确保每个币种的 first_valid_index / last_valid_index / trade_start_index 元数据有效。"""
     total_steps = hlcvs.shape[0]
     warmup_map = warmup_map or {}
     default_warm = int(warmup_map.get("__default__", 0))
@@ -1299,7 +1307,7 @@ def ensure_valid_index_metadata(mss, hlcvs, coins, warmup_map=None):
         meta["first_valid_index"] = first_idx
         meta["last_valid_index"] = last_idx
         if warmup_map:
-            # Warmup from current config must override any historical cached metadata.
+            # 当前配置的预热必须覆盖任何历史缓存的元数据。
             warm_minutes = int(warmup_map.get(coin, default_warm))
         else:
             warm_minutes = int(meta.get("warmup_minutes", 0))
@@ -1312,6 +1320,7 @@ def ensure_valid_index_metadata(mss, hlcvs, coins, warmup_map=None):
 
 
 def warn_hlcv_valid_range_coverage(config, coins, mss, timestamps):
+    """检查各币种有效数据范围是否覆盖请求的回测区间，对不足的部分发出警告。"""
     if timestamps is None or len(timestamps) == 0:
         return
     requested_start_ts = int(date_to_ts(require_config_value(config, "backtest.start_date")))
@@ -1358,6 +1367,7 @@ def warn_hlcv_valid_range_coverage(config, coins, mss, timestamps):
 
 
 async def prepare_hlcvs_mss(config, exchange, *, force_refetch_gaps: bool = False):
+    """为指定交易所准备 OHLCV 数据和市场设置，优先加载缓存，必要时重新获取。"""
     base_dir = require_config_value(config, "backtest.base_dir")
     results_path = oj(base_dir, exchange, "")
     warmup_map = compute_per_coin_warmup_minutes(config)
@@ -1372,7 +1382,7 @@ async def prepare_hlcvs_mss(config, exchange, *, force_refetch_gaps: bool = Fals
             logging.info(f"Successfully loaded hlcvs data from cache")
             ensure_valid_index_metadata(mss, hlcvs, coins, warmup_map)
             warn_hlcv_valid_range_coverage(config, coins, mss, timestamps)
-            # Pass through cached timestamps if they were stored; fall back to None otherwise
+            # 传递缓存的时间戳（如有），否则回退为 None
             return coins, hlcvs, mss, results_path, cache_dir, btc_usd_prices, timestamps
     except Exception as e:
         logging.info(f"Unable to load hlcvs data from cache: {e}. Fetching...")
@@ -1436,6 +1446,7 @@ def _coerce_config_bool(value, *, field_name):
 
 
 def get_backtest_execution_settings(config, *, is_runtime_compiled: bool = False) -> BacktestExecutionSettings:
+    """从配置中提取回测执行设置：市价单参数、滑点及 PnL 回溯天数。"""
     if not is_runtime_compiled:
         config = compile_runtime_config(config, runtime="backtest", record_step=False)
     market_order_slippage_pct = float(
@@ -1502,6 +1513,7 @@ def prep_backtest_args(
     is_runtime_compiled: bool = False,
     metrics_only: bool = False,
 ):
+    """组装 Rust 引擎所需的 bot 参数、交易所参数和回测参数字典。"""
     if not is_runtime_compiled:
         config = compile_runtime_config(config, runtime="backtest", record_step=False)
     if execution_settings is None:
@@ -1657,6 +1669,7 @@ def prep_backtest_args(
 
 
 def expand_analysis(analysis_usd, analysis_btc, fills, equities_array, config):
+    """合并 USD/BTC 计价的分析结果，添加每暴露度指标并统一共享键。"""
     analysis_usd = dict(analysis_usd)
     analysis_btc = dict(analysis_btc)
     keys = ["adg", "adg_w", "mdg", "mdg_w", "gain"]
@@ -1745,7 +1758,7 @@ def run_backtest(
     return_payload: bool = False,
 ):
     """
-    Backwards-compatible entry point that builds a payload and executes it immediately.
+    向后兼容的入口点：构建负载并立即执行回测。
     """
 
     logging.info(f"Backtesting {exchange}...")
@@ -1778,6 +1791,7 @@ def post_process(
     label=None,
     plot_context: BacktestPlotContext | None = None,
 ):
+    """回测后处理：输出分析、保存结果和生成图表。"""
     sts = utc_ms()
     disabled_plot_groups = parse_disabled_plot_groups(config.get("disable_plotting"))
     equities_array = np.asarray(equities_array)
@@ -1872,6 +1886,7 @@ def post_process(
 
 
 async def main():
+    """回测 CLI 入口：解析参数、加载配置、运行回测并输出结果。"""
     raw_argv = sys.argv[1:]
     help_all = help_all_requested(raw_argv)
     parser = build_command_parser(
@@ -2055,21 +2070,21 @@ async def main():
         logging.info("loading suite config %s", args.suite_config)
         override_cfg = load_prepared_config(args.suite_config, verbose=False)
         override_backtest = override_cfg.get("backtest", {})
-        # Support both new (scenarios at top level) and legacy (suite wrapper) formats
+        # 同时支持新格式（场景在顶层）和旧格式（套件包装器）
         if "scenarios" in override_backtest:
             suite_override = {
                 "scenarios": override_backtest.get("scenarios", []),
                 "aggregate": override_backtest.get("aggregate", {"default": "mean"}),
             }
         elif "suite" in override_backtest:
-            # Legacy format - extract from suite wrapper
+            # 旧格式 — 从套件包装器中提取
             suite_override = override_backtest["suite"]
         else:
             raise ValueError(f"Suite config {args.suite_config} does not define backtest.scenarios.")
 
     suite_cfg = extract_suite_config(config, suite_override)
 
-    # Handle --scenarios filter (implies --suite y)
+    # 处理 --scenarios 过滤（隐含 --suite y）
     scenario_filter = getattr(args, "scenarios", None)
     if scenario_filter:
         labels = [label.strip() for label in scenario_filter.split(",") if label.strip()]
@@ -2077,12 +2092,12 @@ async def main():
         suite_cfg["enabled"] = True  # --scenarios implies suite mode
         logging.info("Filtered to %d scenario(s): %s", len(labels), ", ".join(labels))
 
-    # --suite CLI arg overrides config (applied after --scenarios so explicit --suite n wins)
+    # --suite CLI 参数覆盖配置（在 --scenarios 之后应用，显式 --suite n 优先）
     if args.suite is not None:
         recursive_config_update(config, "backtest.suite_enabled", bool(args.suite), verbose=True)
         suite_cfg["enabled"] = bool(args.suite)
 
-    # Log disable_plotting if set (not a config key, just a runtime flag)
+    # 记录 disable_plotting 设置（非配置键，仅为运行时标志）
     if args.disable_plotting is not None:
         logging.info("changed disable_plotting False -> %s", args.disable_plotting)
 
@@ -2109,9 +2124,9 @@ async def main():
     config["backtest"]["coins"] = {}
     force_refetch_gaps = getattr(args, "force_refetch_gaps", False)
 
-    # New behavior: derive data strategy from exchange count
-    # - Single exchange = use that exchange's data only
-    # - Multiple exchanges = best-per-coin combination (combined)
+    # 新行为：根据交易所数量推导数据策略
+    # - 单交易所 = 仅使用该交易所数据
+    # - 多交易所 = 按币种最优组合（combined）
     use_combined = len(backtest_exchanges) > 1
 
     if use_combined:
@@ -2142,7 +2157,7 @@ async def main():
             plot_context=BacktestPlotContext.from_payload(payload),
         )
     else:
-        # Single exchange mode
+        # 单交易所模式
         configs = {exchange: deepcopy(config) for exchange in backtest_exchanges}
         tasks = {}
         for exchange in backtest_exchanges:

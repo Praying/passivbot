@@ -97,18 +97,18 @@ def _atomic_save_json(path: str, data: dict) -> None:
 
 
 def _compute_crc(arr: np.ndarray) -> int:
-    """CRC32 matching candlestick_manager: sorted by ts, then tobytes."""
+    """计算 CRC32，与 candlestick_manager 一致：按 ts 排序后取 tobytes。"""
     sorted_arr = np.sort(arr, order="ts")
     return int(zlib.crc32(sorted_arr.tobytes()) & 0xFFFFFFFF)
 
 
 # ---------------------------------------------------------------------------
-# Individual checks
+# 单项检查
 # ---------------------------------------------------------------------------
 
 
 def check_corrupted(path: str) -> Optional[tuple]:
-    """Try to load a .npy file. Returns (arr, None) on success or (None, msg) on failure."""
+    """尝试加载 .npy 文件。成功返回 (arr, None)，失败返回 (None, msg)。"""
     try:
         with open(path, "rb") as f:
             arr = np.load(f, allow_pickle=False)
@@ -120,7 +120,7 @@ def check_corrupted(path: str) -> Optional[tuple]:
 
 
 def check_wrong_format(arr: np.ndarray) -> bool:
-    """Return True if array is legacy 2D float format, not CANDLE_DTYPE."""
+    """若数组为旧版 2D float 格式（非 CANDLE_DTYPE）则返回 True。"""
     if arr.dtype == CANDLE_DTYPE:
         return False
     if arr.ndim == 2 and arr.shape[1] >= 6:
@@ -129,7 +129,7 @@ def check_wrong_format(arr: np.ndarray) -> bool:
 
 
 def convert_legacy_to_dtype(arr: np.ndarray) -> np.ndarray:
-    """Convert a legacy 2D float array to CANDLE_DTYPE structured array."""
+    """将旧版 2D float 数组转换为 CANDLE_DTYPE 结构化数组。"""
     raw = np.asarray(arr[:, :6], dtype=np.float64)
     out = np.empty((raw.shape[0],), dtype=CANDLE_DTYPE)
     out["ts"] = raw[:, 0].astype(np.int64)
@@ -142,19 +142,19 @@ def convert_legacy_to_dtype(arr: np.ndarray) -> np.ndarray:
 
 
 def check_timestamp_alignment(arr: np.ndarray) -> np.ndarray:
-    """Return mask of rows where ts is not aligned to minute boundaries."""
+    """返回未对齐到分钟边界的行的掩码。"""
     ts = arr["ts"]
     return (ts % ONE_MIN_MS) != 0
 
 
 def check_duplicate_timestamps(arr: np.ndarray) -> bool:
-    """Return True if any timestamp is duplicated."""
+    """若存在重复的时间戳则返回 True。"""
     ts = arr["ts"]
     return len(np.unique(ts)) < len(ts)
 
 
 def check_shard_date_mismatch(arr: np.ndarray, date_key: str) -> bool:
-    """Return True if any timestamps fall outside the UTC day indicated by filename."""
+    """若任何时间戳超出文件名所指示的 UTC 日期范围则返回 True。"""
     try:
         day_start = int(
             datetime.strptime(date_key, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000
@@ -167,7 +167,7 @@ def check_shard_date_mismatch(arr: np.ndarray, date_key: str) -> bool:
 
 
 def check_ohlc_sanity(arr: np.ndarray) -> List[tuple]:
-    """Return list of (severity, message) for OHLC anomalies."""
+    """返回 OHLC 异常列表，每项为 (severity, message)。"""
     issues = []
     for col in ("o", "h", "l", "c", "bv"):
         if np.any(np.isnan(arr[col])):
@@ -177,7 +177,7 @@ def check_ohlc_sanity(arr: np.ndarray) -> List[tuple]:
     h, l, c = arr["h"], arr["l"], arr["c"]
     if np.any(h < l):
         issues.append(("warning", "high < low detected"))
-    # close outside [low, high] range (allow float32 epsilon)
+    # close 在 [low, high] 范围外（允许 float32 精度）
     eps = np.float32(1e-7)
     if np.any((c < l - eps) | (c > h + eps)):
         issues.append(("warning", "close outside [low, high] range"))
@@ -187,7 +187,7 @@ def check_ohlc_sanity(arr: np.ndarray) -> List[tuple]:
 
 
 def check_gap_inside_shard(arr: np.ndarray) -> Optional[str]:
-    """Check for non-continuous minute spacing within a shard."""
+    """检查分片内是否存在不连续的分钟间隔。"""
     if arr.size < 2:
         return None
     ts = np.sort(arr["ts"])
@@ -201,7 +201,7 @@ def check_gap_inside_shard(arr: np.ndarray) -> Optional[str]:
 
 
 def check_crc_mismatch(arr: np.ndarray, stored_crc: int) -> Optional[str]:
-    """Return message if CRC doesn't match, None if ok."""
+    """若 CRC 不匹配则返回描述，匹配则返回 None。"""
     computed = _compute_crc(arr)
     if computed != stored_crc:
         return f"CRC stored={stored_crc} computed={computed}"
@@ -209,12 +209,12 @@ def check_crc_mismatch(arr: np.ndarray, stored_crc: int) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Fix operations
+# 修复操作
 # ---------------------------------------------------------------------------
 
 
 def fix_corrupted(path: str, index: dict, date_key: str) -> None:
-    """Delete corrupted .npy and remove from index."""
+    """删除损坏的 .npy 文件并从索引中移除。"""
     try:
         os.unlink(path)
     except OSError:
@@ -224,7 +224,7 @@ def fix_corrupted(path: str, index: dict, date_key: str) -> None:
 
 
 def fix_wrong_format(path: str, arr: np.ndarray) -> np.ndarray:
-    """Convert legacy array and save atomically. Returns the converted array."""
+    """转换旧版数组并原子保存。返回转换后的数组。"""
     converted = convert_legacy_to_dtype(arr)
     converted = np.sort(converted, order="ts")
     _atomic_save_npy(path, converted)
@@ -232,7 +232,7 @@ def fix_wrong_format(path: str, arr: np.ndarray) -> np.ndarray:
 
 
 def fix_crc(index: dict, date_key: str, arr: np.ndarray) -> None:
-    """Recompute CRC and update index."""
+    """重新计算 CRC 并更新索引。"""
     new_crc = _compute_crc(arr)
     shards = index.get("shards", {})
     if date_key in shards:
@@ -240,7 +240,7 @@ def fix_crc(index: dict, date_key: str, arr: np.ndarray) -> None:
 
 
 def fix_index_orphan_entries(index: dict, symbol_dir: str) -> int:
-    """Remove index entries whose .npy files don't exist. Returns count removed."""
+    """移除 .npy 文件不存在的索引条目。返回移除数量。"""
     shards = index.get("shards", {})
     to_remove = []
     for dk, meta in list(shards.items()):
@@ -260,7 +260,7 @@ def fix_index_orphan_entries(index: dict, symbol_dir: str) -> int:
 def fix_index_missing_entries(
     index: dict, symbol_dir: str, npy_files: Dict[str, str], loaded_arrays: Dict[str, np.ndarray]
 ) -> int:
-    """Add index entries for .npy files not in index. Returns count added."""
+    """为不在索引中的 .npy 文件添加索引条目。返回添加数量。"""
     shards = index.setdefault("shards", {})
     added = 0
     for dk, path in npy_files.items():
@@ -279,9 +279,9 @@ def fix_index_missing_entries(
 
 
 def fix_timestamp_alignment(path: str, arr: np.ndarray) -> np.ndarray:
-    """Floor timestamps to minute boundary, dedup, resave."""
+    """将时间戳向下取整到分钟边界，去重后重新保存。"""
     arr["ts"] = (arr["ts"] // ONE_MIN_MS) * ONE_MIN_MS
-    # dedup keeping last occurrence
+    # 去重，保留最后一次出现
     _, idx = np.unique(arr["ts"][::-1], return_index=True)
     arr = arr[::-1][idx][::-1]
     arr = np.sort(arr, order="ts")
@@ -290,7 +290,7 @@ def fix_timestamp_alignment(path: str, arr: np.ndarray) -> np.ndarray:
 
 
 def fix_duplicate_timestamps(path: str, arr: np.ndarray) -> np.ndarray:
-    """Dedup keeping last occurrence per timestamp, resave."""
+    """对同一时间戳去重（保留最后出现），重新保存。"""
     _, idx = np.unique(arr["ts"][::-1], return_index=True)
     arr = arr[::-1][idx][::-1]
     arr = np.sort(arr, order="ts")
@@ -299,7 +299,7 @@ def fix_duplicate_timestamps(path: str, arr: np.ndarray) -> np.ndarray:
 
 
 def fix_ohlc_delete(path: str, index: dict, date_key: str) -> None:
-    """Delete shard with NaN/Inf (will be re-fetched)."""
+    """删除含 NaN/Inf 的分片（之后会被重新获取）。"""
     try:
         os.unlink(path)
     except OSError:
@@ -309,7 +309,7 @@ def fix_ohlc_delete(path: str, index: dict, date_key: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Symbol scanner
+# 交易对扫描器
 # ---------------------------------------------------------------------------
 
 
@@ -320,11 +320,11 @@ def scan_symbol(
     symbol: str,
     do_fix: bool,
 ) -> tuple:
-    """Scan one symbol directory. Returns (issues, shards_scanned)."""
+    """扫描单个交易对目录。返回 (issues, shards_scanned)。"""
     issues: List[Issue] = []
     shards_scanned = 0
 
-    # Discover .npy files
+    # 发现 .npy 文件
     npy_files: Dict[str, str] = {}  # date_key -> path
     try:
         for entry in os.scandir(symbol_dir):
@@ -335,7 +335,7 @@ def scan_symbol(
     except OSError:
         return issues, 0
 
-    # Load index.json
+    # 加载 index.json
     index_path = os.path.join(symbol_dir, "index.json")
     index: dict = {}
     if os.path.exists(index_path):
@@ -347,10 +347,10 @@ def scan_symbol(
 
     index_modified = False
 
-    # --- Check index consistency ---
+    # --- 检查索引一致性 ---
     shards_meta = index.get("shards", {})
 
-    # Orphan index entries (reference missing files)
+    # 孤立索引条目（引用了不存在的文件）
     orphan_keys = []
     for dk, meta in list(shards_meta.items()):
         if not isinstance(meta, dict):
@@ -380,21 +380,21 @@ def scan_symbol(
                 index_modified = True
         issues.append(issue)
 
-    # Unindexed files (files exist without index entry)
+    # 未索引文件（文件存在但无索引条目）
     unindexed = [dk for dk in npy_files if dk not in shards_meta]
 
-    # We'll populate this as we load arrays for unindexed entry fix
+    # 为未索引条目的修复在加载数组时填充此字典
     loaded_arrays: Dict[str, np.ndarray] = {}
 
-    # Collect volume data for suspicious_volume check
+    # 收集成交量数据用于 suspicious_volume 检查
     all_bv: List[np.ndarray] = []
     all_close: List[np.ndarray] = []
 
-    # --- Per-shard checks ---
+    # --- 逐分片检查 ---
     for date_key, npy_path in sorted(npy_files.items()):
         shards_scanned += 1
 
-        # Try load
+        # 尝试加载
         result = check_corrupted(npy_path)
         raw_arr, err_msg = result
 
@@ -418,7 +418,7 @@ def scan_symbol(
 
         arr = raw_arr
 
-        # Check wrong format (legacy 2D float64)
+        # 检查格式错误（旧版 2D float64）
         if check_wrong_format(arr):
             issue = Issue(
                 exchange=exchange,
@@ -436,9 +436,9 @@ def scan_symbol(
                 index_modified = True
             issues.append(issue)
 
-        # Ensure we have CANDLE_DTYPE from here on
+        # 此后确保使用 CANDLE_DTYPE
         if arr.dtype != CANDLE_DTYPE:
-            # If not fixable wrong_format and not CANDLE_DTYPE, skip further checks
+            # 若不可修复的格式且非 CANDLE_DTYPE，跳过后续检查
             if arr.ndim == 2 and arr.shape[1] >= 6:
                 arr = convert_legacy_to_dtype(arr)
             else:
@@ -449,7 +449,7 @@ def scan_symbol(
 
         loaded_arrays[date_key] = arr
 
-        # Check timestamp alignment
+        # 检查时间戳对齐
         misaligned = check_timestamp_alignment(arr)
         if np.any(misaligned):
             count = int(np.sum(misaligned))
@@ -470,7 +470,7 @@ def scan_symbol(
                 index_modified = True
             issues.append(issue)
 
-        # Check duplicate timestamps
+        # 检查重复时间戳
         if check_duplicate_timestamps(arr):
             n_unique = len(np.unique(arr["ts"]))
             issue = Issue(
@@ -490,7 +490,7 @@ def scan_symbol(
                 index_modified = True
             issues.append(issue)
 
-        # Check shard date mismatch
+        # 检查分片日期不匹配
         if check_shard_date_mismatch(arr, date_key):
             ts_min = int(arr["ts"].min())
             ts_max = int(arr["ts"].max())
@@ -506,7 +506,7 @@ def scan_symbol(
             )
             issues.append(issue)
 
-        # Check OHLC sanity
+        # 检查 OHLC 合理性
         ohlc_issues = check_ohlc_sanity(arr)
         has_nan_inf = any("NaN" in msg or "Inf" in msg for _, msg in ohlc_issues)
         for severity, msg in ohlc_issues:
@@ -522,14 +522,14 @@ def scan_symbol(
                 fixable=fixable,
             )
             if do_fix and fixable and has_nan_inf:
-                # Only delete once for all NaN/Inf issues in same shard
+                # 同一分片中的 NaN/Inf 问题只删除一次
                 pass
             issues.append(issue)
 
         if do_fix and has_nan_inf:
             fix_ohlc_delete(npy_path, index, date_key)
             index_modified = True
-            # Mark all NaN/Inf issues as fixed
+            # 标记所有 NaN/Inf 问题为已修复
             for iss in issues:
                 if (
                     iss.shard == date_key
@@ -538,11 +538,11 @@ def scan_symbol(
                     and not iss.fixed
                 ):
                     iss.fixed = True
-            # Don't run further checks on deleted shard
+            # 不再对已删除的分片运行后续检查
             loaded_arrays.pop(date_key, None)
             continue
 
-        # Check CRC mismatch (if index entry exists)
+        # 检查 CRC 不匹配（如果索引条目存在）
         shard_meta = shards_meta.get(date_key)
         if shard_meta and isinstance(shard_meta, dict) and "crc32" in shard_meta:
             crc_msg = check_crc_mismatch(arr, shard_meta["crc32"])
@@ -563,7 +563,7 @@ def scan_symbol(
                     index_modified = True
                 issues.append(issue)
 
-        # Check gaps inside shard
+        # 检查分片内间隙
         gap_msg = check_gap_inside_shard(arr)
         if gap_msg is not None:
             issues.append(
@@ -579,11 +579,11 @@ def scan_symbol(
                 )
             )
 
-        # Accumulate volume data
+        # 累积成交量数据
         all_bv.append(arr["bv"])
         all_close.append(arr["c"])
 
-    # --- Fix unindexed files ---
+    # --- 修复未索引文件 ---
     if unindexed:
         issue = Issue(
             exchange=exchange,
@@ -602,11 +602,11 @@ def scan_symbol(
                 index_modified = True
         issues.append(issue)
 
-    # --- Check suspicious volume (across all shards) ---
+    # --- 检查可疑成交量（跨所有分片） ---
     if all_bv and all_close:
         bv_cat = np.concatenate(all_bv)
         close_cat = np.concatenate(all_close)
-        # Filter out zeros
+        # 过滤零值
         mask = close_cat > 0
         if np.any(mask):
             med_bv = float(np.median(bv_cat[mask]))
@@ -625,7 +625,7 @@ def scan_symbol(
                     )
                 )
 
-    # --- Save modified index ---
+    # --- 保存已修改的索引 ---
     if do_fix and index_modified:
         _atomic_save_json(index_path, index)
 
@@ -633,7 +633,7 @@ def scan_symbol(
 
 
 # ---------------------------------------------------------------------------
-# Top-level scanner
+# 顶层扫描器
 # ---------------------------------------------------------------------------
 
 
@@ -644,13 +644,13 @@ def scan_all(
     symbol_filter: Optional[str],
     show_progress: bool,
 ) -> tuple:
-    """Scan all caches. Returns (all_issues, summary)."""
+    """扫描所有缓存。返回 (all_issues, summary)。"""
     ohlcv_root = os.path.join(cache_dir, "ohlcv")
     if not os.path.isdir(ohlcv_root):
         print(f"No OHLCV cache directory found at {ohlcv_root}")
         return [], DoctorSummary(0, 0, 0, 0, 0)
 
-    # Collect work items: (exchange, timeframe, symbol, symbol_dir)
+    # 收集工作项：(exchange, timeframe, symbol, symbol_dir)
     work: List[tuple] = []
     exchanges = set()
 
@@ -694,7 +694,7 @@ def scan_all(
         total_shards += n_shards
         symbols_scanned += 1
 
-    # Build summary
+    # 构建摘要
     by_check: Dict[str, int] = {}
     by_severity: Dict[str, int] = {}
     fixed_count = 0
@@ -719,12 +719,12 @@ def scan_all(
 
 
 # ---------------------------------------------------------------------------
-# Output formatting
+# 输出格式化
 # ---------------------------------------------------------------------------
 
 
 def print_human(all_issues: List[Issue], summary: DoctorSummary) -> None:
-    # Count fixed per check for summary line
+    # 统计每种检查的已修复数量
     fixed_per_check: Dict[str, int] = {}
     for iss in all_issues:
         if iss.fixed:
@@ -758,47 +758,47 @@ def print_json(all_issues: List[Issue], summary: DoctorSummary) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# 命令行接口
 # ---------------------------------------------------------------------------
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Candlestick Doctor: audit and repair OHLCV shard caches.",
+        description="K 线医生：审计和修复 OHLCV 分片缓存。",
     )
     parser.add_argument(
         "--fix",
         action="store_true",
-        help="Attempt to repair fixable issues (default: report only).",
+        help="尝试修复可修复的问题（默认仅报告）。",
     )
     parser.add_argument(
         "--exchange",
         type=str,
         default=None,
-        help="Only scan this exchange.",
+        help="仅扫描此交易所。",
     )
     parser.add_argument(
         "--symbol",
         type=str,
         default=None,
-        help="Only scan this symbol (directory name, e.g. BTC_USDT:USDT).",
+        help="仅扫描此交易对（目录名，如 BTC_USDT:USDT）。",
     )
     parser.add_argument(
         "--progress",
         action="store_true",
-        help="Show tqdm progress bar.",
+        help="显示 tqdm 进度条。",
     )
     parser.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
-        help="Machine-readable JSON output.",
+        help="机器可读的 JSON 输出。",
     )
     parser.add_argument(
         "--cache-dir",
         type=str,
         default="caches",
-        help="Root cache directory (default: caches).",
+        help="缓存根目录（默认：caches）。",
     )
     return parser
 

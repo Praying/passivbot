@@ -57,7 +57,7 @@ def _collect_metric(entry: Dict, metric: str) -> float | None:
                 continue
             if item.get("metric") == metric or item.get("metric_key") == metric:
                 return item.get("value")
-    # support analysis_combined names, if stored
+    # 支持 analysis_combined 名称（如果存在）
     combined = entry.get("analysis_combined", {})
     if combined:
         return combined.get(metric) or combined.get(f"{metric}_mean")
@@ -81,11 +81,13 @@ def plot_scatter(
     output: Path | None,
     title: str | None,
 ) -> None:
+    """绘制两个指标的散点图，以运行索引着色，标记最佳点。"""
     xs: List[float] = []
     ys: List[float] = []
     colors: List[int] = []
     annotations: List[Tuple[int, float, float]] = []
 
+    # 收集每次运行的指标值，记录最佳点用于标注
     for entry in runs:
         run_idx = entry.get("run_index") or entry.get("iteration")
         x_val = _collect_metric(entry, x_metric)
@@ -99,8 +101,9 @@ def plot_scatter(
             annotations.append((run_idx, x_val, y_val))
 
     if not xs or not ys:
-        raise ValueError(f"Could not collect any datapoints for metrics {x_metric} vs {y_metric}")
+        raise ValueError(f"无法为指标 {x_metric} vs {y_metric} 收集到数据点")
 
+    # 创建散点图，以运行索引着色
     fig, ax = plt.subplots(figsize=(8, 5))
     scatter = ax.scatter(xs, ys, c=colors, cmap="viridis", s=40, alpha=0.8)
     ax.set_xlabel(x_metric)
@@ -132,33 +135,33 @@ def plot_scatter(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Plot metrics from iterative backtester history logs."
+        description="绘制迭代回测器历史日志中的指标。"
     )
     parser.add_argument(
         "history_paths",
         nargs="+",
         type=Path,
-        help="History.jsonl file or session directory (multiple allowed).",
+        help="history.jsonl 文件或会话目录（允许多个）。",
     )
     parser.add_argument(
         "--x-metric",
         default="peak_recovery_hours_equity_usd",
-        help="Metric to plot on X axis (default: peak_recovery_hours_equity_usd).",
+        help="X 轴指标（默认：peak_recovery_hours_equity_usd）。",
     )
     parser.add_argument(
         "--y-metric",
         default="adg_btc_w",
-        help="Metric to plot on Y axis (default: adg_btc_w).",
+        help="Y 轴指标（默认：adg_btc_w）。",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        help="Optional output path for saving the figure instead of showing it.",
+        help="可选的输出路径，用于保存图表而非显示。",
     )
     parser.add_argument(
         "--title",
         default=None,
-        help="Optional custom plot title.",
+        help="可选的自定义图表标题。",
     )
     return parser.parse_args()
 
