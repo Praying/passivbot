@@ -119,6 +119,7 @@ def _monitor_record_error(
     pside: Optional[str] = None,
     ts: Optional[int] = None,
 ) -> Optional[dict]:
+    """记录错误事件到监控发布器。"""
     publisher = getattr(self, "monitor_publisher", None)
     if publisher is None:
         return None
@@ -151,6 +152,7 @@ def _monitor_emit_stop(
 
 
 def _monitor_hsl_payload(self, pside: str) -> dict:
+    """构建 HSL（硬止损层级）监控载荷字典。"""
     enabled = self._equity_hard_stop_enabled(pside)
     state = self._hsl_state(pside)
     last_metrics = state.get("last_metrics") or {}
@@ -169,6 +171,7 @@ def _monitor_hsl_payload(self, pside: str) -> dict:
 
 
 def _monitor_order_payload(self, order: dict, *, source: str) -> dict:
+    """将订单对象转换为监控所需的精简载荷字典。"""
     payload = {
         "id": order.get("id"),
         "custom_id": order.get("custom_id"),
@@ -194,6 +197,7 @@ def _monitor_order_payload(self, order: dict, *, source: str) -> dict:
 
 
 def _monitor_fill_payload(self, event) -> dict:
+    """将成交事件对象转换为监控所需的精简载荷字典。"""
     payload = {
         "id": getattr(event, "id", None),
         "timestamp": int(getattr(event, "timestamp", 0) or 0),
@@ -231,6 +235,7 @@ def _monitor_record_price_ticks(
     ts: Optional[int] = None,
     source: Optional[str] = None,
 ) -> int:
+    """批量记录价格跳动到监控发布器，返回成功记录的数量。"""
     publisher = getattr(self, "monitor_publisher", None)
     if publisher is None:
         return 0
@@ -253,6 +258,7 @@ def _monitor_handle_candlestick_persist(
     timeframe: str,
     batch: np.ndarray,
 ) -> None:
+    """处理已完成的 K 线数据并持久化到监控发布器（仅 1m 和 1h 周期）。"""
     publisher = getattr(self, "monitor_publisher", None)
     if publisher is None or not getattr(self, "_bot_ready", False):
         return
@@ -276,6 +282,7 @@ def _monitor_handle_candlestick_persist(
 
 
 def _build_health_summary_payload(self, *, now_ms: Optional[int] = None) -> dict:
+    """构建健康摘要载荷，包含运行时间、持仓数、余额、订单数、错误数和 RSS 内存。"""
     now_ms = utc_ms() if now_ms is None else int(now_ms)
     n_long = 0
     n_short = 0
@@ -316,6 +323,7 @@ def _monitor_recent_orders_payload(
     *,
     limit: int = 20,
 ) -> list[dict]:
+    """将最近的订单列表转换为监控载荷列表，最多保留 limit 条。"""
     trimmed = list(orders[-limit:]) if orders else []
     payloads: list[dict] = []
     for order in trimmed:
@@ -334,6 +342,7 @@ def _monitor_recent_orders_payload(
 
 
 def _build_monitor_market_section(self) -> dict[str, dict]:
+    """构建市场监控区段，包含所有相关交易对的活跃状态、审批状态、价格和参数。"""
     symbols = (
         set(getattr(self, "active_symbols", []) or [])
         | set(getattr(self, "positions", {}).keys())
@@ -407,6 +416,7 @@ def _build_monitor_market_section(self) -> dict[str, dict]:
 
 
 async def _build_monitor_forager_section(self) -> dict[str, dict]:
+    """构建 Forager 模式监控区段，包含候选评分、排名和下一个目标符号。"""
     out: dict[str, dict] = {}
     approved_minus_ignored = getattr(self, "approved_coins_minus_ignored_coins", {})
     approved = getattr(self, "approved_coins", {})
@@ -573,6 +583,7 @@ async def _build_monitor_forager_section(self) -> dict[str, dict]:
             raw_key: str,
             normalized_key: str,
         ) -> Optional[dict[str, Any]]:
+            """将候选特征构建为排名载荷字典。"""
             if feature is None:
                 return None
             payload = {
@@ -615,6 +626,7 @@ async def _build_monitor_forager_section(self) -> dict[str, dict]:
 
 
 def _build_monitor_unstuck_section(self) -> dict[str, Any]:
+    """构建 Unstuck 策略监控区段，包含解套订单、额度和 EMA 触发价格。"""
     has_open = bool(self.has_open_unstuck_order())
     allowances_live = self._calc_unstuck_allowances_live(allow_new_unstuck=not has_open)
     out: dict[str, Any] = {
@@ -673,6 +685,7 @@ def _build_monitor_runtime_market_hints(
     last_prices: dict[str, float],
     m1_close_emas: dict[str, dict[float, float]],
 ) -> dict[str, dict[str, Any]]:
+    """构建运行时市场提示，包含 EMA 上下轨和入场/解套触发价格。"""
     out: dict[str, dict[str, Any]] = {}
     for symbol in symbols:
         hint: dict[str, Any] = {}
@@ -725,6 +738,7 @@ def _build_monitor_runtime_unstuck_hints(
     last_prices: dict[str, float],
     market_hints: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
+    """构建运行时解套提示，包含下一个解套目标符号、价格和触发距离。"""
     out: dict[str, dict[str, Any]] = {"long": {}, "short": {}}
     for order in orders:
         order_type_str = str(order.get("order_type", ""))
@@ -770,6 +784,7 @@ def _update_monitor_runtime_hints(
     idx_to_symbol: dict[int, str],
     orders: list[dict[str, Any]],
 ) -> None:
+    """更新运行时市场提示、H1 波动率 EMA 和解套提示的缓存。"""
     market_hints = self._build_monitor_runtime_market_hints(symbols, last_prices, m1_close_emas)
     self._monitor_runtime_market_hints = market_hints
     self._monitor_runtime_h1_log_range_emas = deepcopy(h1_log_range_emas)
@@ -804,6 +819,7 @@ def _monitor_entry_trailing_limit_cap(
     symbol: str,
     wallet_exposure: float,
 ) -> tuple[Optional[float], Optional[str]]:
+    """根据 trailing/grid 比率和当前持仓计算入场仓位的有效上限和策略模式。"""
     allowed_limit = _monitor_wallet_exposure_limit_with_allowance(self, pside, symbol)
     if allowed_limit <= 0.0:
         return None, None
@@ -872,6 +888,7 @@ def _build_monitor_trailing_entry_payload(
     trailing_bundle: dict[str, float],
     market_entry: dict[str, Any],
 ) -> Optional[dict[str, Any]]:
+    """构建入场追踪诊断载荷，包含 EMA 波段、阈值和回撤参数的完整分析。"""
     ema_bands = market_entry.get("ema_bands", {}) if isinstance(market_entry, dict) else {}
     side_ema_bands = ema_bands.get(pside, {}) if isinstance(ema_bands, dict) else {}
     if not isinstance(side_ema_bands, dict):
@@ -934,6 +951,7 @@ def _build_monitor_trailing_close_payload(
     position_price: float,
     trailing_bundle: dict[str, float],
 ) -> Optional[dict[str, Any]]:
+    """构建平仓追踪诊断载荷，包含网格加价和追踪回撤参数的完整分析。"""
     inputs = {
         "symbol": symbol,
         "pside": pside,
@@ -978,6 +996,7 @@ def _build_monitor_trailing_section(
     balance_raw: float,
     market: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
+    """构建追踪策略监控区段，为每个交易对生成入场和平仓追踪诊断。"""
     out: dict[str, dict[str, Any]] = {}
     for symbol, market_entry in sorted(market.items()):
         if not isinstance(market_entry, dict):
@@ -1041,6 +1060,7 @@ def _build_monitor_position_side_payload(
     last_price: Optional[float],
     total_we_by_pside: dict[str, float],
 ) -> dict[str, Any]:
+    """构建单侧持仓的监控载荷，包含仓位、钱包暴露度和未实现 PnL。"""
     size = float(pos.get("size", 0.0) or 0.0)
     price = float(pos.get("price", 0.0) or 0.0)
     wallet_exposure = 0.0
@@ -1084,6 +1104,7 @@ def _build_monitor_positions_section(
     balance_raw: float,
     market: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
+    """构建持仓监控区段，汇总所有交易对的多空持仓和总钱包暴露度。"""
     positions: dict[str, dict[str, Any]] = {}
     total_we_by_pside = {"long": 0.0, "short": 0.0}
     for symbol, pos in self.positions.items():
@@ -1125,6 +1146,7 @@ def _build_monitor_positions_section(
 
 
 async def _build_monitor_snapshot(self, *, now_ms: Optional[int] = None) -> dict:
+    """构建完整的监控快照，包含账户、健康、持仓、订单、追踪和 Forager 等所有区段。"""
     now_ms = utc_ms() if now_ms is None else int(now_ms)
     balance_raw = float(self.get_raw_balance())
     balance_snapped = float(self.get_hysteresis_snapped_balance())
@@ -1202,6 +1224,7 @@ async def _build_monitor_snapshot(self, *, now_ms: Optional[int] = None) -> dict
 
 
 async def _monitor_flush_snapshot(self, *, force: bool = False, ts: Optional[int] = None) -> bool:
+    """构建并写入监控快照到发布器，返回是否成功。"""
     publisher = getattr(self, "monitor_publisher", None)
     if publisher is None:
         return False

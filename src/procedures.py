@@ -49,6 +49,7 @@ from pure_funcs import (
 
 
 def get_all_eligible_symbols(exchange="binance"):
+    """获取指定交易所所有符合条件（USDT 永续合约）的交易对符号列表，带本地缓存。"""
     exchange_map = {
         "bybit": "bybit",
         "binance": "binanceusdm",
@@ -182,6 +183,7 @@ def load_user_info(user: str, api_keys_path="api-keys.json") -> dict:
 def load_exchange_key_secret_passphrase(
     user: str, api_keys_path="api-keys.json"
 ) -> (str, str, str, str):
+    """从 API 密钥文件中加载用户的交易所名称、API key、secret 和 passphrase。"""
     if api_keys_path is None:
         api_keys_path = "api-keys.json"
     try:
@@ -216,6 +218,7 @@ def _broker_codes_path() -> Path:
 
 
 def load_broker_codes() -> dict[str, Any]:
+    """加载并返回 broker_codes.hjson 中定义的经纪商代码注册表。"""
     path = _broker_codes_path()
     try:
         with path.open() as f:
@@ -235,6 +238,7 @@ def load_broker_codes() -> dict[str, Any]:
 
 
 def load_broker_code(exchange: str) -> Any:
+    """返回指定交易所的经纪商代码，null 条目返回空字符串。"""
     codes = load_broker_codes()
     if exchange not in codes:
         raise KeyError(
@@ -271,6 +275,7 @@ def local_time() -> float:
 
 
 def print_async_exception(coro):
+    """打印异步协程的结果、异常或返回值，用于调试 asyncio 任务。"""
     if isinstance(coro, list):
         for elm in coro:
             print_async_exception(elm)
@@ -566,6 +571,7 @@ def assert_correct_ccxt_version(version=None, ccxt=None):
 
 
 def load_ccxt_version():
+    """从 requirements-live.txt 中提取所需的 ccxt 版本号。"""
     try:
         # 获取当前脚本的目录
         script_dir = os.path.dirname(os.path.abspath(__file__))

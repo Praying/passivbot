@@ -43,6 +43,7 @@ def numpyize(x):
 
 
 def denumpyize(x):
+    """将 NumPy 标量、数组和嵌套结构递归转换为纯 Python 原生类型。"""
     if isinstance(x, (np.float64, np.float32, np.float16)):
         return float(x)
     if isinstance(x, (np.int64, np.int32, np.int16, np.int8)):
@@ -115,6 +116,7 @@ def flatten(nested):
 
 
 def floatify(xs):
+    """递归将嵌套结构中的数值转换为 float 类型。"""
     if isinstance(xs, (int, float)):
         return float(xs)
     if isinstance(xs, str):
@@ -134,6 +136,7 @@ def floatify(xs):
 
 
 def shorten_custom_id(id_: str) -> str:
+    """使用缩写替换将自定义订单 ID 缩短，减少字符串长度。"""
     replacements = [
         ("clock", "clk"),
         ("close", "cls"),
@@ -153,6 +156,7 @@ def shorten_custom_id(id_: str) -> str:
 
 
 def determine_pos_side_ccxt(open_order: dict) -> str:
+    """根据订单信息推断持仓方向（long/short/both），兼容多个交易所字段格式。"""
     info = open_order.get("info", open_order)
     if "positionIdx" in info:
         idx = float(info["positionIdx"])

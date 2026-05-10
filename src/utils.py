@@ -95,6 +95,7 @@ def _cleanup_stale_symbol_map_locks() -> None:
 
 
 def _resolve_coins_file_path(value: str) -> Optional[Path]:
+    """将配置中的币种文件路径解析为绝对路径，支持项目根目录、当前目录及旧版别名回退。"""
     if not isinstance(value, str) or not value.strip():
         return None
     raw_path = Path(value.strip())
@@ -339,6 +340,7 @@ def json_dumps_streamlined(
             return None
 
     def _render(value: Any, level: int) -> str:
+        """递归渲染值为带缩进的 JSON 文本，短容器折叠为单行。"""
         inline = _inline_repr(value)
         if inline is not None and len(inline) <= max_inline:
             return inline
@@ -760,6 +762,7 @@ def _build_coin_symbol_maps(markets, quote):
     """
 
     def _namespaced_aliases(base: str, market: dict) -> set[str]:
+        """为 HIP-3 命名空间符号生成额外别名（如 xyz:APPL <-> XYZ-APPL 互转）。"""
         aliases = set()
         if not isinstance(base, str) or not base:
             return aliases
@@ -968,6 +971,7 @@ def create_coin_symbol_map_cache(exchange: str, markets, quote=None, verbose=Tru
 
 
 def coin_to_symbol(coin, exchange, quote=None, verbose=True):
+    """将币种名称转换为交易所符号，优先查缓存映射，缺失时用规则拼装回退。"""
     # 将 coin_to_symbol_map 缓存到内存，文件变更时重新加载
     if coin == "":
         return ""
@@ -1028,6 +1032,7 @@ def get_caller_name():
 
 
 def symbol_to_coin(symbol, verbose=True):
+    """将交易所符号转换为币种名称，优先查缓存映射，缺失时用启发式规则推测。"""
     # 将 symbol_to_coin_map 缓存到内存，文件变更时重新加载
     try:
         loaded = _load_symbol_to_coin_map()
@@ -1101,6 +1106,7 @@ def _resolve_fake_scenario_path(config) -> Optional[str]:
 
 
 def _load_fake_approved_coins(config, *, quote=None):
+    """从 fake 场景文件中加载已批准的币种列表，用于 'all' 模式的扩展。"""
     live = config.get("live", {}) if isinstance(config, dict) else {}
     scenario_path = _resolve_fake_scenario_path(config)
     if not scenario_path:
@@ -1127,6 +1133,7 @@ def _load_fake_approved_coins(config, *, quote=None):
 
 
 async def format_approved_ignored_coins(config, exchanges: [str], quote=None, verbose=True):
+    """解析并规范化 approved_coins 和 ignored_coins 配置，支持 'all' 展开、文件路径和多方向。"""
     if isinstance(exchanges, str):
         exchanges = [exchanges]
     before_approved = deepcopy(config.get("live", {}).get("approved_coins"))
@@ -1228,6 +1235,7 @@ def normalize_coins_source(src, *, allow_all: bool = True):
         return out
 
     def _parse_jsonish(raw: str):
+        """尝试将看起来像 JSON/HJSON 的字符串解析为 Python 对象，失败则返回 None。"""
         raw = raw.strip()
         if not raw:
             return None
